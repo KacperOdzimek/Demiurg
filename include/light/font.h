@@ -1,41 +1,39 @@
 /*
 ----------------------------------------------------------------
-Contents
+Contents:
 
 This file provides a `font` object, which consists of glyph SDF texture atlas and glyph metrics.
-
 The font object is created from a light-font-file file, which can be generated out of other font formats, using
-    generator/light_font_file_conv.c program.
+    utility/font_generator/light_font_file_conv.c program.
 
 ----------------------------------------------------------------
-Usage
+Code info:
+- lfont prefix
+- LIGHT_FONT_IMPL macro to build
+- graphics.h dependant
 
-- Build single header library by including with LEX_FONT_IMPL macro definied
+----------------------------------------------------------------
+Usage:
 - Create font object, with a valid light-font-file linked in create info
 - Use get functions to query font/glyph metrics
-- lex_font_get_glyph and lex_font_get_kerning are O(log n) operations
+- lfont_get_glyph and lfont_get_kerning are O(log n) operations
 - rest of get operations are O(1)
 
 ----------------------------------------------------------------
-Notes
-
+Notes:
 - light-font-file are NOT tested against being malformed - user is trusted to provide proper input
 
 ----------------------------------------------------------------
 Possible Optimizations:
-
 - instead of binary searching glyphs, binary search over continuous ranges of glyphs, 
     perform O(1) array access within range - this would be faster
 */
 
-#ifndef LEX_FONT_H
-#define LEX_FONT_H
+#ifndef LIGHT_FONT_H
+#define LIGHT_FONT_H
 
-#include <lgx/gpu.h>
-
-#include <stdlib.h>
+#include "light/graphics.h"
 #include <stddef.h>
-#include <stdint.h>
 
 /*
     Dispatch for future sources
@@ -43,11 +41,11 @@ Possible Optimizations:
 
 // utf8 utility
 
-static inline int lex_font_utf8_decode(const char* str, size_t itr, uint32_t* codepoint);
+static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codepoint);
 
 // font type
 
-typedef struct lex_font_glyph {
+typedef struct lfont_glyph {
     float uv_min_x, uv_min_y;
     float uv_max_x, uv_max_y;
     float size_x;
@@ -55,30 +53,30 @@ typedef struct lex_font_glyph {
     float bearing_x;
     float bearing_y;
     float advance_x;
-} lex_font_glyph;
+} lfont_glyph;
 
-typedef struct lex_font_create_info {
+typedef struct lfont_create_info {
     size_t                  light_font_format_file_length;
     const unsigned char*    light_font_format_file_data;
-} lex_font_create_info;
+} lfont_create_info;
 
-typedef struct lex_font lex_font;
+typedef struct lfont lfont;
 
-lex_font* lex_font_create_font(lgx_hardware*, lex_font_create_info*);
-void lex_font_free_font(lex_font*);
+lfont* lfont_create_font(lgx_hardware*, lfont_create_info*);
+void lfont_free_font(lfont*);
 
-lgx_texture*    lex_font_get_texture(const lex_font*);
-lex_font_glyph  lex_font_get_glyph  (const lex_font*, uint32_t codepoint);
-float           lex_font_get_kerning(const lex_font*, uint32_t left_codepoint, uint32_t right_codepoint);
+lgx_texture*    lfont_get_texture(const lfont*);
+lfont_glyph     lfont_get_glyph  (const lfont*, uint32_t codepoint);
+float           lfont_get_kerning(const lfont*, uint32_t left_codepoint, uint32_t right_codepoint);
 
-float lex_font_get_base_size    (const lex_font*);
-float lex_font_get_base_ascent  (const lex_font*);
-float lex_font_get_base_descent (const lex_font*);
-float lex_font_get_base_line_gap(const lex_font*);
+float lfont_get_base_size    (const lfont*);
+float lfont_get_base_ascent  (const lfont*);
+float lfont_get_base_descent (const lfont*);
+float lfont_get_base_line_gap(const lfont*);
 
 // inline implementations
 
-static inline int lex_font_utf8_decode(const char* str, size_t itr, uint32_t* codepoint) {
+static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codepoint) {
     str += itr; unsigned char c = (unsigned char)str[0];
 
     if (c < 0x80) {
@@ -103,16 +101,17 @@ static inline int lex_font_utf8_decode(const char* str, size_t itr, uint32_t* co
     return 1;
 }
 
-#endif // LEX_FONT_H
+#endif // LIGHT_FONT_H
 
-#ifdef LEX_FONT_IMPL
+#ifdef LIGHT_FONT_IMPL
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 typedef struct glyph_entry {
     uint32_t            codepoint;
-    lex_font_glyph  glyph;
+    lfont_glyph  glyph;
 } glyph_entry;
 
 typedef struct kerning_pair_entry {
@@ -121,7 +120,7 @@ typedef struct kerning_pair_entry {
     float       advance_x;
 } kerning_pair_entry;
 
-struct lex_font {
+struct lfont {
     lgx_hardware*       owning_hardware;
 
     float               size;
@@ -148,8 +147,8 @@ static inline uint32_t deserialize_reg_32(const unsigned char* b) {
     );
 }
 
-lex_font* lex_font_create_font(lgx_hardware* hardware, lex_font_create_info* info) {
-    lex_font* font = calloc(1, sizeof(lex_font));
+lfont* lfont_create_font(lgx_hardware* hardware, lfont_create_info* info) {
+    lfont* font = calloc(1, sizeof(lfont));
     if (!font) return NULL;
     font->owning_hardware = hardware;
 
@@ -223,11 +222,11 @@ lex_font* lex_font_create_font(lgx_hardware* hardware, lex_font_create_info* inf
 
     return font;
 _fail:
-    lex_font_free_font(font);
+    lfont_free_font(font);
     return NULL;
 }
 
-void lex_font_free_font(lex_font* font) {
+void lfont_free_font(lfont* font) {
     if (font == NULL) return;
     free(font->glyphs_array);
     free(font->kernings_array);
@@ -235,11 +234,11 @@ void lex_font_free_font(lex_font* font) {
     free(font);
 }
 
-lgx_texture* lex_font_get_texture(const lex_font* font) {
+lgx_texture* lfont_get_texture(const lfont* font) {
     return font->atlas_texture;
 }
 
-lex_font_glyph lex_font_get_glyph(const lex_font* font, uint32_t codepoint) {
+lfont_glyph lfont_get_glyph(const lfont* font, uint32_t codepoint) {
     int left = 0;
     int right = (int)font->glyphs_count - 1;
 
@@ -253,11 +252,11 @@ lex_font_glyph lex_font_get_glyph(const lex_font* font, uint32_t codepoint) {
     }
 
     // fallback: missing glyph (return empty / zero glyph)
-    return (lex_font_glyph){0};
+    return (lfont_glyph){0};
 }
 
-float lex_font_get_kerning(
-    const lex_font* font,
+float lfont_get_kerning(
+    const lfont* font,
     uint32_t left_codepoint,
     uint32_t right_codepoint
 ) {
@@ -280,20 +279,20 @@ float lex_font_get_kerning(
     return 0.0f;
 }
 
-float lex_font_get_base_size(const lex_font* font) {
+float lfont_get_base_size(const lfont* font) {
     return font->size;
 }
 
-float lex_font_get_base_ascent(const lex_font* font) {
+float lfont_get_base_ascent(const lfont* font) {
     return font->ascent;
 }
 
-float lex_font_get_base_descent(const lex_font* font) {
+float lfont_get_base_descent(const lfont* font) {
     return font->descent;
 }
 
-float lex_font_get_base_line_gap(const lex_font* font) {
+float lfont_get_base_line_gap(const lfont* font) {
     return font->line_gap;
 }
 
-#endif // LEX_FONT_IMPL
+#endif // LIGHT_FONT_IMPL

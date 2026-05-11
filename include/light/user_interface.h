@@ -1,8 +1,28 @@
 /*
+----------------------------------------------------------------
+Contents:
+This file implements lui ui system.
+
+----------------------------------------------------------------
+Code info:
+- lui prefix
+- LIGHT_FONT_IMPL macro to build
+
+----------------------------------------------------------------
+Usage:
+- Define a tree of ui components by linking lui_nodes
+- Lui node consists of type, type dependant data pointer, and child(ren)
+- Whether node should link to single child, or to children array is described per type
+- Pass your ui system root node to lui_measure and then lui_render
+- Render obtained draw commands sequence
+- For more info lookup examples and docs
+*/
+
+/*
     Injections
 */
 
-#ifdef LUI_IMPL  
+#ifdef LIGHT_USER_INTERFACE_IMPL
     typedef struct lui_length     lui_length;
     typedef struct lui_image_data lui_image_data;
     typedef struct lui_text_data  lui_text_data;
@@ -13,23 +33,23 @@
         const lui_image_data*    data,
         lui_length*              width_target, 
         lui_length*              height_target,
-        void*                   user_context
+        void*                    user_context
     );
 
     static inline void lui_injection_measure_text(
         const lui_text_data*     data,
         lui_length*              width_target, 
         lui_length*              height_target,
-        void*                   user_context
+        void*                    user_context
     );
-#endif
+#endif // LIGHT_USER_INTERFACE_IMPL
 
 /*
     Header
 */
 
-#ifndef LUI_H
-#define LUI_H
+#ifndef LIGHT_USER_INTEFACE_H
+#define LIGHT_USER_INTEFACE_H
 
 #include <stddef.h>
 #include <math.h>
@@ -101,10 +121,10 @@ typedef struct lui_color {
 // runtime hex to lui_color conversion
 // letters case does not matter, '#' prefix is required
 // if hex[7] is not '\0', then alpha channel is read, else it is set to FF
-// lui_HEX <- compile time alternative
+// LUI_HEX <- compile time alternative
 static inline lui_color lui_hex(const char* hex);
 
-// lui_HEX <- compile time lui_hex alternative (definied later in the file)
+// LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
 
 // ===========================
 // Node Typedef
@@ -377,20 +397,20 @@ void lui_arena_free(lui_arena* target, void(*free_func)(void*));
 // first step in rendering ui
 // computes desired resolution of each node
 lui_return_flag lui_measure(
-    const lui_node*  root,           // ui tree root
-    lui_arena*       temp_arena,     // temporary memory arena
+    const lui_node* root,           // ui tree root
+    lui_arena*      temp_arena,     // temporary memory arena
     void*           user_context    // will be passed to injected measure functions
 );
 
 // second step in rendering ui
 // renders the ui according to their desired resolutions
 lui_return_flag lui_render(
-    const lui_node*  root,           // ui tree root
-    lui_arena*       temp_arena,     // temporary memory arena
+    const lui_node* root,           // ui tree root
+    lui_arena*      temp_arena,     // temporary memory arena
     int             resolution_x,   // screen resolution width
     int             resolution_y,   // screen resolution height
-    lui_arena*       commands_arena, // arena for draw commands
-    lui_arena*       clipboxs_arena  // arena for clipboxes
+    lui_arena*      commands_arena, // arena for draw commands
+    lui_arena*      clipboxs_arena  // arena for clipboxes
 );
 
 // ===========================
@@ -550,13 +570,13 @@ static inline lui_transform lui_mul(lui_transform p, lui_transform c) {
         .ty  = (offy) \
     }
 
-#endif
+#endif // LIGHT_USER_INTEFACE_H
 
 /*
     Implementation
 */
 
-#ifdef LUI_IMPL
+#ifdef LIGHT_USER_INTERFACE_IMPL
 
 /*
     Important implementation notes!
@@ -1705,4 +1725,4 @@ lui_return_flag lui_render(
     return flag;
 }
 
-#endif
+#endif // LIGHT_USER_INTERFACE_IMPL

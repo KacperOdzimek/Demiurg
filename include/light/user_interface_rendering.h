@@ -1,18 +1,23 @@
 /*
 ----------------------------------------------------------------
-Contents
-
+Contents:
 This file implements lgx rendering pipeline for lui ui system.
 
 ----------------------------------------------------------------
-Usage
+Code info:
+- luirp prefix
+- LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL macro to build
+- graphics.h dependant
+- user_interface.h dependant
+- font.h dependant
 
-- Build single header library by including with LEX_LUI_TO_LGX_IMPL macro definied
-- Define lex_lui_to_lgx_injection_query_image and lex_lui_to_lgx_injection_query_font functions
+----------------------------------------------------------------
+Usage:
+- Define luirp_injection_query_image and luirp_injection_query_font functions
     for performance, those functions are declared as inline and 
     must be declared in same compilation unit as library implementation 
 - Create shared object, and frame contextes per window
-- Per frame: upload ui with lex_lui_to_lgx_upload_ui, then render ui with lex_lui_to_lgx_gcmd_render_ui
+- Per frame: upload ui with luirp_upload_ui, then render ui with luirp_gcmd_render_ui
 
 ----------------------------------------------------------------
 Possible Additions:
@@ -28,44 +33,42 @@ Possible Optimizations:
 /* 
     Injections:
 */
-#ifdef LEX_LUI_TO_LGX_IMPL
-    #include <lgx/gpu.h>
-    #include <lui/lui.h>
+#ifdef LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL
+    #include "light/graphics.h"
+    #include "light/user_interface.h"
+    #include "light/font.h"
 
-    #include "../lex_font/lex_font.h"
-    //#include <lex/lex_font.h>
-
-    typedef struct lex_lui_to_lgx_atlas_position_uv {
+    typedef struct luirp_atlas_position_uv {
         float uv_min_x, uv_min_y;
         float uv_max_x, uv_max_y;
-    } lex_lui_to_lgx_atlas_position_uv;
+    } luirp_atlas_position_uv;
 
     // texture can be set to NULL if query fails
-    static inline void lex_lui_to_lgx_injection_query_image(
-        const lui_image_data*               data, 
-        lgx_texture**                       texture,
-        lex_lui_to_lgx_atlas_position_uv*   atlas_position
+    static inline void luirp_injection_query_image(
+        const lui_image_data*       data, 
+        lgx_texture**               texture,
+        luirp_atlas_position_uv*    atlas_position
     );
 
     // font can be set to NULL if query fails
-    static inline void lex_lui_to_lgx_injection_query_font(
+    static inline void luirp_injection_query_font(
         const lui_text_data*    data,
-        lex_font**              font
+        lfont**                 font
     );
-#endif
+#endif // LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL
 
-#ifndef LEX_LUI_TO_LGX_H
-#define LEX_LUI_TO_LGX_H
+#ifndef LIGHT_USER_INTERFACE_RENDERING_PIPELINE_H
+#define LIGHT_USER_INTERFACE_RENDERING_PIPELINE_H
 
-#include <lgx/gpu.h>
-#include <lui/lui.h>
+#include "light/graphics.h"
+#include "light/user_interface.h"
 
 // UI Rendering Shared Objects
 // Make one instance of this object per hardware
 // This object contains only read only objects like pipeline, so you can reuse it across
 //  multiple windows, frames in flight, etc
 
-typedef struct lex_lui_to_lgx_shared_create_info {
+typedef struct luirp_shared_create_info {
     lgx_render_target_layout*   pipeline_render_target_layout;
 
     const char*                 pipeline_vertex_shader_source_code;
@@ -76,53 +79,53 @@ typedef struct lex_lui_to_lgx_shared_create_info {
 
     uint32_t                    additional_pipeline_descriptors_layouts_count;
     lgx_descriptor_layout**     additional_pipeline_descriptors_layouts;
-} lex_lui_to_lgx_shared_create_info;
+} luirp_shared_create_info;
 
-typedef struct lex_lui_to_lgx_shared lex_lui_to_lgx_shared;
-lex_lui_to_lgx_shared* lex_lui_to_lgx_create_shared(lgx_hardware*, const lex_lui_to_lgx_shared_create_info* info);
-void lex_lui_to_lgx_free_shared(lex_lui_to_lgx_shared*);
+typedef struct luirp_shared luirp_shared;
+luirp_shared* luirp_create_shared(lgx_hardware*, const luirp_shared_create_info* info);
+void luirp_free_shared(luirp_shared*);
 
 // UI Rendering Frame Contextes
 // Make one instance of this object per ui system you will render at the time
 // This object contains all per-frame objects like descriptors. It is also tied to shared object, and must live shorter than it,
 
-typedef struct lex_lui_to_lgx_frames_contextes_create_info {
+typedef struct luirp_frames_contextes_create_info {
     uint32_t    frames_in_flight_count;
-} lex_lui_to_lgx_frames_contextes_create_info;
+} luirp_frames_contextes_create_info;
 
-typedef struct lex_lui_to_lgx_frames_contextes lex_lui_to_lgx_frames_contextes;
+typedef struct luirp_frames_contextes luirp_frames_contextes;
 
-lex_lui_to_lgx_frames_contextes* lex_lui_to_lgx_create_frames_contextes(lex_lui_to_lgx_shared*, const lex_lui_to_lgx_frames_contextes_create_info* info);
-void lex_lui_to_lgx_free_frames_contextes(lex_lui_to_lgx_frames_contextes*);
+luirp_frames_contextes* luirp_create_frames_contextes(luirp_shared*, const luirp_frames_contextes_create_info* info);
+void luirp_free_frames_contextes(luirp_frames_contextes*);
 
 // UI Rendering Functions
 
-void lex_lui_to_lgx_upload_ui(
-    lgx_command_list*                   command_list,
-    lgx_hardware_queue*                 queue_for_uploads,
-    lex_lui_to_lgx_frames_contextes*    contextes,
-    uint32_t                            frame_in_flight_index,
-    lgx_staging_memory*                 staging_memory,
-    uint64_t                            staging_memory_region_offset,
-    uint64_t                            staging_memory_region_size,
-    lgx_cpu_signal*                     upload_finished_cpu,
-    lgx_gpu_signal*                     upload_finished_gpu,
-    lui_arena*                          draws_arena,
-    lui_arena*                          clips_arena
+void luirp_upload_ui(
+    lgx_command_list*       command_list,
+    lgx_hardware_queue*     queue_for_uploads,
+    luirp_frames_contextes* contextes,
+    uint32_t                frame_in_flight_index,
+    lgx_staging_memory*     staging_memory,
+    uint64_t                staging_memory_region_offset,
+    uint64_t                staging_memory_region_size,
+    lgx_cpu_signal*         upload_finished_cpu,
+    lgx_gpu_signal*         upload_finished_gpu,
+    lui_arena*              draws_arena,
+    lui_arena*              clips_arena
 );
 
 // with render target bound
 // with viewport and scissors set
-void lex_lui_to_lgx_gcmd_render_ui(
-    lgx_command_list*                   list,
-    lex_lui_to_lgx_frames_contextes*    contextes,
-    uint32_t                            frame_in_flight_index
+void luirp_gcmd_render_ui(
+    lgx_command_list*       list,
+    luirp_frames_contextes* contextes,
+    uint32_t                frame_in_flight_index
 );
 
-#endif // LEX_LUI_TO_LGX_H
+#endif // LIGHT_USER_INTERFACE_RENDERING_PIPELINE_H
 
-#ifdef LEX_LUI_TO_LGX_IMPL
-#define LEX_LUI_TO_LGX_IMPL
+#ifdef LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL
+#define LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL
 
 #include <string.h>
 #include <stdlib.h>
@@ -196,7 +199,7 @@ typedef struct gpu_instance {
     lui_transform transform;
 
     // Texture region uv, for atlasing
-    lex_lui_to_lgx_atlas_position_uv    atlas_position;
+    luirp_atlas_position_uv    atlas_position;
 
     // Texture index within descriptor
     // Offseted by one in both dimensions - value of 0 means no texture
@@ -218,7 +221,7 @@ typedef struct gpu_clipbox {
 
 // Shared Object
 
-struct lex_lui_to_lgx_shared {
+struct luirp_shared {
     lgx_hardware*                       owning_hardware;
     lgx_buffer*                         vertex_buffer;
     lgx_descriptor_layout*              descriptor_layout;
@@ -227,8 +230,8 @@ struct lex_lui_to_lgx_shared {
     lgx_sampler*                        sampler;
 };
 
-lex_lui_to_lgx_shared* lex_lui_to_lgx_create_shared(lgx_hardware* hardware, const lex_lui_to_lgx_shared_create_info* info) {
-    lex_lui_to_lgx_shared* shared = calloc(1, sizeof(lex_lui_to_lgx_shared)); if (!shared) return NULL;
+luirp_shared* luirp_create_shared(lgx_hardware* hardware, const luirp_shared_create_info* info) {
+    luirp_shared* shared = calloc(1, sizeof(luirp_shared)); if (!shared) return NULL;
     shared->owning_hardware = hardware;
 
     // Vertex Buffer
@@ -324,7 +327,7 @@ lex_lui_to_lgx_shared* lex_lui_to_lgx_create_shared(lgx_hardware* hardware, cons
 
         .rasterizer = {
             .scissor_enable     = 0,
-            .depth_clamp_enable = 1,
+            .depth_clamp_enable = 0,
             .fill_mode          = lgx_fill_mode_solid,
             .cull_mode          = lgx_cull_mode_none
         },
@@ -353,11 +356,11 @@ lex_lui_to_lgx_shared* lex_lui_to_lgx_create_shared(lgx_hardware* hardware, cons
     return shared;
 
 _fail:
-    lex_lui_to_lgx_free_shared(shared);
+    luirp_free_shared(shared);
     return NULL;
 }
 
-void lex_lui_to_lgx_free_shared(lex_lui_to_lgx_shared* shared) {
+void luirp_free_shared(luirp_shared* shared) {
     if (!shared) return;
     lgx_free_sampler(shared->sampler);
     lgx_free_buffer(shared->vertex_buffer);
@@ -376,8 +379,8 @@ typedef struct frame_context {
     lgx_descriptor* descriptor;
 } frame_context;
 
-struct lex_lui_to_lgx_frames_contextes {
-    lex_lui_to_lgx_shared*      owning_shared;
+struct luirp_frames_contextes {
+    luirp_shared*      owning_shared;
     lgx_descriptor_allocator*   descriptor_allocator;
     uint32_t                    contextes_count;
     frame_context*              contextes;
@@ -450,11 +453,11 @@ void link_buffers_to_descriptor(lgx_hardware* hardware, frame_context* frame) {
     lgx_descriptors_write(hardware, 2, writes);
 }
 
-lex_lui_to_lgx_frames_contextes* lex_lui_to_lgx_create_frames_contextes
-(lex_lui_to_lgx_shared* shared, const lex_lui_to_lgx_frames_contextes_create_info* info) {
+luirp_frames_contextes* luirp_create_frames_contextes
+(luirp_shared* shared, const luirp_frames_contextes_create_info* info) {
     lgx_hardware* hardware = shared->owning_hardware;
 
-    lex_lui_to_lgx_frames_contextes* contextes = calloc(1, sizeof(lex_lui_to_lgx_frames_contextes)); 
+    luirp_frames_contextes* contextes = calloc(1, sizeof(luirp_frames_contextes)); 
     if (!contextes) return NULL;
     
     contextes->owning_shared = shared;
@@ -487,11 +490,11 @@ lex_lui_to_lgx_frames_contextes* lex_lui_to_lgx_create_frames_contextes
 
     return contextes;
 _fail:
-    lex_lui_to_lgx_free_frames_contextes(contextes);
+    luirp_free_frames_contextes(contextes);
     return NULL;
 }
 
-void lex_lui_to_lgx_free_frames_contextes(lex_lui_to_lgx_frames_contextes* contextes) {
+void luirp_free_frames_contextes(luirp_frames_contextes* contextes) {
     if (!contextes) return;
 
     for (uint32_t i = 0; i < contextes->contextes_count; i++) {
@@ -621,11 +624,11 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
         if (state->staging_memory_left < sizeof(gpu_instance)) return NULL;
         
         lgx_texture* the_texture = NULL;
-        lex_lui_to_lgx_atlas_position_uv atlas_position = {
+        luirp_atlas_position_uv atlas_position = {
             .uv_min_x = 0, .uv_min_y = 0,
             .uv_max_x = 1, .uv_max_y = 1
         };
-        lex_lui_to_lgx_injection_query_image(
+        luirp_injection_query_image(
             &cmd->image_data, &the_texture, &atlas_position
         );
 
@@ -645,8 +648,8 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
         lui_text_data data = cmd->text_data;
         if (!data.font || !data.text) return mapped;
 
-        lex_font* font = NULL;
-        lex_lui_to_lgx_injection_query_font(
+        lfont* font = NULL;
+        luirp_injection_query_font(
             &data, &font
         );
 
@@ -660,17 +663,17 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
             .g = (float)cmd->text_data.tint.g / 255.0f,
             .b = (float)cmd->text_data.tint.b / 255.0f,
             .a = (float)cmd->text_data.tint.a / 255.0f,
-            .texture_index = get_texture_index(state, lex_font_get_texture(font), 1),
+            .texture_index = get_texture_index(state, lfont_get_texture(font), 1),
         };
 
         // in below code, we multiply font metrics by two, since
         // normalized coord system spans two units (-1 to 1)
 
         // translate offsets from base font to our instance of text size
-        float font_scale    = (float)data.size / lex_font_get_base_size(font);
+        float font_scale    = (float)data.size / lfont_get_base_size(font);
 
-        float font_line_height  = (lex_font_get_base_ascent(font) - lex_font_get_base_descent(font)) * font_scale * 2;
-        float font_line_gap     = lex_font_get_base_line_gap(font) * font_scale * 2;
+        float font_line_height  = (lfont_get_base_ascent(font) - lfont_get_base_descent(font)) * font_scale * 2;
+        float font_line_gap     = lfont_get_base_line_gap(font) * font_scale * 2;
 
         float pixel_to_norm_x = 2.0f / cmd->pixels_width;
         float pixel_to_norm_y = 2.0f / cmd->pixels_height;
@@ -681,8 +684,8 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
 
         size_t   itr = 0;
         while (data.text[itr] != '\0') {
-            uint32_t codepoint; itr += lex_font_utf8_decode(data.text, itr, &codepoint);
-            lex_font_glyph glyph = lex_font_get_glyph(font, codepoint);
+            uint32_t codepoint; itr += lfont_utf8_decode(data.text, itr, &codepoint);
+            lfont_glyph glyph = lfont_get_glyph(font, codepoint);
 
             if (codepoint == '\n') {
                 cursor_x = 0;
@@ -711,7 +714,7 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
 
             gpu_instance glyph_instance = default_instance;
 
-            glyph_instance.atlas_position = (lex_lui_to_lgx_atlas_position_uv){
+            glyph_instance.atlas_position = (luirp_atlas_position_uv){
                 glyph.uv_min_x, glyph.uv_max_y,
                 glyph.uv_max_x, glyph.uv_min_y // swapped for now flip font on load
             };
@@ -762,18 +765,18 @@ void record_upload(lgx_command_list* list, frame_context* frame, upload_state* s
     lgx_finish_command_list_recording(list);
 }
 
-void lex_lui_to_lgx_upload_ui(
-    lgx_command_list*                   command_list,
-    lgx_hardware_queue*                 queue_for_uploads,
-    lex_lui_to_lgx_frames_contextes*    contextes,
-    uint32_t                            frame_in_flight_index,
-    lgx_staging_memory*                 staging_memory,
-    uint64_t                            staging_memory_region_offset,
-    uint64_t                            staging_memory_region_size,
-    lgx_cpu_signal*                     upload_finished_cpu,
-    lgx_gpu_signal*                     upload_finished_gpu,
-    lui_arena*                          draws_arena,
-    lui_arena*                          clips_arena
+void luirp_upload_ui(
+    lgx_command_list*       command_list,
+    lgx_hardware_queue*     queue_for_uploads,
+    luirp_frames_contextes* contextes,
+    uint32_t                frame_in_flight_index,
+    lgx_staging_memory*     staging_memory,
+    uint64_t                staging_memory_region_offset,
+    uint64_t                staging_memory_region_size,
+    lgx_cpu_signal*         upload_finished_cpu,
+    lgx_gpu_signal*         upload_finished_gpu,
+    lui_arena*              draws_arena,
+    lui_arena*              clips_arena
 ) {
     if (upload_finished_cpu) lgx_cpu_signal_reset(upload_finished_cpu);
     int provided_cpu_signal = 1 && upload_finished_cpu;
@@ -875,9 +878,9 @@ void lex_lui_to_lgx_upload_ui(
     frame->instances_to_render = state.all_instances_to_draw;
 }
 
-void lex_lui_to_lgx_gcmd_render_ui(
+void luirp_gcmd_render_ui(
     lgx_command_list*                   list,
-    lex_lui_to_lgx_frames_contextes*    contextes,
+    luirp_frames_contextes*    contextes,
     uint32_t                            frame_in_flight_index
 ) {
     frame_context* frame = &contextes->contextes[frame_in_flight_index % contextes->contextes_count];
@@ -898,8 +901,8 @@ static inline void lui_injection_measure_sized_image(
     void* user_context
 ) {
     lgx_texture*                        image_tex;
-    lex_lui_to_lgx_atlas_position_uv    atlas;
-    lex_lui_to_lgx_injection_query_image(image, &image_tex, &atlas);
+    luirp_atlas_position_uv    atlas;
+    luirp_injection_query_image(image, &image_tex, &atlas);
 
     if (!image_tex) {
         *width_target  = (lui_length){0, 0, 0};
@@ -926,15 +929,15 @@ static inline void lui_injection_measure_text(
         return;
     }
 
-    lex_font* font = NULL; lex_lui_to_lgx_injection_query_font(data, &font);
+    lfont* font = NULL; luirp_injection_query_font(data, &font);
     if (!font) {
         *width_target  = (lui_length){0, 0, 0};
         *height_target = (lui_length){0, 0, 0};
         return;
     }
 
-    float font_line_height = lex_font_get_base_ascent(font) - lex_font_get_base_descent(font);  // The line height
-    float font_line_gap    = lex_font_get_base_line_gap(font);                                  // Extra spacing between lines
+    float font_line_height = lfont_get_base_ascent(font) - lfont_get_base_descent(font);  // The line height
+    float font_line_gap    = lfont_get_base_line_gap(font);                                  // Extra spacing between lines
 
     float max_width     = 0;
     float current_width = 0;
@@ -945,7 +948,7 @@ static inline void lui_injection_measure_text(
 
     size_t itr = 0;
     while (data->text[itr] != '\0') {
-        uint32_t codepoint; itr   += lex_font_utf8_decode(data->text, itr, &codepoint);
+        uint32_t codepoint; itr   += lfont_utf8_decode(data->text, itr, &codepoint);
 
         if (codepoint == '\n') {
             // Instead of advance use size on last glyph in line
@@ -966,7 +969,7 @@ static inline void lui_injection_measure_text(
             continue;
         }
 
-        lex_font_glyph glyph = lex_font_get_glyph(font, codepoint);
+        lfont_glyph glyph = lfont_get_glyph(font, codepoint);
         current_width       += glyph.advance_x;
         previous_size_x     = glyph.size_x;
         previous_advance_x  = glyph.advance_x;
@@ -976,7 +979,7 @@ static inline void lui_injection_measure_text(
     max_width = current_width > max_width ? current_width : max_width;
 
     // Scale box acording to this text font scale
-    float font_scale = (float)data->size / lex_font_get_base_size(font);
+    float font_scale = (float)data->size / lfont_get_base_size(font);
     max_width *= font_scale;
     height    *= font_scale;
 
@@ -984,4 +987,4 @@ static inline void lui_injection_measure_text(
     *height_target = (lui_length){height,    height,    0};
 }
 
-#endif
+#endif // LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL

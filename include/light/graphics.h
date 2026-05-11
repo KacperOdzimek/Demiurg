@@ -1,5 +1,32 @@
-#ifndef LGX_GPU_H
-#define LGX_GPU_H
+/*
+----------------------------------------------------------------
+Contents:
+
+This file provides a RHI - render hardware interface.
+This interface allows user to write api independent low-level graphics systems.
+
+----------------------------------------------------------------
+Code info:
+- lgx prefix
+- LIGHT_GRAPHICS_IMPL macro to build
+- user must select graphics api at build using one of the macros below:
+    - LIGHT_GRAPHICS_VULKAN
+- add LGX_VALIDATE macro-flag pre implementation to enable validation and error logging
+
+----------------------------------------------------------------
+Depedencies:
+- Each of native APIs have they own compilation requirements:
+- LIGHT_GRAPHICS_VULKAN:
+    - (todo)
+
+----------------------------------------------------------------
+Usage:
+(todo)
+
+*/
+
+#ifndef LIGHT_GRAPHICS_H
+#define LIGHT_GRAPHICS_H
 
 // ==========================
 // Compile Flags
@@ -817,8 +844,10 @@ void lgx_gcmd_set_viewport(
 
 #endif
 
-#ifdef LGX_VULKAN
+#ifdef LIGHT_GRAPHICS_IMPL
 
+// Vulkan Implementation
+#ifdef LIGHT_GRAPHICS_VULKAN
 
 #define GLFW_INCLUDE_VULKAN
 #include <vulkan/vulkan.h>
@@ -2470,23 +2499,22 @@ const uint32_t  instance_extensions_count = 0;
 // Validation Layers
 
 #ifdef LGX_VALIDATE
-static const char* validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
-const char**    config_validation_layers_array = &validation_layers[0];
-const uint32_t  config_validation_layers_count = 1;
+    static const char* validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
+    const char**    config_validation_layers_array = &validation_layers[0];
+    const uint32_t  config_validation_layers_count = 1;
 #else 
-const char**    config_validation_layers_array = NULL;
-const uint32_t  config_validation_layers_count = 0;
+    const char**    config_validation_layers_array = NULL;
+    const uint32_t  config_validation_layers_count = 0;
 #endif
 
 // Device Extensions
 
 static const char* required_device_extensions[] = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    "VK_EXT_descriptor_indexing"
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-const char** config_required_device_extensions_array = &required_device_extensions[0];
-const uint32_t config_required_device_extensions_count = 2;
+const char**   config_required_device_extensions_array = &required_device_extensions[0];
+const uint32_t config_required_device_extensions_count = 1;
 
 // Pipelines State
 
@@ -2790,20 +2818,8 @@ lgx_descriptor_layout* lgx_create_descriptor_layout(lgx_hardware* hardware, cons
         }
     }
 
-    VkDescriptorBindingFlags binding_flags =
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT           |
-        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
-        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-
-    VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-        .bindingCount  = 1,
-        .pBindingFlags = &binding_flags
-    };
-
     VkDescriptorSetLayoutCreateInfo vk_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext          = &flags_info,
         .flags          = 0,
         .bindingCount   = (uint32_t)info->bindings_count,
         .pBindings      = vk_bindings,
@@ -3296,17 +3312,8 @@ int hardware_create_device_and_queues(lgx_hardware* hardware, const lgx_hardware
     // Device Creation
     // Enable required extensions and features
 
-    VkPhysicalDeviceDescriptorIndexingFeatures enabled_indexing_features =
-        required_indexing_features;
-
-    VkPhysicalDeviceFeatures2 enabled_features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &enabled_indexing_features
-    };
-
     VkDeviceCreateInfo device_create_info = {
         .sType                      = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext                      = &enabled_features,
         .queueCreateInfoCount       = queues_create_info_itr,
         .pQueueCreateInfos          = queues_create_infos,
         .enabledExtensionCount      = config_required_device_extensions_count,
@@ -3320,7 +3327,6 @@ int hardware_create_device_and_queues(lgx_hardware* hardware, const lgx_hardware
     hardware->logical_device = device;
 
     // Free temporary memory
-
     free(queues_priorities);
 
     // Finish hardware
@@ -3352,7 +3358,6 @@ lgx_hardware* lgx_create_hardware(lgx_library* library, const lgx_hardware_creat
     }
 
     // Construct hardware
-
     if (!hardware_pick_physical_device(hardware, info, surface)) goto _fail;
     if (!hardware_create_device_and_queues(hardware, info, surface)) goto _fail;
 
@@ -4689,4 +4694,7 @@ void lgx_window_get_size(lgx_window* window, uint32_t* width, uint32_t* height) 
     if (height) *height = window->current_swapchain.height;
 }
 
-#endif /* LGX_VULKAN */
+#else
+    #error No native api for light graphics set!
+#endif // LIGHT_GRAPHICS_VULKAN
+#endif // LIGHT_GRAPHICS_IMPL

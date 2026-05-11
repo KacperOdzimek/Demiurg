@@ -5,15 +5,21 @@ Contents
 This file provided simple system to render basic shapes: lines, triangles, rectangles, circles.
 
 ----------------------------------------------------------------
+Code info:
+- lshp prefix
+- LIGHT_SHAPES_IMPL macro to build
+- graphics.h dependant
+
+----------------------------------------------------------------
 Usage
 
-- Create lex_shapes_shared object - it contains shared read-only objects for rendering.
+- Create lshp_shared object - it contains shared read-only objects for rendering.
     Create one per hardware. In create info, link shaders. (compile provided default_shader_source).
-- Create lex_shapes_frames_contextes - it contains per frame geometry buffers you record with
+- Create lshp_frames_contextes - it contains per frame geometry buffers you record with
     drawing methods. Create one per hardware.
 - Then you can draw whatever You want it given frame in flight context
-- Upload data to gpu with lex_shapes_upload
-- Render with graphics command lex_shapes_gcmd_render
+- Upload data to gpu with lshp_upload
+- Render with graphics command lshp_gcmd_render
 
 ----------------------------------------------------------------
 Notes
@@ -22,114 +28,113 @@ Notes
     struct gpu_triangle_render_info, but I am not going to change that now, it is 3 am.
 */
 
+#ifndef LIGHT_SHAPES_H
+#define LIGHT_SHAPES_H
 
-#ifndef LEX_SHAPES_PIPELINE_H
-#define LEX_SHAPES_PIPELINE_H
-
-#include <lgx/gpu.h>
+#include "graphics.h"
 
 // Shapes Rendering Shared Object
 
-typedef struct lex_shapes_shared_create_info {
+typedef struct lshp_shared_create_info {
     lgx_render_target_layout*   pipeline_render_target_layout;
     const char*                 pipeline_vertex_shader_source_code;
     uint32_t                    pipeline_vertex_shader_source_size;
     const char*                 pipeline_pixel_shader_source_code;
     uint32_t                    pipeline_pixel_shader_source_size;
-} lex_shapes_shared_create_info;
+} lshp_shared_create_info;
 
-typedef struct lex_shapes_shared lex_shapes_shared;
-lex_shapes_shared* lex_shapes_create_shared(lgx_hardware*, const lex_shapes_shared_create_info* info);
-void lex_shapes_free_shared(lex_shapes_shared*);
+typedef struct lshp_shared lshp_shared;
+lshp_shared* lshp_create_shared(lgx_hardware*, const lshp_shared_create_info* info);
+void lshp_free_shared(lshp_shared*);
 
 // Shapes Rendering Frame Contextes
 
-typedef struct lex_shapes_frames_contextes_create_info {
-    lex_shapes_shared*  shared;
+typedef struct lshp_frames_contextes_create_info {
+    lshp_shared*  shared;
     uint32_t            frames_in_flight_count;
-} lex_shapes_frames_contextes_create_info;
+} lshp_frames_contextes_create_info;
 
-typedef struct lex_shapes_frames_contextes lex_shapes_frames_contextes;
-lex_shapes_frames_contextes* lex_shapes_create_frames_contextes(lgx_hardware*, const lex_shapes_frames_contextes_create_info* info);
-void lex_shapes_free_frames_contextes(lex_shapes_frames_contextes*);
+typedef struct lshp_frames_contextes lshp_frames_contextes;
+lshp_frames_contextes* lshp_create_frames_contextes(lgx_hardware*, const lshp_frames_contextes_create_info* info);
+void lshp_free_frames_contextes(lshp_frames_contextes*);
 
 // shorthand not to pass frame in flight to every function
-typedef struct lex_shapes_frame_context {
-    lex_shapes_frames_contextes*    contextes;
+typedef struct lshp_frame_context {
+    lshp_frames_contextes*    contextes;
     uint32_t                        frame_in_flight;
-} lex_shapes_frame_context;
+} lshp_frame_context;
 
 // Actuall Draw Operation
 
 // resets draw requests in context
-void lex_shapes_reset(
-    lex_shapes_frame_context* context,
+void lshp_reset(
+    lshp_frame_context* context,
     int clear_geometry, 
     int clear_state
 );
 
 // uploads draw requests to gpu
-void lex_shapes_upload(
-    lgx_command_list*           command_list,
-    lgx_hardware_queue*         queue_for_uploads,
-    lex_shapes_frame_context*   context,
-    lgx_staging_memory*         staging_memory,
-    uint64_t                    staging_memory_region_offset,
-    uint64_t                    staging_memory_region_size,
-    lgx_cpu_signal*             upload_finished_cpu,
-    lgx_gpu_signal*             upload_finished_gpu
+void lshp_upload(
+    lgx_command_list*   command_list,
+    lgx_hardware_queue* queue_for_uploads,
+    lshp_frame_context* context,
+    lgx_staging_memory* staging_memory,
+    uint64_t            staging_memory_region_offset,
+    uint64_t            staging_memory_region_size,
+    lgx_cpu_signal*     upload_finished_cpu,
+    lgx_gpu_signal*     upload_finished_gpu
 );
 
 // command to draw from context
 // needs to be re recorded every frame as amount of
 // drawn primitives may change
 // call with render target bound, viewport and scissors set
-void lex_shapes_gcmd_render(
-    lgx_command_list*           target,
-    lex_shapes_frame_context*   context
+void lshp_gcmd_render(
+    lgx_command_list*   target,
+    lshp_frame_context* context
 );
 
 // Shapes Draw Function
 
 // set drawn shapes color
-void lex_shapes_set_color(
-    lex_shapes_frame_context* context,
+void lshp_set_color(
+    lshp_frame_context* context,
     float r, float g, float b, float a
 );
 
-void lex_shapes_set_line_thickness(
-    lex_shapes_frame_context* context,
+void lshp_set_line_thickness(
+    lshp_frame_context* context,
     float line_thickness
 );
 
-void lex_shapes_line(
-    lex_shapes_frame_context* context,
+void lshp_line(
+    lshp_frame_context* context,
     float x0, float y0,
     float x1, float y1
 );
 
-void lex_shapes_triangle(
-    lex_shapes_frame_context* context,
+void lshp_triangle(
+    lshp_frame_context* context,
     float x0, float y0,
     float x1, float y1,
     float x2, float y2
 );
 
-void lex_shapes_rect(
-    lex_shapes_frame_context* context,
+void lshp_rect(
+    lshp_frame_context* context,
     float x0, float y0,
     float x1, float y1
 );
 
-void lex_shapes_circle(
-    lex_shapes_frame_context* context,
+void lshp_circle(
+    lshp_frame_context* context,
     float cx, float cy,
     float radius
 );
 
-#endif
+#endif // LIGHT_SHAPES_H
 
-#ifdef LEX_SHAPES_PIPELINE_IMPL
+#ifdef LIGHT_SHAPES_IMPL
 
 #include <stdlib.h>
 #include <string.h>
@@ -179,15 +184,15 @@ static uint64_t initial_instances_buffer_cap = 128 * sizeof(gpu_instance);
     Shared
 */
 
-struct lex_shapes_shared {
+struct lshp_shared {
     lgx_hardware*                       owning_hardware;
     lgx_descriptor_layout*              descriptor_layout;
     lgx_pipeline_descriptors_layout*    pipeline_layout;
     lgx_pipeline*                       pipeline;
 };
 
-lex_shapes_shared* lex_shapes_create_shared(lgx_hardware* hardware, const lex_shapes_shared_create_info* info) {
-    lex_shapes_shared* shared = calloc(1, sizeof(lex_shapes_shared)); if (!shared) return NULL;
+lshp_shared* lshp_create_shared(lgx_hardware* hardware, const lshp_shared_create_info* info) {
+    lshp_shared* shared = calloc(1, sizeof(lshp_shared)); if (!shared) return NULL;
     shared->owning_hardware = hardware;
 
     // Descriptor Layout
@@ -268,11 +273,11 @@ lex_shapes_shared* lex_shapes_create_shared(lgx_hardware* hardware, const lex_sh
     return shared;
 
 _fail:
-    lex_shapes_free_shared(shared); 
+    lshp_free_shared(shared); 
     return NULL;
 }
 
-void lex_shapes_free_shared(lex_shapes_shared* shared) {
+void lshp_free_shared(lshp_shared* shared) {
     lgx_free_pipeline(shared->pipeline);
     lgx_free_pipeline_descriptors_layout(shared->pipeline_layout);
     lgx_free_descriptor_layout(shared->descriptor_layout);
@@ -340,9 +345,9 @@ typedef struct frame_context {
     lgx_buffer*     vertices_buffer;
 } frame_context;
 
-struct lex_shapes_frames_contextes {
+struct lshp_frames_contextes {
     lgx_hardware*               owning_hardware;
-    lex_shapes_shared*          owning_shared;
+    lshp_shared*          owning_shared;
     lgx_descriptor_allocator*   descriptor_allocator;
     uint32_t                    in_flight;
     frame_context*              frames;
@@ -377,13 +382,13 @@ void link_frame_descriptor_with_instance_buffer(lgx_hardware* hardware, frame_co
     lgx_descriptors_write(hardware, 1, &write);
 }
 
-lex_shapes_frames_contextes* lex_shapes_create_frames_contextes(lgx_hardware* hardware, const lex_shapes_frames_contextes_create_info* info) {
+lshp_frames_contextes* lshp_create_frames_contextes(lgx_hardware* hardware, const lshp_frames_contextes_create_info* info) {
     if (!hardware || !info->shared) goto _fail;
 
-    lex_shapes_frames_contextes* contextes = calloc(1, sizeof(lex_shapes_frames_contextes)); 
+    lshp_frames_contextes* contextes = calloc(1, sizeof(lshp_frames_contextes)); 
     if (!contextes) goto _fail;
 
-    *contextes = (lex_shapes_frames_contextes) {
+    *contextes = (lshp_frames_contextes) {
         .owning_hardware    = hardware,
         .owning_shared      = info->shared,
         .in_flight          = info->frames_in_flight_count
@@ -428,11 +433,11 @@ lex_shapes_frames_contextes* lex_shapes_create_frames_contextes(lgx_hardware* ha
     return contextes;
 
 _fail:
-    lex_shapes_free_frames_contextes(contextes);
+    lshp_free_frames_contextes(contextes);
     return NULL;
 }
 
-void lex_shapes_free_frames_contextes(lex_shapes_frames_contextes* contextes) {
+void lshp_free_frames_contextes(lshp_frames_contextes* contextes) {
     if (!contextes) return;
 
     for (uint32_t i = 0; i < contextes->in_flight; i++) {
@@ -448,7 +453,7 @@ void lex_shapes_free_frames_contextes(lex_shapes_frames_contextes* contextes) {
     free(contextes);
 }
 
-void lex_shapes_reset(lex_shapes_frame_context* context, int clear_geometry, int clear_state) {
+void lshp_reset(lshp_frame_context* context, int clear_geometry, int clear_state) {
     frame_context* frame = &context->contextes->frames[context->frame_in_flight];
 
     if (clear_geometry) {
@@ -484,15 +489,15 @@ uint32_t ensure_buffer_size_pre_upload
     return a->position;
 }
 
-void lex_shapes_upload(
-    lgx_command_list*           command_list,
-    lgx_hardware_queue*         queue_for_uploads,
-    lex_shapes_frame_context*   context,
-    lgx_staging_memory*         staging_memory,
-    uint64_t                    staging_memory_region_offset,
-    uint64_t                    staging_memory_region_size,
-    lgx_cpu_signal*             upload_finished_cpu,
-    lgx_gpu_signal*             upload_finished_gpu
+void lshp_upload(
+    lgx_command_list*   command_list,
+    lgx_hardware_queue* queue_for_uploads,
+    lshp_frame_context* context,
+    lgx_staging_memory* staging_memory,
+    uint64_t            staging_memory_region_offset,
+    uint64_t            staging_memory_region_size,
+    lgx_cpu_signal*     upload_finished_cpu,
+    lgx_gpu_signal*     upload_finished_gpu
 ) {
     int provided_cpu_signal = upload_finished_cpu && 1;
 
@@ -589,9 +594,9 @@ void lex_shapes_upload(
     }
 }
 
-void lex_shapes_gcmd_render(
+void lshp_gcmd_render(
     lgx_command_list*           target,
-    lex_shapes_frame_context*   context
+    lshp_frame_context*   context
 ) {
     frame_context* frame = &context->contextes->frames[context->frame_in_flight];
     if (frame->triangles_to_draw) {
@@ -609,7 +614,7 @@ void lex_shapes_gcmd_render(
 // Methods
 
 static inline void emit_triangle(
-    lex_shapes_frame_context* context, 
+    lshp_frame_context* context, 
     float x0,   float y0,
     float x1,   float y1,
     float x2,   float y2,
@@ -646,24 +651,24 @@ static inline void emit_triangle(
     frame->triangles_to_draw++;
 };
 
-void lex_shapes_set_color(
-    lex_shapes_frame_context* context,
+void lshp_set_color(
+    lshp_frame_context* context,
     float r, float g, float b, float a
 ) {
     frame_context* frame = &context->contextes->frames[context->frame_in_flight];
     frame->r = r; frame->g = g; frame->b = b; frame->a = a;
 }
 
-void lex_shapes_set_line_thickness(
-    lex_shapes_frame_context* context,
+void lshp_set_line_thickness(
+    lshp_frame_context* context,
     float line_thickness
 ) {
     frame_context* frame = &context->contextes->frames[context->frame_in_flight];
     frame->line_thickness = line_thickness;
 }
 
-void lex_shapes_line(
-    lex_shapes_frame_context* context,
+void lshp_line(
+    lshp_frame_context* context,
     float x0, float y0,
     float x1, float y1
 ) {
@@ -696,8 +701,8 @@ void lex_shapes_line(
     );
 }
 
-void lex_shapes_triangle(
-    lex_shapes_frame_context* context,
+void lshp_triangle(
+    lshp_frame_context* context,
     float x0, float y0,
     float x1, float y1,
     float x2, float y2
@@ -705,8 +710,8 @@ void lex_shapes_triangle(
     emit_triangle(context, x0, y0, x1, y1, x2, y2, 0, 0, 0.6);
 }
 
-void lex_shapes_rect(
-    lex_shapes_frame_context* context,
+void lshp_rect(
+    lshp_frame_context* context,
     float x0, float y0,
     float x1, float y1
 ) {
@@ -727,8 +732,8 @@ void lex_shapes_rect(
     );
 }
 
-void lex_shapes_circle(
-    lex_shapes_frame_context* context,
+void lshp_circle(
+    lshp_frame_context* context,
     float cx, float cy,
     float radius
 ) {
@@ -749,4 +754,4 @@ void lex_shapes_circle(
     );
 }
 
-#endif
+#endif LIGHT_SHAPES_IMPL

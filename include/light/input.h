@@ -1,3 +1,34 @@
+/*
+----------------------------------------------------------------
+Contents:
+
+This file implements input system, allowing user to read input from mouses, keyboards and gamepads.
+
+----------------------------------------------------------------
+Code info:
+- lin prefix
+- LIGHT_INPUT_IMPL macro to build
+- User must pick target OS system by using of the macros below:
+    - LIGHT_INPUT_LINUX
+
+----------------------------------------------------------------
+Depedencies:
+- each OS have own compilation requirements:
+    - LIGHT_INPUT_LINUX
+        - libevdev library installed
+
+----------------------------------------------------------------
+Usage:
+- Create lin_library object once
+- Create as many lin_slots as many devices you like to read from
+    For example in game for four players, you can create four slots, to read info from four gamepdas
+- Query currently visible devices by lin_library_get_devices_list
+- Connect selected device from the list to a slot with lin_slot_connect
+- Query device input from slot via lin_slot_query_input_state
+- Check for button presses by input_state.buttons[button from enum] 
+    and axis state by input_state.axes[axis from enum]
+*/
+
 #ifndef LIGHT_INPUT_H
 #define LIGHT_INPUT_H
 
@@ -184,8 +215,8 @@ typedef struct lin_input_state {
 
 #endif // LIGHT_INPUT_H
 
-
 #ifdef LIGHT_INPUT_IMPL
+#ifdef LIGHT_INPUT_LINUX
 
 /*
     The caller needs read access to /dev/input/event* devices.
@@ -560,7 +591,7 @@ void lin_slot_set_mouse_sensitivity(lin_slot* slot, float sensitivity) {
     slot->mouse_sensitivity = sensitivity;
 }
 
-void lin_slot_set_axis_deadzone(lin_slot* slot, lin_axis axis, float deadzone) {
+void lin_slot_set_axis_deadzone(lin_slot* slot, unsigned int axis, float deadzone) {
     if (deadzone < 0.0f) deadzone = 0.0f;
     if (deadzone > 1.0f) deadzone = 1.0f;
     slot->axis_deadzone[axis] = deadzone;
@@ -652,10 +683,12 @@ void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
         st->axes[axis] = *delta_var[i] * mouse_inner_sensitivity_factor * slot->mouse_sensitivity;
         if (st->axes[axis] > 1.0f)  st->axes[axis] = 1.0f;
         if (st->axes[axis] < -1.0f) st->axes[axis] = -1.0f;
-        apply_deadzone(st->axes[axis], slot->axis_deadzone[axis]);
+        st->axes[axis] = apply_deadzone(st->axes[axis], slot->axis_deadzone[axis]);
 
         *delta_var[i] *= mouse_inner_damping_factor;
     }
 }
-
-#endif
+#else
+    #error No OS info provided for light input!
+#endif // OS IF
+#endif // LIGHT_INPUT_IMPL
