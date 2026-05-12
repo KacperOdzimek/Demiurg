@@ -223,8 +223,6 @@ typedef struct lin_input_state {
     Running as root or adding the user to the `input` group is sufficient.
 */
 
-#include "../lin.h"
-
 #include <libevdev/libevdev.h>
 #include <linux/input.h>
 
