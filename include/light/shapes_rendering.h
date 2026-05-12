@@ -278,6 +278,7 @@ _fail:
 }
 
 void lshp_free_shared(lshp_shared* shared) {
+    if (!shared) return;
     lgx_free_pipeline(shared->pipeline);
     lgx_free_pipeline_descriptors_layout(shared->pipeline_layout);
     lgx_free_descriptor_layout(shared->descriptor_layout);
@@ -690,14 +691,14 @@ void lshp_line(
         x0 + ox, y0 + oy,
         x0 - ox, y0 - oy,
         x1 + ox, y1 + oy,
-        -1.0f, -1.0f, -1.0f
+        -1.0f, -1.0f, -1.0f // unrounded
     );
 
     emit_triangle(context,
         x1 - ox, y1 - oy,
         x0 - ox, y0 - oy,
         x1 + ox, y1 + oy,
-        -1.0f, -1.0f, -1.0f
+        -1.0f, -1.0f, -1.0f // unrounded
     );
 }
 
@@ -707,7 +708,7 @@ void lshp_triangle(
     float x1, float y1,
     float x2, float y2
 ) {
-    emit_triangle(context, x0, y0, x1, y1, x2, y2, 0, 0, 0.6);
+    emit_triangle(context, x0, y0, x1, y1, x2, y2, 0, 0, -1.0f); // unrounded
 }
 
 void lshp_rect(
@@ -754,4 +755,4 @@ void lshp_circle(
     );
 }
 
-#endif LIGHT_SHAPES_IMPL
+#endif // LIGHT_SHAPES_IMPL

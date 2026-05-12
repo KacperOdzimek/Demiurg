@@ -11,7 +11,7 @@ Code info:
 - LIGHT_GRAPHICS_IMPL macro to build
 - user must select graphics api at build using one of the macros below:
     - LIGHT_GRAPHICS_VULKAN
-- add LGX_VALIDATE macro-flag pre implementation to enable validation and error logging
+- add LIGHT_GRAPHICS_VALIDATE macro-flag pre implementation to enable validation and error logging
 
 ----------------------------------------------------------------
 Depedencies:
@@ -31,7 +31,7 @@ Usage:
 // ==========================
 // Compile Flags
 
-// #define LGX_VALIDATE - enables validation layers
+// #define LIGHT_GRAPHICS_VALIDATE - enables validation layers
 
 // ==========================
 // Depedencies
@@ -2498,7 +2498,7 @@ const uint32_t  instance_extensions_count = 0;
 
 // Validation Layers
 
-#ifdef LGX_VALIDATE
+#ifdef LIGHT_GRAPHICS_VALIDATE
     static const char* validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
     const char**    config_validation_layers_array = &validation_layers[0];
     const uint32_t  config_validation_layers_count = 1;
