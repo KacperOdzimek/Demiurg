@@ -152,7 +152,7 @@ lswin_synchronised_window* lswin_create_synchronised_window(lgx_hardware* hardwa
         .initialy_signaled = 1
     };
 
-    lgx_hardware_get_queues(hardware, lgx_hardware_queue_type_graphics, 0, 1, &synchronised_window->graphics_queue);
+    lgx_hardware_query_queues(hardware, lgx_hardware_queue_type_graphics, 0, 1, &synchronised_window->graphics_queue);
 
     synchronised_window->render_finished_cpu = malloc(sizeof(lgx_cpu_signal*) * synchronised_window->frames_in_flight);
     synchronised_window->render_finished_gpu = malloc(sizeof(lgx_gpu_signal*) * synchronised_window->frames_in_flight);

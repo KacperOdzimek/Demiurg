@@ -54,6 +54,42 @@ typedef enum lgx_hardware_queue_type {
     lgx_hardware_queue_type_transfer_compute,
 } lgx_hardware_queue_type;
 
+typedef enum lgx_hardware_limit {
+    // Textures
+
+    lgx_hardware_limit_max_texture_dimension_1d,
+    lgx_hardware_limit_max_texture_dimension_2d,
+    lgx_hardware_limit_max_texture_dimension_3d,
+    lgx_hardware_limit_max_texture_dimension_cube,
+    lgx_hardware_limit_max_texture_array_layers,
+
+    // Descriptors
+
+    lgx_hardware_limit_max_descriptor_per_pipeline,
+
+    // Per-stage descriptor limits
+    lgx_hardware_limit_max_descriptor_uniform_buffers_per_stage,
+    lgx_hardware_limit_max_descriptor_storage_buffers_per_stage,
+    lgx_hardware_limit_max_descriptor_sampled_images_per_stage,
+    lgx_hardware_limit_max_descriptor_samplers_per_stage,
+
+    // Descriptor set layout limits
+    lgx_hardware_limit_max_descriptor_uniform_buffers,
+    lgx_hardware_limit_max_descriptor_storage_buffers,
+    lgx_hardware_limit_max_descriptor_sampled_images,
+    lgx_hardware_limit_max_descriptor_samplers,
+
+    // Bound buffer size limits
+    lgx_hardware_limit_max_descriptor_bound_uniform_buffer_length,
+    lgx_hardware_limit_max_descriptor_bound_storage_buffer_length,
+
+    // Vertex Input
+
+    lgx_hardware_limit_max_vertex_input_attributes,
+    lgx_hardware_limit_max_vertex_input_bindings,
+    lgx_hardware_limit_max_vertex_input_attribute_offset,
+} lgx_hardware_limit;
+
 typedef enum lgx_data_type {
     lgx_data_type_int32,
     lgx_data_type_vec2i32,
@@ -267,8 +303,9 @@ lgx_hardware* lgx_create_hardware(
 );
 void lgx_free_hardware(lgx_hardware*);
 
-uint32_t lgx_hardware_get_queues_count(lgx_hardware*, lgx_hardware_queue_type type);
-void lgx_hardware_get_queues(lgx_hardware*, lgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, lgx_hardware_queue** queues);
+uint32_t lgx_hardware_query_queues_count(lgx_hardware*, lgx_hardware_queue_type type);
+void     lgx_hardware_query_queues(lgx_hardware*, lgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, lgx_hardware_queue** queues);
+uint64_t lgx_hardware_query_limit(lgx_hardware*, lgx_hardware_limit limit);
 
 // Wait till all hardware queues have no work at all
 // For synchronization
@@ -1869,7 +1906,7 @@ int lgx_buffer_sync_upload(lgx_buffer* buffer, uint64_t buffer_offset, const voi
     lgx_finish_command_list_recording(list);
 
     // queue
-    lgx_hardware_get_queues(buffer->owning_hardware, lgx_hardware_queue_type_graphics, 0, 1, &queue);
+    lgx_hardware_query_queues(buffer->owning_hardware, lgx_hardware_queue_type_graphics, 0, 1, &queue);
 
     // submit
     lgx_cpu_signal_create_info signal_info = {.initialy_signaled = 0};
@@ -3390,7 +3427,7 @@ void lgx_free_hardware(lgx_hardware* hardware) {
     free(hardware);
 }
 
-uint32_t lgx_hardware_get_queues_count(lgx_hardware* hardware, lgx_hardware_queue_type type) {
+uint32_t lgx_hardware_query_queues_count(lgx_hardware* hardware, lgx_hardware_queue_type type) {
     if (!hardware) return 0;
 
     switch (type) {
@@ -3402,7 +3439,7 @@ uint32_t lgx_hardware_get_queues_count(lgx_hardware* hardware, lgx_hardware_queu
     }
 }
 
-void lgx_hardware_get_queues
+void lgx_hardware_query_queues
 (lgx_hardware* hardware, lgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, lgx_hardware_queue** queues) {
     if (!hardware || !queues) return;
 
@@ -3415,6 +3452,51 @@ void lgx_hardware_get_queues
     }
 
     for (uint32_t i = queues_offset; i < queues_offset + queues_count; i++) queues[i] = &src[i];
+}
+
+uint64_t lgx_hardware_query_limit(lgx_hardware* hardware, lgx_hardware_limit limit) {
+    VkPhysicalDeviceLimits* l = &hardware->physical_device_properties.limits;
+
+    switch (limit) {
+        // Textures
+
+        case lgx_hardware_limit_max_texture_dimension_1d:   return l->maxImageDimension1D;
+        case lgx_hardware_limit_max_texture_dimension_2d:   return l->maxImageDimension2D;
+        case lgx_hardware_limit_max_texture_dimension_3d:   return l->maxImageDimension3D;
+        case lgx_hardware_limit_max_texture_dimension_cube: return l->maxImageDimensionCube;
+        case lgx_hardware_limit_max_texture_array_layers:   return l->maxImageArrayLayers;
+
+        // Descriptors (pipeline-level)
+
+        case lgx_hardware_limit_max_descriptor_per_pipeline:    return l->maxBoundDescriptorSets;
+
+        // Per-stage descriptor limits
+
+        case lgx_hardware_limit_max_descriptor_uniform_buffers_per_stage:   return l->maxPerStageDescriptorUniformBuffers;
+        case lgx_hardware_limit_max_descriptor_storage_buffers_per_stage:   return l->maxPerStageDescriptorStorageBuffers;
+        case lgx_hardware_limit_max_descriptor_sampled_images_per_stage:    return l->maxPerStageDescriptorSampledImages;
+        case lgx_hardware_limit_max_descriptor_samplers_per_stage:          return l->maxPerStageDescriptorSamplers;
+
+        // Descriptor set layout limits
+
+        case lgx_hardware_limit_max_descriptor_uniform_buffers: return l->maxDescriptorSetUniformBuffers;
+        case lgx_hardware_limit_max_descriptor_storage_buffers: return l->maxDescriptorSetStorageBuffers;
+        case lgx_hardware_limit_max_descriptor_sampled_images:  return l->maxDescriptorSetSampledImages;
+        case lgx_hardware_limit_max_descriptor_samplers:        return l->maxDescriptorSetSamplers;
+
+        // Buffer range limits
+
+        case lgx_hardware_limit_max_descriptor_bound_uniform_buffer_length: return l->maxUniformBufferRange;
+        case lgx_hardware_limit_max_descriptor_bound_storage_buffer_length: return l->maxStorageBufferRange;
+
+        // Vertex input
+
+        case lgx_hardware_limit_max_vertex_input_attributes:        return l->maxVertexInputAttributes;
+        case lgx_hardware_limit_max_vertex_input_bindings:          return l->maxVertexInputBindings;
+        case lgx_hardware_limit_max_vertex_input_attribute_offset:  return l->maxVertexInputAttributeOffset;
+    }
+
+    return 0;
 }
 
 void lgx_hardware_wait_idle(lgx_hardware* hardware) {
@@ -4181,7 +4263,7 @@ int lgx_texture_sync_upload(lgx_texture* texture, lgx_texture_dimensions texture
     lgx_finish_command_list_recording(list);
 
     // Submit, Execute, Wait
-    lgx_hardware_get_queues(texture->owning_hardware, lgx_hardware_queue_type_graphics, 0, 1, &queue);
+    lgx_hardware_query_queues(texture->owning_hardware, lgx_hardware_queue_type_graphics, 0, 1, &queue);
 
     signal = lgx_create_cpu_signal(texture->owning_hardware, &(lgx_cpu_signal_create_info){.initialy_signaled = 0});
     if (!signal) { success = 0; goto _cleanup; }

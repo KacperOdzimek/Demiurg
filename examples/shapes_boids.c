@@ -109,8 +109,8 @@ void draw_sky(lshp_frame_context* ctx, float dt) {
 #define BOID_VIEW       0.12f
 #define BOID_TURN       1.5f
 
-#define BOID_MARGIN     0.01f
-#define BOID_WALL_FORCE 100.0f
+#define BOID_MARGIN     0.1f
+#define BOID_WALL_FORCE 1.0f
 
 void boids_simulate_and_draw(lshp_frame_context* ctx, float dt) {
     lshp_set_color(ctx, 0, 0, 0, 1);
@@ -317,7 +317,7 @@ void init() {
     };
     hardware = lgx_create_hardware(lgx_lib, &hardware_ci);
     if (!hardware) goto _fail;
-    lgx_hardware_get_queues(hardware, lgx_hardware_queue_type_graphics, 0, 1, &graphics_queue);
+    lgx_hardware_query_queues(hardware, lgx_hardware_queue_type_graphics, 0, 1, &graphics_queue);
 
     lgx_command_lists_allocator_create_info command_lists_allocator_ci = {
         .target_queue_type          = lgx_hardware_queue_type_graphics,

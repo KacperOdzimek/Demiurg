@@ -127,14 +127,14 @@ void luirp_gcmd_render_ui(
 #ifdef LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL
 #define LIGHT_USER_INTERFACE_RENDERING_PIPELINE_IMPL
 
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 // Constants
 
 static const int initial_instances_buffer_bytes = 1024 * 1024;
 static const int initial_clips_buffer_bytes     = 1024;
-static const int textures_slots                 = 1024;
+static const int internal_textures_limit        = 2024;
 
 // vec2 position, vec2 uv
 static const float quad_vertices_array[] = {
@@ -188,7 +188,7 @@ static lgx_descriptor_binding descriptor_bindings[] = {
     },
     {   // the textures
         .binding = 3,
-        .count   = textures_slots,
+        .count   = -1, // Needs to be set hardware!
         .stages  = lgx_shader_stage_pixel,
         .type    = lgx_descriptor_binding_type_sampled_texture
     }
@@ -223,11 +223,15 @@ typedef struct gpu_clipbox {
 
 struct luirp_shared {
     lgx_hardware*                       owning_hardware;
+
     lgx_buffer*                         vertex_buffer;
+    lgx_sampler*                        sampler;
+
+    uint32_t                            descriptor_textures_array_length;
     lgx_descriptor_layout*              descriptor_layout;
     lgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
+
     lgx_pipeline*                       pipeline;
-    lgx_sampler*                        sampler;
 };
 
 luirp_shared* luirp_create_shared(lgx_hardware* hardware, const luirp_shared_create_info* info) {
@@ -246,12 +250,26 @@ luirp_shared* luirp_create_shared(lgx_hardware* hardware, const luirp_shared_cre
 
     lgx_buffer_sync_upload(shared->vertex_buffer, 0, quad_vertices_array, sizeof(quad_vertices_array));
 
+    // Query textures limit
+    uint32_t max_textures = lgx_hardware_query_limit(hardware, lgx_hardware_limit_max_descriptor_sampled_images);
+    shared->descriptor_textures_array_length = max_textures > internal_textures_limit ? internal_textures_limit : max_textures;
+
+    // Copy descriptor bindings info
+    uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(lgx_descriptor_binding);
+    lgx_descriptor_binding* bindings = malloc(bindings_count * sizeof(lgx_descriptor_binding)); 
+    if (!bindings) goto _fail;
+    memcpy(bindings, descriptor_bindings, sizeof(descriptor_bindings));
+
+    // Overwrite textures limit
+    bindings[3].count = shared->descriptor_textures_array_length;
+
     // Descriptor Layout
     lgx_descriptor_layout_create_info dl_create_info = {
-        .bindings_count = sizeof(descriptor_bindings) / sizeof(lgx_descriptor_binding),
-        .bindings       = descriptor_bindings
+        .bindings_count = bindings_count,
+        .bindings       = bindings
     };
     shared->descriptor_layout = lgx_create_descriptor_layout(hardware, &dl_create_info);
+    free(bindings);
     if (!shared->descriptor_layout) goto _fail;
 
     // Pipeline Descriptor Layout
@@ -380,7 +398,7 @@ typedef struct frame_context {
 } frame_context;
 
 struct luirp_frames_contextes {
-    luirp_shared*      owning_shared;
+    luirp_shared*               owning_shared;
     lgx_descriptor_allocator*   descriptor_allocator;
     uint32_t                    contextes_count;
     frame_context*              contextes;
@@ -542,6 +560,7 @@ typedef struct upload_state {
     uint32_t all_instances_to_draw;
 
     // images hashmap
+    uint32_t      textures_array_length;
     lgx_texture** textures_hashmap;
 } upload_state;
 
@@ -550,7 +569,7 @@ int get_texture_index(upload_state* state, lgx_texture* texture, int font) {
 
     // start search at module of texture pointer, bit shift because pointers may be aligned, will often lead to same slot
     uint64_t hash = ((size_t)texture >> 4) * 11400714819323198485llu;
-    uint64_t begin = hash % textures_slots;
+    uint64_t begin = hash % state->textures_array_length;
 
     // search for free slot
     int itr = begin;
@@ -567,7 +586,7 @@ int get_texture_index(upload_state* state, lgx_texture* texture, int font) {
             return itr + 1;
         }
         // else continue search
-        itr = (itr + 1) % textures_slots;
+        itr = (itr + 1) % state->textures_array_length;
     } while(itr != begin);
 
     // no empty slots left
@@ -779,7 +798,9 @@ void luirp_upload_ui(
     lui_arena*              clips_arena
 ) {
     if (upload_finished_cpu) lgx_cpu_signal_reset(upload_finished_cpu);
-    int provided_cpu_signal = 1 && upload_finished_cpu;
+    
+    int      provided_cpu_signal   = 1 && upload_finished_cpu;
+    uint32_t textures_array_length = contextes->owning_shared->descriptor_textures_array_length;
 
     frame_context* frame = &contextes->contextes[frame_in_flight_index % contextes->contextes_count];
     upload_state state = {
@@ -800,7 +821,8 @@ void luirp_upload_ui(
         
         .all_instances_to_draw = 0,
 
-        .textures_hashmap = calloc(textures_slots, sizeof(lgx_texture*))
+        .textures_array_length  = textures_array_length,
+        .textures_hashmap       = calloc(textures_array_length, sizeof(lgx_texture*))
     };
 
     // upload instances and clips
@@ -849,9 +871,9 @@ void luirp_upload_ui(
 
     // TODO : UPDATE ONLY CHANGED
     uint32_t writes_count = 0;
-    lgx_descriptor_write_info                   writes[textures_slots];
-    lgx_descriptor_sampled_texture_write_info   tinfo[textures_slots];
-    for (int i = 0; i < textures_slots; i++) {
+    lgx_descriptor_write_info                   writes[textures_array_length];
+    lgx_descriptor_sampled_texture_write_info   tinfo [textures_array_length];
+    for (int i = 0; i < textures_array_length; i++) {
         if (state.textures_hashmap[i] == NULL) continue;
 
         tinfo[writes_count] = (lgx_descriptor_sampled_texture_write_info){
