@@ -1,7 +1,8 @@
 #version 450
 
-layout(location = 0) in vec2     in_uv;
-layout(location = 1) flat in int in_instance;
+layout(location = 0) in vec2     out_pos;
+layout(location = 1) in vec2     in_uv;
+layout(location = 2) flat in int in_instance;
 
 layout(location = 0) out vec4 outColor;
 
@@ -36,24 +37,30 @@ layout(set = 0, binding = 2) uniform sampler Sampler;
 layout(set = 0, binding = 3) uniform texture2D Textures[1024];
 
 bool point_in_clip(lui_transform t, vec2 p) {
-    // transform point into clip space (inverse affine)
     float det = t.m00 * t.m11 - t.m01 * t.m10;
 
     if (abs(det) < 0.00001)
-        return true; // avoid breaking everything
+        return true;
 
+    // inverse matrix
     float inv00 =  t.m11 / det;
     float inv01 = -t.m01 / det;
     float inv10 = -t.m10 / det;
     float inv11 =  t.m00 / det;
 
-    vec2 local;
-    local.x = inv00 * (p.x - t.tx) + inv01 * (p.y - t.ty);
-    local.y = inv10 * (p.x - t.tx) + inv11 * (p.y - t.ty);
+    vec2 d = p - vec2(t.tx, t.ty);
 
-    // assuming clip rect is 0..1
-    return (local.x >= 0.0 && local.y >= 0.0 &&
-            local.x <= 1.0 && local.y <= 1.0);
+    vec2 local = vec2(
+        inv00 * d.x + inv01 * d.y,
+        inv10 * d.x + inv11 * d.y
+    );
+
+    return (
+        local.x >= -1.0 &&
+        local.x <=  1.0 &&
+        local.y >= -1.0 &&
+        local.y <=  1.0
+    );
 }
 
 vec3 srgb_to_linear(vec3 c) {
@@ -65,8 +72,7 @@ void main() {
 
     // Clipping
     if (inst.clip_index >= 0) {
-        if (!point_in_clip(clips[inst.clip_index], gl_FragCoord.xy))
-            discard;
+        if (!point_in_clip(clips[inst.clip_index], out_pos)) discard;
     }
 
     // Tint

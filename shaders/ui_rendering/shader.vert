@@ -3,8 +3,9 @@
 layout(location = 0) in vec2 in_pos;
 layout(location = 1) in vec2 in_uv;
 
-layout(location = 0) out vec2       out_uv;
-layout(location = 1) flat out int   out_instance;
+layout(location = 0) out vec2       out_pos;
+layout(location = 1) out vec2       out_uv;
+layout(location = 2) flat out int   out_instance;
 
 struct lui_transform {
     float m00, m01, tx;
@@ -38,6 +39,7 @@ void main() {
 
     gl_Position = vec4(pos.x, -pos.y, inst.depth, 1.0);
 
-    out_uv  = in_uv;
+    out_pos      = pos;
+    out_uv       = in_uv;
     out_instance = gl_InstanceIndex;
 }

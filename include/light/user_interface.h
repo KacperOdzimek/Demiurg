@@ -350,7 +350,7 @@ typedef enum lui_draw_command_type {
 typedef struct lui_draw_command {
     lui_draw_command_type type;
 
-    lui_transform        transform;
+    lui_transform       transform;
     int                 pixels_width;
     int                 pixels_height;
     int                 clipbox_index;
@@ -1188,17 +1188,17 @@ static inline float helper_children_flexsum_height
 }
 
 typedef struct helper_rendering_walk_context {
-    jmp_buf                     jmp_target;         // lui_render call jmp buf, in case of error
+    jmp_buf                     jmp_target;             // lui_render call jmp buf, in case of error
 
-    size_t                      last_used_index;    // see implementation note
+    size_t                      last_used_index;        // see implementation note
 
-    const helper_measurement*   measurements;       // measurements read target
-    lui_arena*                   temp_arena;         // temporary arena
-    lui_arena*                   cmd_arena;          // arena for commands
-    lui_arena*                   clip_arena;         // arena for clipboxes
+    const helper_measurement*   measurements;           // measurements read target
+    lui_arena*                  temp_arena;             // temporary arena
+    lui_arena*                  cmd_arena;              // arena for commands
+    lui_arena*                  clip_arena;             // arena for clipboxes
 
-    const void*                 instance;           // current subtree instance
-    lui_transform                current_clipbox;    // current clipbox
+    const void*                 instance;               // current subtree instance
+    int                         current_clipbox_index;  // current clipbox
 } helper_rendering_walk_context;
 
 // Function dispatching rendering based on node type
@@ -1232,7 +1232,7 @@ static inline void render_sizebox
         child_measure.height, own_height
     );
 
-    render_dispatch(rc, child, cidx, helper_scale_pack_to_dim(trs, given_width, given_height));
+    if (child) render_dispatch(rc, child, cidx, helper_scale_pack_to_dim(trs, given_width, given_height));
 }
 
 // Render option for padding
@@ -1281,7 +1281,7 @@ static inline void render_padding
     );
 
     // render child
-    render_dispatch(rc, child, cidx, trs);
+    if (child) render_dispatch(rc, child, cidx, trs);
 }
 
 // Render option for row
@@ -1291,7 +1291,7 @@ static inline void render_row
 (helper_rendering_walk_context* rc, const lui_node* node, size_t idx, size_t cidx, helper_transform_pack trs) {
     const lui_node_array children    = helper_get_node_children_array(node, rc->instance);
     const lui_row_data*  data        = helper_get_data(node, rc->instance);
-    helper_measurement  own_measure = rc->measurements[idx];
+    helper_measurement   own_measure = rc->measurements[idx];
 
     // find flexsum
     float flexsum = helper_children_flexsum_width(rc->measurements, children.count, children.nodes, cidx);
@@ -1601,14 +1601,18 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
 
     // save current clipbox, overwrite, restore
     case lui_node_clipbox: {
-        lui_transform old_clip = rc->current_clipbox;
-        rc->current_clipbox = trs.trans;
+        int old_clip = rc->current_clipbox_index;
+
+        lui_transform* slot = (lui_transform*)helper_arena_alloc(
+            rc->clip_arena, sizeof(lui_transform), &rc->jmp_target, lui_return_clip_boxes_arena_too_small
+        ); *slot = trs.trans;
+        rc->current_clipbox_index = ((size_t)(slot) - (size_t)(rc->clip_arena->memory)) / sizeof(lui_transform);
 
         // recurse into subtree
         const lui_node* child = helper_get_node_single_child(node, rc->instance);
         if (child) render_dispatch(rc, child, first_child_index, trs);
 
-        rc->current_clipbox = old_clip;
+        rc->current_clipbox_index = old_clip;
     } break;
 
     // transform matrix, then continue
@@ -1633,7 +1637,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .pixels_width   = trs.pixel_width,
             .pixels_height  = trs.pixel_height,
             .depth          = 0, // todo
-            .clipbox_index  = -1, // todo
+            .clipbox_index  = rc->current_clipbox_index,
             .box_data       = *(const lui_box_data*)helper_get_data(node, rc->instance)
         };
 
@@ -1651,7 +1655,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .pixels_width   = trs.pixel_width,
             .pixels_height  = trs.pixel_height,
             .depth          = 0, // todo
-            .clipbox_index  = -1, // todo
+            .clipbox_index  = rc->current_clipbox_index,
             .image_data     = *(const lui_image_data*)helper_get_data(node, rc->instance)
         };
 
@@ -1669,7 +1673,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .pixels_width   = trs.pixel_width,
             .pixels_height  = trs.pixel_height,
             .depth          = 0, // todo
-            .clipbox_index  = -1, // todo
+            .clipbox_index  = rc->current_clipbox_index,
             .text_data      = *(const lui_text_data*)helper_get_data(node, rc->instance)
         };
 
@@ -1705,15 +1709,15 @@ lui_return_flag lui_render(
     };
 
     helper_rendering_walk_context rc = {
-        .last_used_index = 0,
+        .last_used_index        = 0,
 
-        .measurements    = (helper_measurement*)(temp_arena->memory),
-        .temp_arena      = temp_arena,
-        .cmd_arena       = commands_arena,
-        .clip_arena      = clipboxs_arena,
+        .measurements           = (helper_measurement*)(temp_arena->memory),
+        .temp_arena             = temp_arena,
+        .cmd_arena              = commands_arena,
+        .clip_arena             = clipboxs_arena,
 
-        .instance        = 0x0,
-        .current_clipbox = lui_default_trans,
+        .instance               = 0x0,
+        .current_clipbox_index  = -1,
     };
 
     // be default returns 0 which is lui_return_ok

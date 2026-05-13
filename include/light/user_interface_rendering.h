@@ -766,20 +766,20 @@ void record_upload(lgx_command_list* list, frame_context* frame, upload_state* s
         );
 
         state->clips_buffer_offset += state->staging_clips_bytes;
-        state->staging_clips_bytes = 0;
     }
     
     if (state->staging_instances_bytes) {
         lgx_cmd_copy_staging_memory_to_buffer(
             list, state->staging_memory, frame->instances_buffer,
-            state->staging_offset, state->instance_buffer_offset, state->staging_instances_bytes
+            state->staging_offset + state->staging_clips_bytes, state->instance_buffer_offset, state->staging_instances_bytes
         );
 
         state->instance_buffer_offset += state->staging_instances_bytes;
-        state->staging_instances_bytes = 0;
     }
 
     state->staging_memory_left = state->staging_size;
+    state->staging_instances_bytes = 0;
+    state->staging_clips_bytes = 0;
 
     lgx_finish_command_list_recording(list);
 }
