@@ -947,7 +947,7 @@ static inline uint32_t clamp_u32(uint32_t a, uint32_t min, uint32_t max) {
     #error "Thread-local storage not supported, and required"
 #endif
 
-#define tlom_size (1024 * 1024)
+#define tlom_size (16 * 1024 * 1024)
 extern thread_local char tlom[tlom_size];
 
 static inline uint32_t uint32_t_align_up(uint32_t x, uint32_t a) {
