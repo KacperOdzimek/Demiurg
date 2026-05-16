@@ -368,10 +368,13 @@ typedef struct lgx_window lgx_window;
 lgx_window* lgx_create_window(lgx_hardware*, const lgx_window_create_info*);
 void lgx_free_window(lgx_window*);
 
-int      lgx_window_shall_close(lgx_window*);
-void     lgx_window_update_input(lgx_window*); // remove or implement input
+void    lgx_window_update_input(lgx_window*);
+int     lgx_window_query_shall_close(lgx_window*);
+void    lgx_window_query_is_focused(lgx_window*, int* is);
+void    lgx_window_query_cursor_pos(lgx_window*, uint32_t* xpos, uint32_t* ypos);
+void    lgx_window_query_input(lgx_window*, int* left_pressed, int* right_pressed, float* scroll);
 
-void     lgx_window_get_size(lgx_window*, uint32_t* width, uint32_t* height);
+void    lgx_window_get_size(lgx_window*, uint32_t* width, uint32_t* height);
 
 uint32_t lgx_window_get_render_targets_count(lgx_window*);
 uint32_t lgx_window_acquire_next_render_target_index(lgx_window* window, lgx_gpu_signal* can_render_signal);
@@ -1044,6 +1047,9 @@ struct lgx_window {
     uint32_t            desired_render_targets;
     GLFWwindow*         platform_window;
     VkSurfaceKHR        surface;
+
+    // Input
+    float               window_scroll_input;
 
     // Also constant, may be null
 
@@ -4364,6 +4370,7 @@ static window_swapchain_settings pick_window_swapchain_settings(
 // Callbacks Forwards
 
 void window_resized_callback(GLFWwindow* window, int width, int height);
+void window_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 
 // ===========================
 // Platform Window Creation
@@ -4376,6 +4383,7 @@ int create_window_window(lgx_window* window, const lgx_window_create_info* info)
     if (!window->platform_window) return 0;
 
     glfwSetWindowSizeCallback(window->platform_window, window_resized_callback);
+    glfwSetScrollCallback(window->platform_window, window_scroll_callback);
     glfwSetWindowUserPointer(window->platform_window, window);  // set glfw payload to owning lgx window
 
     return 1;
@@ -4677,6 +4685,11 @@ void window_resized_callback(GLFWwindow* platform_window, int width, int height)
     window_recreate_swapchain(window);
 }
 
+void window_scroll_callback(GLFWwindow* platform_window, double xoffset, double yoffset) {
+    lgx_window* window = glfwGetWindowUserPointer(platform_window);
+    window->window_scroll_input = yoffset;
+}
+
 // ===========================
 // Window Api
 
@@ -4762,13 +4775,31 @@ void lgx_window_enqueue_render_target_present(lgx_window* window, uint32_t index
     );
 }
 
-int lgx_window_shall_close(lgx_window* window) {
+void lgx_window_update_input(lgx_window* window) {
+    window->window_scroll_input = 0.0f;
+    glfwPollEvents();
+}
+
+int lgx_window_query_shall_close(lgx_window* window) {
     return glfwWindowShouldClose(window->platform_window);
 }
 
-void lgx_window_update_input(lgx_window* window) {
-    (void)(window);
-    glfwPollEvents();
+void lgx_window_query_is_focused(lgx_window* window, int* is) {
+    if (is) *is = glfwGetWindowAttrib(window->platform_window, GLFW_FOCUSED);
+}
+
+void lgx_window_query_cursor_pos(lgx_window* window, uint32_t* xpos, uint32_t* ypos) {
+    double x, y; glfwGetCursorPos(window->platform_window, &x, &y);
+    if (xpos) *xpos = x;
+    if (ypos) *ypos = y;
+}
+
+void lgx_window_query_input(lgx_window* window, int* left_pressed, int* right_pressed, float* scroll) {
+    GLFWwindow* w = (GLFWwindow*)window->platform_window;
+
+    if (left_pressed)   *left_pressed  = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    if (right_pressed)  *right_pressed = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+    if (scroll)         *scroll        = window->window_scroll_input;
 }
 
 void lgx_window_get_size(lgx_window* window, uint32_t* width, uint32_t* height) {

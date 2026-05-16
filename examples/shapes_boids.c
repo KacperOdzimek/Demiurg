@@ -474,7 +474,7 @@ void term() {
 
 int main() {
     init();
-    while (!lgx_window_shall_close(window)) {
+    while (!lgx_window_query_shall_close(window)) {
         lswin_synchronised_window_enter(swindow, 1);
         lgx_window_update_input(window);
     }
