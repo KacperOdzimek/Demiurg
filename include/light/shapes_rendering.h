@@ -60,8 +60,8 @@ void lshp_free_frames_contextes(lshp_frames_contextes*);
 
 // shorthand not to pass frame in flight to every function
 typedef struct lshp_frame_context {
-    lshp_frames_contextes*    contextes;
-    uint32_t                        frame_in_flight;
+    lshp_frames_contextes*  contextes;
+    uint32_t                frame_in_flight;
 } lshp_frame_context;
 
 // Actuall Draw Operation
@@ -348,7 +348,7 @@ typedef struct frame_context {
 
 struct lshp_frames_contextes {
     lgx_hardware*               owning_hardware;
-    lshp_shared*          owning_shared;
+    lshp_shared*                owning_shared;
     lgx_descriptor_allocator*   descriptor_allocator;
     uint32_t                    in_flight;
     frame_context*              frames;
