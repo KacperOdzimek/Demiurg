@@ -243,11 +243,11 @@ typedef struct lui_node_array lui_node_array;
 // if lui_node_flag_data_instanced or lui_node_flag_child_instanced are added to node type
 // data/child/child_array reads are altered as described in comments above those flags
 typedef struct lui_node {
-    lui_node_type                type;
+    lui_node_type               type;
 
     union {
-        const lui_node*          child;
-        const lui_node_array*    child_array;
+        const lui_node*         child;
+        const lui_node_array*   child_array;
         size_t                  child_instance_offset;
     };
 
@@ -259,7 +259,7 @@ typedef struct lui_node {
 
 // structure representing an array of ui nodes
 typedef struct lui_node_array {
-    size_t   count;
+    size_t    count;
     lui_node* nodes;
 } lui_node_array;
 
@@ -268,7 +268,7 @@ typedef struct lui_node_array {
 typedef struct lui_transform_data {
     unsigned char   apply_transform_at_measure : 1;
     unsigned char   apply_transform_at_render  : 1;
-    lui_transform    transform;
+    lui_transform   transform;
 } lui_transform_data;
 
 // padding
@@ -303,17 +303,17 @@ typedef struct lui_sizebox_data {
 // row
 
 typedef struct lui_row_data {
-    float     horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
-    float     vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    lui_length spacing;          // spacing between childrens
+    float       horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
+    float       vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
+    lui_length  spacing;          // spacing between childrens
 } lui_row_data;
 
 // column
 
 typedef struct lui_column_data {
-    float     vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    float     horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
-    lui_length spacing;          // spacing between childrens
+    float       vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
+    float       horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
+    lui_length  spacing;          // spacing between childrens
 } lui_column_data;
 
 // box
@@ -325,16 +325,16 @@ typedef struct lui_box_data {
 // image
 
 typedef struct lui_image_data {
-    const char* image;   // image name/path
-    lui_color    tint;    // image color modyficator
+    const char*   image;   // image name/path
+    lui_color     tint;    // image color modyficator
 } lui_image_data;
 
 // text
  
 typedef struct lui_text_data {
-    unsigned int size;  // font size
-    const char*  font;  // font name/path
-    const char*  text;  // text pointer
+    unsigned int  size;  // font size
+    const char*   font;  // font name/path
+    const char*   text;  // text pointer
     lui_color     tint;  // text color modyficator
 } lui_text_data;
 
@@ -728,10 +728,9 @@ typedef struct helper_measurement_walk_context {
                                             // used to keep track measurements array fill
 
     helper_measurement* measurements;       // measurements array, dynamicaly expanding at the begining of temp_arena
-    lui_arena*           temp_arena;         // temporary arena, measurements write target
+    lui_arena*          temp_arena;         // temporary arena, measurements write target
 
     const void*         instance;           // current subtree instance
-
     void*               user_context;       // user context to be passed to injected functions
 } helper_measurement_walk_context;
 
