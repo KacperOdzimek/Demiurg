@@ -90,12 +90,13 @@ void luirp_free_shared(luirp_shared*);
 // This object contains all per-frame objects like descriptors. It is also tied to shared object, and must live shorter than it,
 
 typedef struct luirp_frames_contextes_create_info {
-    uint32_t    frames_in_flight_count;
+    luirp_shared*   shared;
+    uint32_t        frames_in_flight_count;
 } luirp_frames_contextes_create_info;
 
 typedef struct luirp_frames_contextes luirp_frames_contextes;
 
-luirp_frames_contextes* luirp_create_frames_contextes(luirp_shared*, const luirp_frames_contextes_create_info* info);
+luirp_frames_contextes* luirp_create_frames_contextes(lgx_hardware*, const luirp_frames_contextes_create_info* info);
 void luirp_free_frames_contextes(luirp_frames_contextes*);
 
 // UI Rendering Functions
@@ -472,8 +473,8 @@ void link_buffers_to_descriptor(lgx_hardware* hardware, frame_context* frame) {
 }
 
 luirp_frames_contextes* luirp_create_frames_contextes
-(luirp_shared* shared, const luirp_frames_contextes_create_info* info) {
-    lgx_hardware* hardware = shared->owning_hardware;
+(lgx_hardware* hardware, const luirp_frames_contextes_create_info* info) {
+    luirp_shared* shared = info->shared;
 
     luirp_frames_contextes* contextes = calloc(1, sizeof(luirp_frames_contextes)); 
     if (!contextes) return NULL;

@@ -50,8 +50,8 @@ void lshp_free_shared(lshp_shared*);
 // Shapes Rendering Frame Contextes
 
 typedef struct lshp_frames_contextes_create_info {
-    lshp_shared*  shared;
-    uint32_t            frames_in_flight_count;
+    lshp_shared*    shared;
+    uint32_t        frames_in_flight_count;
 } lshp_frames_contextes_create_info;
 
 typedef struct lshp_frames_contextes lshp_frames_contextes;
