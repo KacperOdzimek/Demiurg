@@ -9,6 +9,7 @@ Code info:
 - lshp prefix
 - LIGHT_SHAPES_IMPL macro to build
 - graphics.h dependant
+- linear_algebra.h dependant
 
 ----------------------------------------------------------------
 Usage
@@ -32,6 +33,7 @@ Notes
 #define LIGHT_SHAPES_H
 
 #include "graphics.h"
+#include "linear_algebra.h"
 
 // Shapes Rendering Shared Object
 
@@ -109,27 +111,22 @@ void lshp_set_line_thickness(
 
 void lshp_line(
     lshp_frame_context* context,
-    float x0, float y0,
-    float x1, float y1
+    lla_vec2 begin, lla_vec2 end
 );
 
 void lshp_triangle(
     lshp_frame_context* context,
-    float x0, float y0,
-    float x1, float y1,
-    float x2, float y2
+    lla_vec2 a, lla_vec2 b, lla_vec2 c
 );
 
 void lshp_rect(
     lshp_frame_context* context,
-    float x0, float y0,
-    float x1, float y1
+    lla_vec2 first_corner, lla_vec2 second_corner
 );
 
 void lshp_circle(
     lshp_frame_context* context,
-    float cx, float cy,
-    float radius
+    lla_vec2 center, float radius
 );
 
 #endif // LIGHT_SHAPES_H
@@ -670,13 +667,12 @@ void lshp_set_line_thickness(
 
 void lshp_line(
     lshp_frame_context* context,
-    float x0, float y0,
-    float x1, float y1
+    lla_vec2 begin, lla_vec2 end
 ) {
     frame_context* frame = &context->contextes->frames[context->frame_in_flight];
 
-    float dx = x1 - x0;
-    float dy = y1 - y0;
+    float dx = end.x - begin.x;
+    float dy = end.y - begin.y;
 
     float len = sqrtf(dx * dx + dy * dy);
     if (len == 0.0f) return;
@@ -688,70 +684,64 @@ void lshp_line(
     float oy = ny * frame->line_thickness * 0.5f;
 
     emit_triangle(context,
-        x0 + ox, y0 + oy,
-        x0 - ox, y0 - oy,
-        x1 + ox, y1 + oy,
+        begin.x + ox, begin.y + oy,
+        begin.x - ox, begin.y - oy,
+        end.x   + ox, end.y   + oy,
         -1.0f, -1.0f, -1.0f // unrounded
     );
 
     emit_triangle(context,
-        x1 - ox, y1 - oy,
-        x0 - ox, y0 - oy,
-        x1 + ox, y1 + oy,
+        end.x   - ox, end.y   - oy,
+        begin.x - ox, begin.y - oy,
+        end.x   + ox, end.y   + oy,
         -1.0f, -1.0f, -1.0f // unrounded
     );
 }
 
 void lshp_triangle(
     lshp_frame_context* context,
-    float x0, float y0,
-    float x1, float y1,
-    float x2, float y2
+    lla_vec2 a, lla_vec2 b, lla_vec2 c
 ) {
-    emit_triangle(context, x0, y0, x1, y1, x2, y2, 0, 0, -1.0f); // unrounded
+    emit_triangle(context, a.x, a.y, b.x, b.y, c.x, c.y, 0, 0, -1.0f); // unrounded
 }
 
 void lshp_rect(
     lshp_frame_context* context,
-    float x0, float y0,
-    float x1, float y1
+    lla_vec2 first_corner, lla_vec2 second_corner
 ) {
     emit_triangle(
         context,
-        x0, y0,
-        x1, y0,
-        x1, y1,
+        first_corner.x,  first_corner.y,
+        second_corner.x, first_corner.y,
+        second_corner.x, second_corner.y,
         0.0f, 0.0f, 0.0f // unrounded
     );
 
     emit_triangle(
         context,
-        x0, y0,
-        x1, y1,
-        x0, y1,
+        first_corner.x,  first_corner.y,
+        second_corner.x, second_corner.y,
+        first_corner.x,  second_corner.y,
         0.0f, 0.0f, 0.0f // unrounded
     );
 }
 
 void lshp_circle(
     lshp_frame_context* context,
-    float cx, float cy,
-    float radius
+    lla_vec2 center, float radius
 ) {
     emit_triangle(context, 
-        cx - radius, cy - radius, 
-        cx - radius, cy + radius, 
-        cx + radius, cy - radius,
-        cx, cy, 
-        radius
+        center.x - radius, center.y - radius, 
+        center.x - radius, center.y + radius, 
+        center.x + radius, center.y - radius,
+        center.x, center.y, radius
     );
 
     emit_triangle(context, 
-        cx + radius, cy + radius, 
-        cx - radius, cy + radius, 
-        cx + radius, cy - radius,
-        cx, cy, 
-        radius
+        center.x + radius, center.y + radius, 
+        center.x - radius, center.y + radius, 
+        center.x + radius, center.y - radius,
+        center.x, center.y, radius
     );
 }
 
