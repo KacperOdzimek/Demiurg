@@ -51,6 +51,7 @@ Usage:
 #ifndef LIGHT_USER_INTEFACE_H
 #define LIGHT_USER_INTEFACE_H
 
+#include <stdlib.h>
 #include <stddef.h>
 #include <math.h>
 
@@ -157,6 +158,16 @@ typedef enum lui_node_type {
     // no data
     // single childed
     lui_node_clipbox,
+
+    // Input
+
+    // node input box
+    // allows for buttons implementation
+    // on render, will create an lui_input_box strucure,
+    // which can be queried whether cursor is in it
+    // data pointer provided will be copied to lui_input_box.data
+    // single childed
+    lui_node_input_box,
 
     // Basic Layout
 
@@ -319,14 +330,14 @@ typedef struct lui_column_data {
 // box
 
 typedef struct lui_box_data {
-    lui_color  color; // box color
+    lui_color   color; // box color
 } lui_box_data;
 
 // image
 
 typedef struct lui_image_data {
-    const char*   image;   // image name/path
-    lui_color     tint;    // image color modyficator
+    const char* image;   // image name/path
+    lui_color   tint;    // image color modyficator
 } lui_image_data;
 
 // text
@@ -363,6 +374,13 @@ typedef struct lui_draw_command {
     };
 } lui_draw_command;
 
+typedef struct lui_input_box {
+    lui_transform   transform;
+    int             clipbox_index;
+    int             depth;
+    const void*     data;
+} lui_input_box;
+
 typedef struct lui_arena {
     char*  memory;
     size_t capacity;
@@ -382,6 +400,9 @@ typedef enum lui_return_flag {
 
     // when clip boxes would overflow
     lui_return_clip_boxes_arena_too_small,
+
+    // when input boxes would overflow
+    lui_return_input_boxes_arena_too_small
 } lui_return_flag;
 
 // Note: if using fresh non-static arena remember to 0-initialized it!
@@ -405,12 +426,26 @@ lui_return_flag lui_measure(
 // second step in rendering ui
 // renders the ui according to their desired resolutions
 lui_return_flag lui_render(
-    const lui_node* root,           // ui tree root
-    lui_arena*      temp_arena,     // temporary memory arena
-    int             resolution_x,   // screen resolution width
-    int             resolution_y,   // screen resolution height
-    lui_arena*      commands_arena, // arena for draw commands
-    lui_arena*      clipboxs_arena  // arena for clipboxes
+    const lui_node* root,               // ui tree root
+    lui_arena*      temp_arena,         // temporary memory arena
+    int             resolution_x,       // screen resolution width
+    int             resolution_y,       // screen resolution height
+    lui_arena*      commands_arena,     // arena for draw commands
+    lui_arena*      clipboxs_arena,     // arena for clipboxes
+    lui_arena*      input_boxes_arena   // arena for input boxes (may be NULL)
+);
+
+// sorts input boxes inside arena by depth
+void lui_depth_sort_input_boxes_arena(
+    lui_arena* input_boxes_arena
+);
+
+// returns 1 if cursor is inside input box
+int lui_is_cursor_in_input_box(
+    const lui_input_box*    input_box,          // target input box
+    const lui_arena*        clipboxes_arena,    // arena of clipboxes, for clip check
+    float                   cursor_x,           // cursor normalized, [-1, 1] position
+    float                   cursor_y            // cusror normalized, [-1, 1] position
 );
 
 // ===========================
@@ -610,6 +645,10 @@ static inline lui_transform lui_mul(lui_transform p, lui_transform c) {
     - In render pass, rest of memory is allocated like an arena, by functions that require
         extra memory like render_row, render_column and so
     - If temp memory renders to small, we perform longjmp out of recursion
+
+    4. Arena align
+    - Temporary arena is allocated with align, so diffrent types can be mixed
+    - Other arenas are allocated without align, as they hold only one type
 */
 
 // ===========================
@@ -656,7 +695,7 @@ static inline const lui_node_array helper_get_node_children_array(const lui_node
 // Alloc block of arena memory after allocated block end
 // If arena proves to small, longjmps to given jmp buffer with given failure flag
 // Allocs aligned with max aligment
-static inline char* helper_arena_alloc(lui_arena* target, size_t bytes, jmp_buf* failure_jmp, lui_return_flag failure_flag) {
+static inline char* helper_arena_alloc_aligned(lui_arena* target, size_t bytes, jmp_buf* failure_jmp, lui_return_flag failure_flag) {
     size_t alignment   = alignof(max_align_t);
     size_t aligned_pos = ((target->position) + (alignment - 1)) & ~(alignment - 1);
 
@@ -665,6 +704,15 @@ static inline char* helper_arena_alloc(lui_arena* target, size_t bytes, jmp_buf*
     char* result = target->memory + aligned_pos;
     target->position = aligned_pos + bytes;
 
+    return result;
+}
+
+// Alloc block of arena memory after allocated block end
+// If arena proves to small, longjmps to given jmp buffer with given failure flag
+static inline char* helper_arena_alloc_unaligned(lui_arena* target, size_t bytes, jmp_buf* failure_jmp, lui_return_flag failure_flag) {
+    if (bytes > target->capacity - target->position) longjmp(*failure_jmp, failure_flag);
+    char* result = target->memory + target->position;
+    target->position += bytes;
     return result;
 }
 
@@ -1052,7 +1100,7 @@ static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node
     else mc->last_used_index += helper_get_node_children_array(node, mc->instance).count;
 
     // alloc measurement memory for this node
-    helper_arena_alloc(mc->temp_arena, sizeof(helper_measurement), &mc->jmp_target, lui_return_temp_arena_too_small);
+    helper_arena_alloc_aligned(mc->temp_arena, sizeof(helper_measurement), &mc->jmp_target, lui_return_temp_arena_too_small);
 
     // dispatch
     switch (node->type & NODE_TYPE_NO_FLAG_MASK) {
@@ -1195,6 +1243,7 @@ typedef struct helper_rendering_walk_context {
     lui_arena*                  temp_arena;             // temporary arena
     lui_arena*                  cmd_arena;              // arena for commands
     lui_arena*                  clip_arena;             // arena for clipboxes
+    lui_arena*                  input_boxes_arena;      // arena for input boxes (may be NULL)
 
     const void*                 instance;               // current subtree instance
     int                         current_clipbox_index;  // current clipbox
@@ -1302,7 +1351,7 @@ static inline void render_row
         int  width;
     } slot;
 
-    slot* slots = (slot*)helper_arena_alloc(
+    slot* slots = (slot*)helper_arena_alloc_aligned(
         rc->temp_arena, children.count * sizeof(slot), &rc->jmp_target, lui_return_temp_arena_too_small
     ); for (size_t i = 0; i < children.count; i++) slots[i] = (slot){0, 0};
 
@@ -1448,7 +1497,7 @@ static inline void render_column
         int  height;
     } slot;
 
-    slot* slots = (slot*)helper_arena_alloc(
+    slot* slots = (slot*)helper_arena_alloc_aligned(
         rc->temp_arena, children.count * sizeof(slot), &rc->jmp_target, lui_return_temp_arena_too_small
     ); for (size_t i = 0; i < children.count; i++) slots[i] = (slot){0, 0};
 
@@ -1602,7 +1651,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
     case lui_node_clipbox: {
         int old_clip = rc->current_clipbox_index;
 
-        lui_transform* slot = (lui_transform*)helper_arena_alloc(
+        lui_transform* slot = (lui_transform*)helper_arena_alloc_unaligned(
             rc->clip_arena, sizeof(lui_transform), &rc->jmp_target, lui_return_clip_boxes_arena_too_small
         ); *slot = trs.trans;
         rc->current_clipbox_index = ((size_t)(slot) - (size_t)(rc->clip_arena->memory)) / sizeof(lui_transform);
@@ -1612,6 +1661,23 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
         if (child) render_dispatch(rc, child, first_child_index, trs);
 
         rc->current_clipbox_index = old_clip;
+    } break;
+    
+    // push input box
+    case lui_node_input_box: {
+        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
+        if (!rc->input_boxes_arena) break; // continue tree travel
+        
+        lui_input_box* slot = (lui_input_box*)helper_arena_alloc_unaligned(
+            rc->input_boxes_arena, sizeof(lui_input_box), &rc->jmp_target, lui_return_input_boxes_arena_too_small
+        );
+
+        *slot = (lui_input_box){
+            .transform     = trs.trans,
+            .clipbox_index = rc->current_clipbox_index,
+            .depth         = 0, // todo
+            .data          = helper_get_data(node, rc->instance)
+        };
     } break;
 
     // transform matrix, then continue
@@ -1640,7 +1706,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .box_data       = *(const lui_box_data*)helper_get_data(node, rc->instance)
         };
 
-        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc(
+        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
             rc->cmd_arena, sizeof(lui_draw_command), &rc->jmp_target, lui_return_command_arena_too_small
         ); *slot = cmd;
     } break;
@@ -1658,7 +1724,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .image_data     = *(const lui_image_data*)helper_get_data(node, rc->instance)
         };
 
-        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc(
+        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
             rc->cmd_arena, sizeof(lui_draw_command), &rc->jmp_target, lui_return_command_arena_too_small
         ); *slot = cmd;
     } break;
@@ -1676,7 +1742,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .text_data      = *(const lui_text_data*)helper_get_data(node, rc->instance)
         };
 
-        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc(
+        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
             rc->cmd_arena, sizeof(lui_draw_command), &rc->jmp_target, lui_return_command_arena_too_small
         ); *slot = cmd;
     }
@@ -1690,16 +1756,18 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
 }
 
 lui_return_flag lui_render(
-    const lui_node*  root,
-    lui_arena*       temp_arena,
+    const lui_node* root,
+    lui_arena*      temp_arena,
     int             resolution_x,
     int             resolution_y,
-    lui_arena*       commands_arena,
-    lui_arena*       clipboxs_arena
+    lui_arena*      commands_arena,
+    lui_arena*      clipboxs_arena,
+    lui_arena*      input_boxes_arena
 ) {
     // reset write target arenas
     commands_arena->position = 0;
     clipboxs_arena->position = 0;
+    if (input_boxes_arena) input_boxes_arena->position = 0;
 
     helper_transform_pack trs = {
         .trans        = lui_default_trans,
@@ -1714,6 +1782,7 @@ lui_return_flag lui_render(
         .temp_arena             = temp_arena,
         .cmd_arena              = commands_arena,
         .clip_arena             = clipboxs_arena,
+        .input_boxes_arena      = input_boxes_arena,
 
         .instance               = 0x0,
         .current_clipbox_index  = -1,
@@ -1726,6 +1795,68 @@ lui_return_flag lui_render(
     if (flag == lui_return_ok) render_dispatch(&rc, root, 0, trs);
 
     return flag;
+}
+
+// ===========================
+// Input
+
+static inline int helper_depth_compare_input_boxes(const void* av, const void* bv) {
+    const lui_input_box* a = (const lui_input_box*)av; 
+    const lui_input_box* b = (const lui_input_box*)bv;
+    if (a->depth < b->depth) return 1;
+    return 0;
+}
+
+// sorts input boxes inside arena by depth
+void lui_depth_sort_input_boxes_arena(
+    lui_arena* input_boxes_arena
+) {
+    qsort(
+        input_boxes_arena->memory, 
+        input_boxes_arena->position / sizeof(lui_input_box),
+        sizeof(lui_input_box),
+        helper_depth_compare_input_boxes
+    );
+}
+
+static inline int helper_point_in_transformed_box(
+    lui_transform t,
+    float x, float y
+) {
+    float det = t.m00 * t.m11 - t.m01 * t.m10;
+    if (det == 0.0f) return 0;
+
+    float inv_det = 1.0f / det;
+
+    // inverse 2x2
+    float im00 =  t.m11 * inv_det;
+    float im01 = -t.m01 * inv_det;
+    float im10 = -t.m10 * inv_det;
+    float im11 =  t.m00 * inv_det;
+
+    // remove translation
+    x -= t.tx;
+    y -= t.ty;
+
+    // world -> local
+    float lx = im00 * x + im01 * y;
+    float ly = im10 * x + im11 * y;
+
+    // local rect test
+    return (lx >= -1.0f && ly >= -1.0f && lx <=  1.0f && ly <=  1.0f);
+}
+
+// returns 1 if cursor is inside input box
+int lui_is_cursor_in_input_box(
+    const lui_input_box*    input_box,
+    const lui_arena*        clipboxes_arena,
+    float                   cursor_x,
+    float                   cursor_y
+) {
+    if (!helper_point_in_transformed_box(input_box->transform, cursor_x, cursor_y)) return 0;
+    if (input_box->clipbox_index == -1) return 1;
+    lui_transform clipbox = ((const lui_transform*)(clipboxes_arena->memory))[input_box->clipbox_index];
+    return helper_point_in_transformed_box(clipbox, cursor_x, cursor_y);
 }
 
 #endif // LIGHT_USER_INTERFACE_IMPL
