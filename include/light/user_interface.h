@@ -22,6 +22,10 @@ Usage:
     Injections
 */
 
+#ifndef LIGHT_USER_INTEFACE_H
+    typedef struct lui_injection_input_state lui_injection_input_state;
+#endif
+
 #ifdef LIGHT_USER_INTERFACE_IMPL
     typedef struct lui_length     lui_length;
     typedef struct lui_image_data lui_image_data;
@@ -41,6 +45,14 @@ Usage:
         lui_length*              width_target, 
         lui_length*              height_target,
         void*                    user_context
+    );
+
+    // Input
+
+    static inline void lui_injection_query_cursor_position(
+        lui_injection_input_state*  state,
+        float* cursor_norm_x_target, // normalized [-1, 1] for width
+        float* cursor_norm_y_target  // normalized [-1, 1] for height
     );
 #endif // LIGHT_USER_INTERFACE_IMPL
 
@@ -128,6 +140,22 @@ static inline lui_color lui_hex(const char* hex);
 // LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
 
 // ===========================
+// Input
+
+// Functions with such signature can be passed as lui_node_input_handle data
+// Will be called to solve input at underlying lui_node_input_boxes
+// Functions are called from top ui element to bottom
+// User can modify input_state to avoid penetration through layers of ui
+// For example you may want to dissable "left pressed" in upper button, 
+// so one below does not notice it
+typedef void (*lui_input_handler_func)(
+    void*                       input_box_data,
+    lui_injection_input_state*  input_state,
+    int                         cursor_inside,
+    float                       delta_time
+);
+
+// ===========================
 // Node Typedef
 
 // common
@@ -161,12 +189,12 @@ typedef enum lui_node_type {
 
     // Input
 
+    // node input handle
+    // todo
+    lui_node_input_handle,
+
     // node input box
-    // allows for buttons implementation
-    // on render, will create an lui_input_box strucure,
-    // which can be queried whether cursor is in it
-    // data pointer provided will be copied to lui_input_box.data
-    // single childed
+    // todo
     lui_node_input_box,
 
     // Basic Layout
@@ -274,7 +302,7 @@ typedef struct lui_node_array {
     lui_node* nodes;
 } lui_node_array;
 
-// transform data
+// transform
 
 typedef struct lui_transform_data {
     unsigned char   apply_transform_at_measure : 1;
@@ -374,13 +402,6 @@ typedef struct lui_draw_command {
     };
 } lui_draw_command;
 
-typedef struct lui_input_box {
-    lui_transform   transform;
-    int             clipbox_index;
-    int             depth;
-    const void*     data;
-} lui_input_box;
-
 typedef struct lui_arena {
     char*  memory;
     size_t capacity;
@@ -435,17 +456,12 @@ lui_return_flag lui_render(
     lui_arena*      input_boxes_arena   // arena for input boxes (may be NULL)
 );
 
-// sorts input boxes inside arena by depth
-void lui_depth_sort_input_boxes_arena(
-    lui_arena* input_boxes_arena
-);
-
-// returns 1 if cursor is inside input box
-int lui_is_cursor_in_input_box(
-    const lui_input_box*    input_box,          // target input box
-    const lui_arena*        clipboxes_arena,    // arena of clipboxes, for clip check
-    float                   cursor_x,           // cursor normalized, [-1, 1] position
-    float                   cursor_y            // cusror normalized, [-1, 1] position
+// input
+void lui_input(
+    lui_arena*                  input_boxes_arena,
+    lui_arena*                  clipboxes_arena,
+    lui_injection_input_state*  input_state,
+    float                       delta_time
 );
 
 // ===========================
@@ -760,6 +776,17 @@ void lui_arena_free(lui_arena* target, void(*free_func)(void*)) {
     target->position = 0;
     target->capacity = 0;
 }
+
+// ===========================
+// Input Helper Types
+
+typedef struct helper_input_box {
+    lui_transform           transform;
+    int                     clipbox_index;
+    int                     depth;
+    lui_input_handler_func  handler;
+    void*                   data;
+} helper_input_box;
 
 // ===========================
 // Measuring
@@ -1247,6 +1274,7 @@ typedef struct helper_rendering_walk_context {
 
     const void*                 instance;               // current subtree instance
     int                         current_clipbox_index;  // current clipbox
+    lui_input_handler_func      current_input_handler;  // current input handler
 } helper_rendering_walk_context;
 
 // Function dispatching rendering based on node type
@@ -1645,7 +1673,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
         if (child) render_dispatch(rc, child, first_child_index, trs);
 
         rc->instance = old_instance;
-    } return;
+    } return;   // subtree explorated
 
     // save current clipbox, overwrite, restore
     case lui_node_clipbox: {
@@ -1661,22 +1689,36 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
         if (child) render_dispatch(rc, child, first_child_index, trs);
 
         rc->current_clipbox_index = old_clip;
-    } break;
+    } return;   // subtree explorated
+
+    // push new input handler
+    case lui_node_input_handle: {
+        lui_input_handler_func old_handler = rc->current_input_handler;
+
+        rc->current_input_handler = (lui_input_handler_func)helper_get_data(node, rc->instance);
+
+        // recurse into subtree
+        const lui_node* child = helper_get_node_single_child(node, rc->instance);
+        if (child) render_dispatch(rc, child, first_child_index, trs);
+
+        rc->current_input_handler = old_handler;
+    } return;   // subtree explorated
     
     // push input box
     case lui_node_input_box: {
         trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
         if (!rc->input_boxes_arena) break; // continue tree travel
         
-        lui_input_box* slot = (lui_input_box*)helper_arena_alloc_unaligned(
-            rc->input_boxes_arena, sizeof(lui_input_box), &rc->jmp_target, lui_return_input_boxes_arena_too_small
+        helper_input_box* slot = (helper_input_box*)helper_arena_alloc_unaligned(
+            rc->input_boxes_arena, sizeof(helper_input_box), &rc->jmp_target, lui_return_input_boxes_arena_too_small
         );
 
-        *slot = (lui_input_box){
+        *slot = (helper_input_box){
             .transform     = trs.trans,
             .clipbox_index = rc->current_clipbox_index,
             .depth         = 0, // todo
-            .data          = helper_get_data(node, rc->instance)
+            .handler       = rc->current_input_handler,
+            .data          = (void*)helper_get_data(node, rc->instance)
         };
     } break;
 
@@ -1801,28 +1843,13 @@ lui_return_flag lui_render(
 // Input
 
 static inline int helper_depth_compare_input_boxes(const void* av, const void* bv) {
-    const lui_input_box* a = (const lui_input_box*)av; 
-    const lui_input_box* b = (const lui_input_box*)bv;
+    const helper_input_box* a = (const helper_input_box*)av; 
+    const helper_input_box* b = (const helper_input_box*)bv;
     if (a->depth < b->depth) return 1;
     return 0;
 }
 
-// sorts input boxes inside arena by depth
-void lui_depth_sort_input_boxes_arena(
-    lui_arena* input_boxes_arena
-) {
-    qsort(
-        input_boxes_arena->memory, 
-        input_boxes_arena->position / sizeof(lui_input_box),
-        sizeof(lui_input_box),
-        helper_depth_compare_input_boxes
-    );
-}
-
-static inline int helper_point_in_transformed_box(
-    lui_transform t,
-    float x, float y
-) {
+static inline int helper_is_point_in_box(lui_transform t, float x, float y) {
     float det = t.m00 * t.m11 - t.m01 * t.m10;
     if (det == 0.0f) return 0;
 
@@ -1846,17 +1873,33 @@ static inline int helper_point_in_transformed_box(
     return (lx >= -1.0f && ly >= -1.0f && lx <=  1.0f && ly <=  1.0f);
 }
 
-// returns 1 if cursor is inside input box
-int lui_is_cursor_in_input_box(
-    const lui_input_box*    input_box,
-    const lui_arena*        clipboxes_arena,
-    float                   cursor_x,
-    float                   cursor_y
+void lui_input(
+    lui_arena*                  input_boxes_arena,
+    lui_arena*                  clipboxes_arena,
+    lui_injection_input_state*  input_state,
+    float                       delta_time
 ) {
-    if (!helper_point_in_transformed_box(input_box->transform, cursor_x, cursor_y)) return 0;
-    if (input_box->clipbox_index == -1) return 1;
-    lui_transform clipbox = ((const lui_transform*)(clipboxes_arena->memory))[input_box->clipbox_index];
-    return helper_point_in_transformed_box(clipbox, cursor_x, cursor_y);
+    // sort by depth, should be stable (todo!)
+    qsort(
+        input_boxes_arena->memory, 
+        input_boxes_arena->position / sizeof(helper_input_box),
+        sizeof(helper_input_box),
+        helper_depth_compare_input_boxes
+    );
+
+    float cx = -2, cy = 2; // out of screen
+    lui_injection_query_cursor_position(input_state, &cx, &cy);
+
+    uint32_t          inp_count  = input_boxes_arena->position / sizeof(helper_input_box);
+    helper_input_box* inp_memory = (helper_input_box*)input_boxes_arena->memory;
+    lui_transform*    clp_memory = (lui_transform*)clipboxes_arena->memory;
+
+    for (uint32_t i = 0; i < inp_count; i++) {
+        helper_input_box* box = &inp_memory[i];
+        int cursor_inside = helper_is_point_in_box(box->transform, cx, cy);
+        if (box->clipbox_index != -1) cursor_inside &= helper_is_point_in_box(clp_memory[box->clipbox_index], cx, cy);
+        box->handler(box->data, input_state, cursor_inside, delta_time);
+    }
 }
 
 #endif // LIGHT_USER_INTERFACE_IMPL
