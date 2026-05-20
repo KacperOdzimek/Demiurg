@@ -23,7 +23,20 @@ Usage:
 */
 
 #ifndef LIGHT_USER_INTEFACE_H
+    // Input - visible for user, can be used in input handlers
+
     typedef struct lui_injection_input_state lui_injection_input_state;
+
+    static inline void lui_injection_query_cursor_position(
+        lui_injection_input_state* state,
+        float* cursor_norm_x_target, // normalized [-1, 1] for width
+        float* cursor_norm_y_target  // normalized [-1, 1] for height
+    );
+
+    static inline void lui_injection_query_cursor_state(
+        lui_injection_input_state* state,
+        int* left_pressed, int* right_pressed, float* scroll_input
+    );
 #endif
 
 #ifdef LIGHT_USER_INTERFACE_IMPL
@@ -45,14 +58,6 @@ Usage:
         lui_length*              width_target, 
         lui_length*              height_target,
         void*                    user_context
-    );
-
-    // Input
-
-    static inline void lui_injection_query_cursor_position(
-        lui_injection_input_state*  state,
-        float* cursor_norm_x_target, // normalized [-1, 1] for width
-        float* cursor_norm_y_target  // normalized [-1, 1] for height
     );
 #endif // LIGHT_USER_INTERFACE_IMPL
 
@@ -1896,8 +1901,12 @@ void lui_input(
 
     for (uint32_t i = 0; i < inp_count; i++) {
         helper_input_box* box = &inp_memory[i];
-        int cursor_inside = helper_is_point_in_box(box->transform, cx, cy);
+        if (!box->handler) continue; // nothing to call
+
+        int cursor_inside = 1;
+        cursor_inside &= helper_is_point_in_box(box->transform, cx, cy);
         if (box->clipbox_index != -1) cursor_inside &= helper_is_point_in_box(clp_memory[box->clipbox_index], cx, cy);
+        
         box->handler(box->data, input_state, cursor_inside, delta_time);
     }
 }
