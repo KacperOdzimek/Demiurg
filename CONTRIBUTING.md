@@ -23,16 +23,6 @@ The goal is to keep the core library small, maintainable, and focused. Because o
 - Features that significantly increase complexity
 - Features that conflict with the lightweight philosophy
 
-## Future Goals
-
-The following features may be implemented in the future:
-
-- Async networking                      (networking.h)
-- Filesystem utilities                  (filesystem.h)
-- File compression and decompression    (compression.h)
-- File encryption on compression        (compression.h)
-- Serialization and deserialization     (serialization.h)
-
 ## Pull Requests
 
 Before opening a pull request:
@@ -48,3 +38,31 @@ When reporting issues, please include:
 - Expected behavior
 - Actual behavior
 - Relevant logs or screenshots
+
+# Future Goals
+
+## Existing content
+
+The existing content shall be maintained and keep clean.
+Therefore state of code table:
+
+| Library File  | State |
+| ------------- | ------------- |
+| graphics.h                    | Stable, extra validations may be added, can be refactored in some areas |
+| input.h                       | Stable. Internal refactoring would still be nice. |
+| linear_algebra.h              | Claude-d, needs to be tested and checked |
+| user_interface.h              | Correct |
+| synchronised_window.h         | Correct |
+| font.h                        | Correct |
+| shapes_rendering.h            | Correct |
+| user_interface_rendering.h    | Functional, but open for refactoring and performance optimizations. |
+
+## Upcoming content
+
+The following features may be implemented in the future:
+
+- Async networking                      (networking.h)
+- Filesystem utilities                  (filesystem.h)
+- File compression and decompression    (compression.h)
+- File encryption on compression        (compression.h)
+- Serialization and deserialization     (serialization.h)
