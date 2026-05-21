@@ -1,8 +1,35 @@
 # Light Framework
 
-Collection of C99 (single) header libraries, allowing for fast graphics apps developement, from easy 2d-renderers, through gui-only applications to even performant games.
+Collection of C99 (single) header libraries, allowing for fast graphics apps developement, from easy 2d-renderers, through gui applications to performant games.
 
-The libraries are loosely connected, and coded with minimalism in mind, so there is no code bloat.
+## Philosophy
+
+Light Framework is built around a small set of principles intended to make low-level graphics and application development practical, predictable, and enjoyable in pure C99.
+
+**Conciseness**
+
+The API is designed to stay minimal and focused.
+Libraries expose only the functionality required to solve common problems without unnecessary abstractions, boilerplate, or hidden behavior.
+
+**Stability**
+
+The framework prioritizes long-term API consistency.
+Interfaces are designed to remain reliable across versions, allowing projects to evolve without constant rewrites or breaking changes.
+
+**Ease of Use**
+
+The framework emphasizes straightforward integration and fast iteration.
+Most modules are distributed as single-header libraries, require minimal setup, and expose intuitive APIs suitable for both prototypes and larger applications.
+
+**Performance-Oriented Design**
+
+The libraries are implemented with real-time applications in mind.
+Abstractions are lightweight, allocations are kept explicit whenever possible, and systems are designed to work efficiently with modern graphics APIs and game loops.
+
+**Modularity**
+
+Each library is separate, composable being.
+You can use only the components you need — from low-level rendering and input handling to higher-level UI and rendering utilities — without pulling in the entire framework.
 
 ## Contents
 Light framework consists of two types of libraries: 
