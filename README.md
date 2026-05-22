@@ -55,7 +55,8 @@ Light framework consists of two types of libraries:
 
 ## Usage
 
-WRITE DOCS
+Big core systems have a separate documentation inside ``documentation`` folder.
+Smaller libraries have big header comment, describing what and how.
 
 ## Building
 

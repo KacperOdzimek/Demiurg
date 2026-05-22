@@ -1,7 +1,6 @@
 /*
 ----------------------------------------------------------------
 Contents:
-
 This file provides a RHI - render hardware interface.
 This interface allows user to write api independent low-level graphics systems.
 
@@ -16,12 +15,10 @@ Code info:
 ----------------------------------------------------------------
 Depedencies:
 - Each of native APIs have they own compilation requirements:
-- LIGHT_GRAPHICS_VULKAN:
-    - (todo)
+- LIGHT_GRAPHICS_VULKAN: - (todo)
 
 ----------------------------------------------------------------
-Usage:
-(todo)
+Usage: See dedicated documentation
 
 ----------------------------------------------------------------
 Possible Optimizations and TODOs:

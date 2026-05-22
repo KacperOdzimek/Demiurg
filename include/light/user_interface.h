@@ -9,13 +9,7 @@ Code info:
 - LIGHT_FONT_IMPL macro to build
 
 ----------------------------------------------------------------
-Usage:
-- Define a tree of ui components by linking lui_nodes
-- Lui node consists of type, type dependant data pointer, and child(ren)
-- Whether node should link to single child, or to children array is described per type
-- Pass your ui system root node to lui_measure and then lui_render
-- Render obtained draw commands sequence
-- For more info lookup examples and docs
+Usage: See dedicated documentation
 */
 
 /*

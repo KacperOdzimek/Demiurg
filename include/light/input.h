@@ -18,15 +18,7 @@ Depedencies:
         - libevdev library installed
 
 ----------------------------------------------------------------
-Usage:
-- Create lin_library object once
-- Create as many lin_slots as many devices you like to read from
-    For example in game for four players, you can create four slots, to read info from four gamepdas
-- Query currently visible devices by lin_library_get_devices_list
-- Connect selected device from the list to a slot with lin_slot_connect
-- Query device input from slot via lin_slot_query_input_state
-- Check for button presses by input_state.buttons[button from enum] 
-    and axis state by input_state.axes[axis from enum]
+Usage: See dedicated documentation
 */
 
 #ifndef LIGHT_INPUT_H
