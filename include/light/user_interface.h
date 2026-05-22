@@ -195,11 +195,16 @@ typedef enum lui_node_type {
     // Input
 
     // node input handle
-    // todo
+    // sets method for handing input in child node_input_boxes
+    // data shall be function pointer of type lui_input_handler_func
+    // single childed
     lui_node_input_handle,
 
     // node input box
-    // todo
+    // upon calling lui_input, for each of the input boxes,
+    // function set by parent lui_node_input_handle will be called
+    // data of this node will be passed to function call data argument
+    // single childed
     lui_node_input_box,
 
     // Basic Layout
