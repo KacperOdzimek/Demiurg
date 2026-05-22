@@ -872,7 +872,6 @@ void luirp_upload_ui(
         break;
     }
 
-    // TODO : UPDATE ONLY CHANGED
     uint32_t writes_count = 0;
     lgx_descriptor_write_info                   writes[textures_array_length];
     lgx_descriptor_sampled_texture_write_info   tinfo [textures_array_length];
