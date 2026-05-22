@@ -25,11 +25,11 @@ struct gpu_instance {
     float               depth;
 };
 
-layout(set = 0, binding = 0) readonly buffer Instances {
+layout(std430, set = 0, binding = 0) readonly buffer Instances {
     gpu_instance instances[];
 };
 
-layout(set = 0, binding = 1) readonly buffer Clips {
+layout(std430, set = 0, binding = 1) readonly buffer Clips {
     lui_transform clips[];
 };
 

@@ -192,6 +192,12 @@ typedef enum lui_node_type {
     // single childed
     lui_node_clipbox,
 
+    // node depth
+    // adds node depth offset
+    // decreasing depth means going 'into' the screen
+    // single childed
+    lui_node_depth,
+
     // Input
 
     // node input handle
@@ -320,6 +326,12 @@ typedef struct lui_transform_data {
     lui_transform   transform;
 } lui_transform_data;
 
+// depth
+
+typedef struct lui_depth_data {
+    short depth_change;
+} lui_depth_data;
+
 // padding
 
 typedef struct lui_padding_data {
@@ -403,7 +415,7 @@ typedef struct lui_draw_command {
     int                 pixels_width;
     int                 pixels_height;
     int                 clipbox_index;
-    int                 depth;
+    short               depth;
 
     union {
         lui_box_data     box_data;
@@ -456,6 +468,7 @@ lui_return_flag lui_measure(
 
 // second step in rendering ui
 // renders the ui according to their desired resolutions
+// resulting commands_arena and input_boxes_arena are depth sorted, from deepest to top
 lui_return_flag lui_render(
     const lui_node* root,               // ui tree root
     lui_arena*      temp_arena,         // temporary memory arena
@@ -793,10 +806,58 @@ void lui_arena_free(lui_arena* target, void(*free_func)(void*)) {
 typedef struct helper_input_box {
     lui_transform           transform;
     int                     clipbox_index;
-    int                     depth;
+    short                   depth;
     lui_input_handler_func  handler;
     void*                   data;
 } helper_input_box;
+
+// ===========================
+// Stable sort helper
+
+// currently implemeted as mergesort
+void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void*, const void*)) {
+    if (nmemb < 2) return;
+
+    char *arr = (char*)base;
+    char *tmp = malloc(nmemb * size);
+    if (!tmp) return;
+
+    for (size_t width = 1; width < nmemb; width *= 2) {
+        for (size_t i = 0; i < nmemb; i += 2 * width) {
+            size_t l = i;
+            size_t m = i + width < nmemb ? i + width : nmemb;
+            size_t r = i + 2 * width < nmemb ? i + 2 * width : nmemb;
+            size_t p = l, q = m, k = i;
+
+            while (p < m && q < r) {
+                if (compar(arr + p * size, arr + q * size) <= 0) memcpy(tmp + k++ * size, arr + p++ * size, size);
+                else memcpy(tmp + k++ * size, arr + q++ * size, size);
+            }
+
+            while (p < m) memcpy(tmp + k++ * size, arr + p++ * size, size);
+            while (q < r) memcpy(tmp + k++ * size, arr + q++ * size, size);
+        }
+
+        memcpy(arr, tmp, nmemb * size);
+    }
+
+    free(tmp);
+    return;
+}
+
+static inline int helper_depth_compare_input_boxes(const void* av, const void* bv) {
+    const helper_input_box* a = (const helper_input_box*)av; 
+    const helper_input_box* b = (const helper_input_box*)bv;
+    if (a->depth > b->depth) return 1;
+    return 0;
+}
+
+static inline int helper_depth_compare_draw_commands(const void* av, const void* bv) {
+    const lui_draw_command* a = (const lui_draw_command*)av; 
+    const lui_draw_command* b = (const lui_draw_command*)bv;
+    if (a->depth > b->depth) return 1;
+    return 0;
+}
 
 // ===========================
 // Measuring
@@ -1284,6 +1345,7 @@ typedef struct helper_rendering_walk_context {
 
     const void*                 instance;               // current subtree instance
     int                         current_clipbox_index;  // current clipbox
+    short                       current_depth;          // current depth value
     lui_input_handler_func      current_input_handler;  // current input handler
 } helper_rendering_walk_context;
 
@@ -1701,6 +1763,20 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
         rc->current_clipbox_index = old_clip;
     } return;   // subtree explorated
 
+    // offset depth in subtree
+    case lui_node_depth: {
+        short old_depth = rc->current_depth;
+
+        const lui_depth_data* data = helper_get_data(node, rc->instance);
+        rc->current_depth += data->depth_change;
+
+        // recurse into subtree
+        const lui_node* child = helper_get_node_single_child(node, rc->instance);
+        if (child) render_dispatch(rc, child, first_child_index, trs);
+
+        rc->current_depth = old_depth;
+    } return;   // subtree explorated
+
     // push new input handler
     case lui_node_input_handle: {
         lui_input_handler_func old_handler = rc->current_input_handler;
@@ -1726,7 +1802,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
         *slot = (helper_input_box){
             .transform     = trs.trans,
             .clipbox_index = rc->current_clipbox_index,
-            .depth         = 0, // todo
+            .depth         = rc->current_depth,
             .handler       = rc->current_input_handler,
             .data          = (void*)helper_get_data(node, rc->instance)
         };
@@ -1753,7 +1829,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .transform      = trs.trans,
             .pixels_width   = trs.pixel_width,
             .pixels_height  = trs.pixel_height,
-            .depth          = 0, // todo
+            .depth          = rc->current_depth,
             .clipbox_index  = rc->current_clipbox_index,
             .box_data       = *(const lui_box_data*)helper_get_data(node, rc->instance)
         };
@@ -1771,7 +1847,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .transform      = trs.trans,
             .pixels_width   = trs.pixel_width,
             .pixels_height  = trs.pixel_height,
-            .depth          = 0, // todo
+            .depth          = rc->current_depth,
             .clipbox_index  = rc->current_clipbox_index,
             .image_data     = *(const lui_image_data*)helper_get_data(node, rc->instance)
         };
@@ -1789,7 +1865,7 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .transform      = trs.trans,
             .pixels_width   = trs.pixel_width,
             .pixels_height  = trs.pixel_height,
-            .depth          = 0, // todo
+            .depth          = rc->current_depth,
             .clipbox_index  = rc->current_clipbox_index,
             .text_data      = *(const lui_text_data*)helper_get_data(node, rc->instance)
         };
@@ -1846,18 +1922,27 @@ lui_return_flag lui_render(
     // longjmp will not happen with lui_return_ok, therefore no loop in here
     if (flag == lui_return_ok) render_dispatch(&rc, root, 0, trs);
 
+    if (flag == lui_return_ok) {
+        stable_sort(
+            commands_arena->memory, 
+            commands_arena->position / sizeof(lui_draw_command),
+            sizeof(lui_draw_command),
+            helper_depth_compare_draw_commands
+        );
+
+        if (input_boxes_arena) stable_sort(
+            input_boxes_arena->memory, 
+            input_boxes_arena->position / sizeof(helper_input_box),
+            sizeof(helper_input_box),
+            helper_depth_compare_input_boxes
+        );
+    }
+
     return flag;
 }
 
 // ===========================
 // Input
-
-static inline int helper_depth_compare_input_boxes(const void* av, const void* bv) {
-    const helper_input_box* a = (const helper_input_box*)av; 
-    const helper_input_box* b = (const helper_input_box*)bv;
-    if (a->depth < b->depth) return 1;
-    return 0;
-}
 
 static inline int helper_is_point_in_box(lui_transform t, float x, float y) {
     float det = t.m00 * t.m11 - t.m01 * t.m10;
@@ -1889,14 +1974,6 @@ void lui_input(
     lui_injection_input_state*  input_state,
     float                       delta_time
 ) {
-    // sort by depth, should be stable (todo!)
-    qsort(
-        input_boxes_arena->memory, 
-        input_boxes_arena->position / sizeof(helper_input_box),
-        sizeof(helper_input_box),
-        helper_depth_compare_input_boxes
-    );
-
     float cx = -2, cy = 2; // out of screen
     lui_injection_query_cursor_position(input_state, &cx, &cy);
 
@@ -1904,7 +1981,10 @@ void lui_input(
     helper_input_box* inp_memory = (helper_input_box*)input_boxes_arena->memory;
     lui_transform*    clp_memory = (lui_transform*)clipboxes_arena->memory;
 
-    for (uint32_t i = 0; i < inp_count; i++) {
+    if (!inp_count) return;
+
+    // walk from top box to deepest
+    for (uint32_t i = inp_count - 1; 1; i--) {
         helper_input_box* box = &inp_memory[i];
         if (!box->handler) continue; // nothing to call
 
@@ -1913,6 +1993,8 @@ void lui_input(
         if (box->clipbox_index != -1) cursor_inside &= helper_is_point_in_box(clp_memory[box->clipbox_index], cx, cy);
         
         box->handler(box->data, input_state, cursor_inside, delta_time);
+
+        if (i == 0) break; // do not decrease
     }
 }
 

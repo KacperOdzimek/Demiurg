@@ -213,7 +213,9 @@ typedef struct gpu_instance {
 
     // Tint
     float r, g, b, a;
-    float depth;
+
+    // Strucure padding
+    float pad;
 } gpu_instance;
 
 typedef struct gpu_clipbox {
@@ -630,7 +632,6 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
 
     if (cmd->type == lui_draw_box) {
         return push_instance(mapped, state, (gpu_instance){
-            .depth      = (float)cmd->depth,
             .clip_index = cmd->clipbox_index,
             .transform  = cmd->transform,
             .r = (float)cmd->box_data.color.r / 255.0f,
@@ -653,7 +654,6 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
         );
 
         return push_instance(mapped, state, (gpu_instance){
-            .depth      = (float)cmd->depth,
             .clip_index = cmd->clipbox_index,
             .transform  = cmd->transform,
             .r = (float)cmd->image_data.tint.r / 255.0f,
@@ -676,7 +676,6 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
         if (font == NULL) return mapped;
 
         gpu_instance default_instance = {
-            .depth      = (float)cmd->depth,
             .clip_index = cmd->clipbox_index,
             .transform  = cmd->transform,
             .r = (float)cmd->text_data.tint.r / 255.0f,

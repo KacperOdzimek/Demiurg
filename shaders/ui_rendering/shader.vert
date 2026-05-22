@@ -23,10 +23,12 @@ struct gpu_instance {
     int                 texture_index;
     int                 clip_index;
     float               r, g, b, a;
-    float               depth;
+    
+    // Strucure padding
+    float padding;
 };
 
-layout(set = 0, binding = 0) readonly buffer Instances {
+layout(std430, set = 0, binding = 0) readonly buffer Instances {
     gpu_instance instances[];
 };
 
@@ -37,7 +39,7 @@ void main() {
     pos.x = inst.transform.m00 * in_pos.x + inst.transform.m01 * in_pos.y + inst.transform.tx;
     pos.y = inst.transform.m10 * in_pos.x + inst.transform.m11 * in_pos.y + inst.transform.ty;
 
-    gl_Position = vec4(pos.x, -pos.y, inst.depth, 1.0);
+    gl_Position = vec4(pos.x, -pos.y, 0, 1.0);
 
     out_pos      = pos;
     out_uv       = in_uv;
