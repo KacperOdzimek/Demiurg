@@ -51,19 +51,19 @@ typedef struct lswin_synchronised_window lswin_synchronised_window;
 typedef void(*lswin_synchronised_window_frame_callback)(
     lswin_synchronised_window*  synchronised_window,        // the window
     lgx_render_target*          render_target,              // the target to render to
-    uint32_t                    frame_in_flight_index,      // looping in range [0, synchronised_window.desired_frames_in_flight) 
-                                                            //   - used to iterate per frame resources
+    uint32_t                    frame_in_flight_index,      // looping in range [0, synchronised_window.desired_frames_in_flight) used to iterate frame resources
     lgx_gpu_signal*             can_render_signal,          // gate signal to frame rendering
     uint32_t*                   user_wait_signals_count,    // user_wait_signals count (result from function)
     lgx_gpu_signal***           user_wait_signals           // signals to wait on before frame presentation (result from function)
 );
 
 typedef struct lswin_synchronised_window_create_info {
-    const char*                                 title;
-    uint32_t                                    width;
-    uint32_t                                    height;
-    uint32_t                                    desired_frames_in_flight;
-    lswin_synchronised_window_frame_callback    new_frame_callback;
+    const char*                                     title;
+    uint32_t                                        width;
+    uint32_t                                        height;
+    uint32_t                                        desired_frames_in_flight;
+    lswin_synchronised_window_frame_callback        new_frame_callback;
+    lgx_window_render_targets_recreated_callback    render_target_recreated_callback;
 } lswin_synchronised_window_create_info;
 
 lswin_synchronised_window* lswin_create_synchronised_window(lgx_hardware*, const lswin_synchronised_window_create_info*);
@@ -137,10 +137,11 @@ lswin_synchronised_window* lswin_create_synchronised_window(lgx_hardware* hardwa
     };
 
     lgx_window_create_info window_create_info = {
-        .title                  = info->title,
-        .width                  = info->width,
-        .height                 = info->height,
-        .desired_render_targets = info->desired_frames_in_flight
+        .title                              = info->title,
+        .width                              = info->width,
+        .height                             = info->height,
+        .desired_render_targets             = info->desired_frames_in_flight,
+        .render_target_recreated_callback   = info->render_target_recreated_callback
     };
     synchronised_window->window = lgx_create_window(hardware, &window_create_info);
 

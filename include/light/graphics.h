@@ -26,7 +26,7 @@ Usage:
 ----------------------------------------------------------------
 Possible Optimizations and TODOs:
 - (Vulkan) paged memory allocation
-- (Vulkan) non blocking swapchain recreation
+- (Vulkan) non blocking swapchain recreation, render layout preservation
 */
 
 #ifndef LIGHT_GRAPHICS_H
@@ -356,7 +356,7 @@ typedef struct lgx_window_create_info {
 
     // desired amount of frames you are willing to work 
     // at in the same time, "frames in flight"
-    // actuall frames count may be lower than desired, due to
+    // actual frames count may be lower than desired, due to
     // driver limitiations - query with lgx_window_get_render_targets_count
     uint32_t desired_render_targets;
 
