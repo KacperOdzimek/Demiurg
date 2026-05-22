@@ -22,7 +22,7 @@ struct gpu_instance {
     int                 texture_index;
     int                 clip_index;
     float               r, g, b, a;
-    float               depth;
+    int                 shader;
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer Instances {

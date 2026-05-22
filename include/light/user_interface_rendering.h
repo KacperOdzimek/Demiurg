@@ -214,8 +214,8 @@ typedef struct gpu_instance {
     // Tint
     float r, g, b, a;
 
-    // Strucure padding
-    float pad;
+    // Shader effect index
+    uint32_t shader;
 } gpu_instance;
 
 typedef struct gpu_clipbox {
@@ -639,6 +639,7 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
             .b = (float)cmd->box_data.color.b / 255.0f,
             .a = (float)cmd->box_data.color.a / 255.0f,
             .texture_index = 0, // no texture
+            .shader = cmd->box_data.shader,
         });
     }
     else if (cmd->type == lui_draw_image) {
@@ -661,7 +662,8 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
             .b = (float)cmd->image_data.tint.b / 255.0f,
             .a = (float)cmd->image_data.tint.a / 255.0f,
             .texture_index = get_texture_index(state, the_texture, 0),
-            .atlas_position = atlas_position
+            .atlas_position = atlas_position,
+            .shader = cmd->image_data.shader
         });
     }
     else if (cmd->type == lui_draw_text) {
@@ -683,6 +685,7 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
             .b = (float)cmd->text_data.tint.b / 255.0f,
             .a = (float)cmd->text_data.tint.a / 255.0f,
             .texture_index = get_texture_index(state, lfont_get_texture(font), 1),
+            .shader = cmd->text_data.shader
         };
 
         // in below code, we multiply font metrics by two, since

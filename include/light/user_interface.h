@@ -380,23 +380,26 @@ typedef struct lui_column_data {
 // box
 
 typedef struct lui_box_data {
-    lui_color   color; // box color
+    lui_color   color;      // box color
+    uint32_t    shader;     // shader effect index
 } lui_box_data;
 
 // image
 
 typedef struct lui_image_data {
-    const char* image;   // image name/path
-    lui_color   tint;    // image color modyficator
+    const char* image;      // image name/path
+    lui_color   tint;       // image color modyficator
+    uint32_t    shader;     // shader effect index
 } lui_image_data;
 
 // text
  
 typedef struct lui_text_data {
-    unsigned int  size;  // font size
-    const char*   font;  // font name/path
-    const char*   text;  // text pointer
-    lui_color     tint;  // text color modyficator
+    unsigned int  size;     // font size
+    const char*   font;     // font name/path
+    const char*   text;     // text pointer
+    lui_color     tint;     // text color modyficator
+    uint32_t      shader;   // shader effect index
 } lui_text_data;
 
 // ===========================
