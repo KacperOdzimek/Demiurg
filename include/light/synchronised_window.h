@@ -1,7 +1,6 @@
 /*
 ----------------------------------------------------------------
 Contents
-
 This file provides `synchronised window` object - window with automatic frames-in-flight synchronization.
 The user provides a `lswin_synchronised_window_frame_callback`, called once per frame.
 
@@ -13,7 +12,6 @@ Code info:
 
 ----------------------------------------------------------------
 Frame Model
-
 - Each frame acquires an internal render target
 - A `can_render_signal` is provided
 - All GPU work writing to the render target MUST wait on this signal
@@ -34,14 +32,12 @@ User Responsibilities
 
 ----------------------------------------------------------------
 Guarantees
-
 - Frames-in-flight are handled internally
 - Frames only begin after prior usage completes
 - Presentation waits on returned and internal signals
 
 ----------------------------------------------------------------
 Notes
-
 - Callback runs on the enter calling thread
 */
 

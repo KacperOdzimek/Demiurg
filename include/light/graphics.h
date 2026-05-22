@@ -23,6 +23,10 @@ Depedencies:
 Usage:
 (todo)
 
+----------------------------------------------------------------
+Possible Optimizations and TODOs:
+- (Vulkan) paged memory allocation
+- (Vulkan) non blocking swapchain recreation
 */
 
 #ifndef LIGHT_GRAPHICS_H
@@ -1863,7 +1867,7 @@ lgx_buffer* lgx_create_buffer(lgx_hardware* hardware, const lgx_buffer_create_in
 void lgx_free_buffer(lgx_buffer* buffer) {
     if (!buffer) return;
     vkDestroyBuffer(buffer->owning_hardware->logical_device, buffer->buffer, 0);
-    vkFreeMemory(buffer->owning_hardware->logical_device, buffer->memory, 0); // todo
+    vkFreeMemory(buffer->owning_hardware->logical_device, buffer->memory, 0); // todo if paged
     free(buffer);
 }
 
@@ -3512,6 +3516,12 @@ void lgx_hardware_wait_idle(lgx_hardware* hardware) {
 // ===========================
 // Hardware - Memory Allocator Part
 
+struct hardware_paged_memory {
+    uint32_t                memory_size_bytes;  // 0 means memory not allocated
+    VkDeviceMemory          vk_device_memory;   // the page memory
+    hardware_paged_memory*  next_page;          // next page of same memory type
+};
+
 int hardware_create_memory_allocator_state(lgx_hardware* hardware) {
     vkGetPhysicalDeviceMemoryProperties(hardware->physical_device, &hardware->memory_properties);
 
@@ -3522,15 +3532,18 @@ int hardware_create_memory_allocator_state(lgx_hardware* hardware) {
 }
 
 void hardware_free_memory_allocator_state(lgx_hardware* hardware) {
-    // todo
+    for (uint32_t memory_type = 0; memory_type < hardware->memory_properties.memoryTypeCount; memory_type++) {
+        hardware_paged_memory* page = hardware->paged_per_type[memory_type];
+
+        while (page) {
+            if (page->memory_size_bytes != 0) vkFreeMemory(hardware->logical_device, page->vk_device_memory, 0);
+            hardware_paged_memory* next_page = page->next_page;
+            free(page); page = next_page;
+        }
+    }
+
     free(hardware->paged_per_type);
 }
-
-struct hardware_paged_memory {
-    uint32_t                memory_size_bytes;
-    VkDeviceMemory          vk_device_memory;
-    hardware_paged_memory*  next_page;  // next page of same memory type
-};
 
 int try_alloc_dedicated(
     lgx_hardware*           hardware,
@@ -3552,15 +3565,15 @@ int try_alloc_dedicated(
 
     return 1;
 }
-#define UNUSED(x) (void)(x)
+
 int try_alloc_paged(
-    hardware_paged_memory*  paged,
+    hardware_paged_memory*  page,
     uint32_t                size,
     VkDeviceMemory*         result_memory,
     uint32_t*               result_offset
 ) {
     // supress unused parameter warnings for now
-    (void)(paged); (void)(size);
+    (void)(page); (void)(size);
     (void)(result_memory); (void)(result_offset);
     return 0;
 }
@@ -3576,6 +3589,8 @@ int try_allocate_hardware_memory(
     uint32_t memory_size  = memory_requirements.size;
     uint32_t search_start = 0;
 
+    // try all memory types, 
+    // starting from optimal one
     do {
         uint32_t memory_type = find_memory_type(
             &hardware->memory_properties, 
@@ -3584,7 +3599,7 @@ int try_allocate_hardware_memory(
             search_start
         );
 
-        // failure
+        // failure, no memory type
         if (memory_type == UINT32_MAX) return 0;
 
         switch (strategy) {
