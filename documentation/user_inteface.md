@@ -2,7 +2,7 @@
 
 ## Overview
 
-lui is immediate-mode UI layout and rendering library built around a declarative tree of **nodes**. User describe their UI as a hierarchy of typed nodes, pass the root to `lui_measure` and then `lui_render`, and consume the resulting draw commands to paint their frame.
+Light user inteface system is an immediate-mode UI layout and rendering library built around a declarative tree of **nodes**. User describe their UI as a hierarchy of typed nodes, pass the root to `lui_measure` and then `lui_render`, and consume the resulting draw commands to paint their frame.
 
 The library is a single-header file activated by the `LIGHT_FONT_IMPL` macro and uses an arena allocator model — no hidden heap allocations during a frame.
 
