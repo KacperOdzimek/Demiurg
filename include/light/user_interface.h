@@ -531,7 +531,7 @@ static inline lui_color lui_hex(const char* hex) {
 static inline lui_transform lui_trans(float dx, float dy, float sx, float sy, float deg_cw) {
     float rad = deg_cw * (3.14159265358979323846f / 180.0f);
 
-    #ifdef lui_IMPL_INVERT_ROTATION
+    #ifdef LUI_IMPL_INVERT_ROTATION
         float cosr = cosf(rad);
         float sinr = -sinf(rad); // invert rotation
     #else
@@ -564,7 +564,7 @@ static inline lui_transform lui_sca(lui_transform m, float sx, float sy) {
 static inline lui_transform lui_rot(lui_transform m, float deg_cw) {
     float rad = deg_cw * (3.14159265358979323846f / 180.0f);
 
-#ifdef lui_IMPL_INVERT_ROTATION
+#ifdef LUI_IMPL_INVERT_ROTATION
     float cosr = cosf(rad);
     float sinr = sinf(rad);
 #else
@@ -600,7 +600,7 @@ static inline lui_transform lui_mul(lui_transform p, lui_transform c) {
 #define LUI_FMOD_APPROX(x, m) \
     ( ((x) >= 0.0f) ? ((x) - (m) * (int)((x)/(m))) : ((x) - (m) * ((int)((x)/(m)) - 1)) )
 
-#ifdef lui_IMPL_INVERT_ROTATION
+#ifdef LUI_IMPL_INVERT_ROTATION
 // compile time deg to rad conversion
 #define LUI_DEG_TO_RAD(deg_cw) \
     ((((LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) > 3.14159265f) ? \
