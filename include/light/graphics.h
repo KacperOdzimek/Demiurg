@@ -390,7 +390,6 @@ struct lgx_render_target_layout* lgx_window_get_render_target_layout(lgx_window*
 typedef struct lgx_command_lists_allocator_create_info {
     lgx_hardware_queue_type target_queue_type;
     int                     often_recorded;
-    int                     allow_individual_resets;
 } lgx_command_lists_allocator_create_info;
 
 typedef struct lgx_command_lists_allocator lgx_command_lists_allocator;
@@ -1895,8 +1894,7 @@ int lgx_buffer_sync_upload(lgx_buffer* buffer, uint64_t buffer_offset, const voi
     // command allocator
     lgx_command_lists_allocator_create_info alloc_info = {
         .target_queue_type = lgx_hardware_queue_type_graphics,
-        .often_recorded = 0,
-        .allow_individual_resets = 0
+        .often_recorded = 0
     };
     allocator = lgx_create_command_lists_allocator(buffer->owning_hardware, &alloc_info);
     if (!allocator) { success = 0; goto _cleanup; }
@@ -1970,7 +1968,7 @@ static inline uint32_t command_pool_family_index_from_create_info(lgx_hardware* 
 static inline VkCommandPoolCreateFlags command_pool_flags_from_create_info(const lgx_command_lists_allocator_create_info* info) {
     VkCommandPoolCreateFlags flag = 0;
     flag |= (info->often_recorded ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0);
-    flag |= (info->allow_individual_resets ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0);
+    flag |= VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     return flag;
 }
 
