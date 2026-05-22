@@ -65,9 +65,9 @@ typedef struct lfont lfont;
 lfont* lfont_create_font(lgx_hardware*, lfont_create_info*);
 void lfont_free_font(lfont*);
 
-lgx_texture*    lfont_get_texture(const lfont*);
-lfont_glyph     lfont_get_glyph  (const lfont*, uint32_t codepoint);
-float           lfont_get_kerning(const lfont*, uint32_t left_codepoint, uint32_t right_codepoint);
+lgx_texture* lfont_get_texture(const lfont*);
+lfont_glyph  lfont_get_glyph  (const lfont*, uint32_t codepoint);
+float        lfont_get_kerning(const lfont*, uint32_t left_codepoint, uint32_t right_codepoint);
 
 float lfont_get_base_size    (const lfont*);
 float lfont_get_base_ascent  (const lfont*);
