@@ -28,6 +28,7 @@ typedef struct luipf_vertical_scrollbox_data {
     float                       scroll_speed_mod;
     lui_node*                   scrolled_child;
     lui_length                  handle_width;
+    lui_node*                   handle_child;
 
     int                         state_offset;
     lui_offset_data             state_child_offset;
@@ -196,12 +197,6 @@ static void vertical_scrollbox_handle_func(
         end   = -begin;
         data->state_handle_offset.offset_y = begin + (end - begin) * alpha;
     }
-
-    // scroll by draging handle
-    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
-    if (cursor_inside && left_pressed) {
-        data->state_offset += default_scroll_speed_vertical * delta_time;
-    }
 }
 
 static lui_node vertical_scrollbox_row[];
@@ -258,24 +253,19 @@ const lui_node luipf_vertical_scrollbox[] = {
 // Handle
 static lui_node vertical_scrollbox_handle[] = {
     {
-        .type  = lui_node_box,
-        .child = &vertical_scrollbox_handle[1],
-        .data  = &vertical_scrollbox_handle_data
-    },
-    {
         .type  = lui_node_input_handle,
-        .child = &vertical_scrollbox_handle[2],
+        .child = &vertical_scrollbox_handle[1],
         .data  = vertical_scrollbox_handle_func
     },
     {
-        .type  = lui_node_input_box | lui_node_flag_data_instanced,
-        .child = &vertical_scrollbox_handle[3],
-        .data_instance_offset = 0 // the instance itself
+        .type = lui_node_input_box | lui_node_flag_data_instanced,
+        .child = &vertical_scrollbox_handle[2],
+        .data  = 0, // instance itself
     },
     {   // span handle
-        .type  = lui_node_sizebox | lui_node_flag_data_instanced,
-        .child = NULL,
-        .data_instance_offset = offsetof(luipf_vertical_scrollbox_data, state_handle_sizebox)
+        .type  = lui_node_sizebox | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
+        .child_instance_offset = offsetof(luipf_vertical_scrollbox_data, handle_child),
+        .data_instance_offset  = offsetof(luipf_vertical_scrollbox_data, state_handle_sizebox)
     }
 };
 
