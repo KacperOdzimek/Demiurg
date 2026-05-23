@@ -26,25 +26,25 @@ Possible refactor:
 #include "light/user_interface.h"
 
 typedef struct luipf_button_data {
-    lui_node*       button_child;
-    lui_box_data    default_style;
-    lui_box_data    hovered_style;
-    lui_box_data    pressed_style;
+    lui_node*                   button_child;
+    lui_box_data                default_style;
+    lui_box_data                hovered_style;
+    lui_box_data                pressed_style;
 
-    lui_input_handler_func  on_clicked;
-    lui_input_handler_func  on_released;
-    lui_input_handler_func  on_held;
-    void*                   event_data;
+    lui_input_handler_func      on_clicked;
+    lui_input_handler_func      on_released;
+    lui_input_handler_func      on_held;
+    void*                       event_data;
 
-    lui_box_data    state_style;
-    char            state_held;
+    lui_box_data                state_style;
+    char                        state_held;
 } luipf_button_data;
 
 extern const lui_node luipf_button[];
 
 typedef struct luipf_scrollbox_data {
     float                       scroll_speed_mod;
-    lui_node*                   scrolled_child;
+    lui_node*                   scroll_child;
     lui_length                  handle_thickness;
     lui_node*                   handle_child;
     
@@ -316,7 +316,7 @@ static lui_node horizontal_scrollbox_handle[] = {
 static lui_node horizontal_scrollbox_column[] = {
     {
         .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
-        .child_instance_offset  = offsetof(luipf_scrollbox_data, scrolled_child),
+        .child_instance_offset  = offsetof(luipf_scrollbox_data, scroll_child),
         .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
     },
     {
@@ -524,7 +524,7 @@ static lui_node vertical_scrollbox_handle[] = {
 static lui_node vertical_scrollbox_row[] = {
     {
         .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
-        .child_instance_offset  = offsetof(luipf_scrollbox_data, scrolled_child),
+        .child_instance_offset  = offsetof(luipf_scrollbox_data, scroll_child),
         .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
     },
     {
