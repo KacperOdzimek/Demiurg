@@ -318,6 +318,8 @@ typedef struct lui_transform_data {
     unsigned char   apply_transform_at_measure : 1;
     unsigned char   apply_transform_at_render  : 1;
     lui_transform   transform;
+    int             pixel_offset_x;
+    int             pixel_offset_y;
 } lui_transform_data;
 
 // depth
@@ -1810,6 +1812,10 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
         const lui_transform_data* data = helper_get_data(node, rc->instance);
         if (!data->apply_transform_at_render) break;
         trs.trans = lui_mul(trs.trans, data->transform);
+        trs.trans = lui_off(trs.trans, 
+            ((float)data->pixel_offset_x) / trs.pixel_width  * 2,
+            ((float)data->pixel_offset_y) / trs.pixel_height * 2
+        );
     } break;
 
     case lui_node_padding: render_padding(rc, node, idx, first_child_index, trs); return;
