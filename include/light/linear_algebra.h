@@ -1,6 +1,6 @@
 /*
 ----------------------------------------------------------------
-Contents
+Contents:
 This file provides linear algebra types and operations
 
 ----------------------------------------------------------------
@@ -10,12 +10,12 @@ Code info:
 - matrices are column-major, so accessing element is data[col][row]
 
 ----------------------------------------------------------------
-Usage
+Usage:
 - does not require building implementation unlike other light libraries
 - read through what available, include and use
 
 ----------------------------------------------------------------
-Notes
+Notes:
 - SIMD can be implemented
 */
 
