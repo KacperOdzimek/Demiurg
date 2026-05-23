@@ -31,6 +31,7 @@ typedef struct luipf_vertical_scrollbox_data {
     lui_node*                   handle_child;
 
     int                         state_offset;
+    int                         state_handle_dragged_y;
     lui_offset_data             state_child_offset;
     lui_offset_data             state_handle_offset;
     lui_sizebox_data            state_handle_sizebox;
@@ -196,6 +197,30 @@ static void vertical_scrollbox_handle_func(
         begin = -(viewport_height / 2) + (height / 2);
         end   = -begin;
         data->state_handle_offset.offset_y = begin + (end - begin) * alpha;
+    }
+
+    // scroll by draging handle
+    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    if (cursor_inside && left_pressed) {
+        int cursor_y; lui_injection_query_cursor_position(input_state, NULL, &cursor_y, NULL, NULL);
+
+        // was dragged
+        if (data->state_handle_dragged_y != -1) {
+            // calculate pixel movement within handle
+            int pixels_change = data->state_handle_dragged_y - cursor_y;
+
+            // calculate pixel movement within content
+            pixels_change *= (content_height / viewport_height) * 2;
+
+            // apply
+            data->state_offset -= pixels_change;
+            vertical_scrollbox_apply_scroll(data);
+        }
+
+        data->state_handle_dragged_y = cursor_y;
+    }
+    else {
+        data->state_handle_dragged_y = -1;
     }
 }
 
