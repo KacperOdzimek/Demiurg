@@ -32,9 +32,9 @@ typedef struct luipf_vertical_scrollbox_data {
     int                         state_offset;
     lui_offset_data             state_child_offset;
     lui_offset_data             state_handle_offset;
+    lui_sizebox_data            state_handle_sizebox;
     lui_measure_size_query_data state_measure_size;
     lui_render_size_query_data  state_render_size;
-    lui_sizebox_data            state_handle_sizebox;
 } luipf_vertical_scrollbox_data;
 
 extern const lui_node luipf_vertical_scrollbox[];
@@ -52,7 +52,7 @@ static void button_input_func(
     float                       delta_time
 ) {
     luipf_button_data* data = (luipf_button_data*)input_box_data;
-    int left_pressed = 0; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
 
     // just clicked
     if (cursor_inside && left_pressed && !data->state_held) {
@@ -113,31 +113,28 @@ static void vertical_scrollbox_apply_scroll(luipf_vertical_scrollbox_data* data)
     int content_height  = data->state_measure_size.height.min;
     int viewport_height = data->state_render_size.height;
 
-    // start offseting from top
-    int offset_to_top_align = -content_height / 2;
-
-    // combined offset
-    int new_offset_y = offset_to_top_align + data->state_offset;
+    int offset_to_align = -content_height / 2;  // start offseting from align - hardcoded top
+    int total_offset = offset_to_align + data->state_offset;
 
     // no scrolling needed
     if (content_height <= viewport_height) {
-        new_offset_y = 0;
+        total_offset = 0;
         data->state_offset = 0;
     } 
     // clamp
     else {
         int max_offset = (content_height - viewport_height) / 2;
-        if (new_offset_y >  max_offset) {
-            new_offset_y = max_offset;
-            data->state_offset = max_offset - offset_to_top_align;
+        if (total_offset >  max_offset) {
+            total_offset = max_offset;
+            data->state_offset = max_offset - offset_to_align;
         }
-        if (new_offset_y < -max_offset) {
-            new_offset_y = -max_offset;
-            data->state_offset = -max_offset - offset_to_top_align;
+        if (total_offset < -max_offset) {
+            total_offset = -max_offset;
+            data->state_offset = -max_offset - offset_to_align;
         }
     }
 
-    data->state_child_offset.offset_y = new_offset_y;
+    data->state_child_offset.offset_y = total_offset;
 }
 
 static void vertical_scrollbox_scroll_func(
@@ -166,14 +163,16 @@ static void vertical_scrollbox_handle_func(
 ) {
     luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
 
-    data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all;
-
     // set width to user desires
+    data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all_width;
     data->state_handle_sizebox.width = data->handle_width;
 
-    // set height to visible part of widget
+    // sizes
     float content_height  = data->state_measure_size.height.min;
     float viewport_height = data->state_render_size.height;
+
+    // set height to visible part of widget
+    data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all_height;
 
     float visible_fraction = viewport_height / content_height;
     if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
@@ -181,6 +180,28 @@ static void vertical_scrollbox_handle_func(
     int height = viewport_height * visible_fraction;
     data->state_handle_sizebox.height.min = height;
     data->state_handle_sizebox.height.max = height;
+
+    // position handle
+    if (visible_fraction >= 1.0f) {
+        data->state_handle_offset.offset_y = 0;
+    }
+    else {
+        // find current lerp alpha of content between ends
+        float begin = (content_height - viewport_height) / 2;
+        float end   = -begin;
+        float alpha = (data->state_child_offset.offset_y - begin) / (end -  begin);
+
+        // apply alpha to handle movement
+        begin = -(viewport_height / 2) + (height / 2);
+        end   = -begin;
+        data->state_handle_offset.offset_y = begin + (end - begin) * alpha;
+    }
+
+    // scroll by draging handle
+    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    if (cursor_inside && left_pressed) {
+        data->state_offset += default_scroll_speed_vertical * delta_time;
+    }
 }
 
 static lui_node vertical_scrollbox_row[];
