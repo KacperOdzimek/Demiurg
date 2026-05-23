@@ -29,6 +29,7 @@ typedef struct luipf_vertical_scrollbox_data {
     lui_node*                   scrolled_child;
     lui_length                  handle_width;
 
+    int                         state_offset;
     lui_offset_data             state_child_offset;
     lui_offset_data             state_handle_offset;
     lui_measure_size_query_data state_measure_size;
@@ -107,23 +108,33 @@ const lui_node luipf_button[] = {
 
 static const float default_scroll_speed_vertical = 2000;
 
-static void vertical_scrollbox_clamp_apply(
-    luipf_vertical_scrollbox_data*  data,
-    int                             new_offset_y
-) {
+static void vertical_scrollbox_apply_scroll(luipf_vertical_scrollbox_data* data) {
     // sizes
     int content_height  = data->state_measure_size.height.min;
     int viewport_height = data->state_render_size.height;
 
+    // start offseting from top
+    int offset_to_top_align = -content_height / 2;
+
+    // combined offset
+    int new_offset_y = offset_to_top_align + data->state_offset;
+
     // no scrolling needed
     if (content_height <= viewport_height) {
         new_offset_y = 0;
+        data->state_offset = 0;
     } 
     // clamp
     else {
         int max_offset = (content_height - viewport_height) / 2;
-        if (new_offset_y >  max_offset) new_offset_y =  max_offset;
-        if (new_offset_y < -max_offset) new_offset_y = -max_offset;
+        if (new_offset_y >  max_offset) {
+            new_offset_y = max_offset;
+            data->state_offset = max_offset - offset_to_top_align;
+        }
+        if (new_offset_y < -max_offset) {
+            new_offset_y = -max_offset;
+            data->state_offset = -max_offset - offset_to_top_align;
+        }
     }
 
     data->state_child_offset.offset_y = new_offset_y;
@@ -142,8 +153,9 @@ static void vertical_scrollbox_scroll_func(
         float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
         pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_vertical;
     }
+    data->state_offset -= pixels_change;
 
-    vertical_scrollbox_clamp_apply(data, data->state_child_offset.offset_y - pixels_change);
+    vertical_scrollbox_apply_scroll(data);
 }
 
 static void vertical_scrollbox_handle_func(
