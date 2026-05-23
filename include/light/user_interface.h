@@ -23,11 +23,18 @@ Usage: See dedicated documentation
 
     static inline void lui_injection_query_cursor_position(
         lui_injection_input_state* state,
-        float* cursor_norm_x_target, // normalized [-1, 1] for width
-        float* cursor_norm_y_target  // normalized [-1, 1] for height
+        int*    cursor_pixels_x,      // offset from upper left corner in width
+        int*    cursor_pixels_y,      // offset from upper left corner in height
+        float*  cursor_norm_x_target, // normalized [-1, 1] for width
+        float*  cursor_norm_y_target  // normalized [-1, 1] for height
     );
 
     static inline void lui_injection_query_cursor_state(
+        lui_injection_input_state* state,
+        int* left_pressed, int* right_pressed, float* scroll_input
+    );
+
+    static inline void lui_injection_query_previous_cursor_state(
         lui_injection_input_state* state,
         int* left_pressed, int* right_pressed, float* scroll_input
     );
@@ -1222,7 +1229,6 @@ static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node
         helper_measurement* own = &mc->measurements[idx];
         own->width.min  = 0;
         own->width.flex = 1.0f;
-
         own->height.min = 0;
         own->height.flex = 1.0f;
     }
@@ -1232,7 +1238,6 @@ static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node
         helper_measurement* own = &mc->measurements[idx];
         own->width.max  = lui_inf_length;
         own->width.flex = 1.0f;
-
         own->height.max = lui_inf_length;
         own->height.flex = 1.0f;
     }
@@ -1975,7 +1980,7 @@ void lui_input(
     float                       delta_time
 ) {
     float cx = -2, cy = 2; // out of screen
-    lui_injection_query_cursor_position(input_state, &cx, &cy);
+    lui_injection_query_cursor_position(input_state, NULL, NULL, &cx, &cy);
 
     uint32_t          inp_count  = input_boxes_arena->position / sizeof(helper_input_box);
     helper_input_box* inp_memory = (helper_input_box*)input_boxes_arena->memory;
