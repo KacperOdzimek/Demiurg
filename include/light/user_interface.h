@@ -162,6 +162,18 @@ typedef enum lui_node_type {
     // single childed
     lui_node_instance,
 
+    // Queries
+
+    // node measure size query
+    // saves child measured length to it's data
+    // single childed
+    lui_node_measure_size_query,
+
+    // node render size query
+    // saves render pixel size of children to it's data
+    // single childed
+    lui_node_render_size_query,
+
     // Transform
 
     // node transform
@@ -246,9 +258,14 @@ typedef enum lui_node_type {
     // Extra Flags
 
     // most nodes dimensions are dictated by their subtrees
+    // this flag allows nodes to be shrinked beyond their subtree limit (usefull for clipboxes)
+    // is it the same as overwriting length mins of target node with sizebox
+    lui_node_flag_ignore_min = 1 << 4,
+
+    // most nodes dimensions are dictated by their subtrees
     // this flag cause the nodes to fill entire given space instead
     // it is the same as overwriting length maxes of target node with sizebox
-    lui_node_flag_fill = 1 << 5,
+    lui_node_flag_ignore_max = 1 << 5,
 
     // see lui_node_instance
     // if active, during measure and render travelsals
@@ -293,6 +310,20 @@ typedef struct lui_node_array {
     size_t    count;
     lui_node* nodes;
 } lui_node_array;
+
+// measure size query
+
+typedef struct lui_measure_size_query_data {
+    lui_length width;
+    lui_length height;
+} lui_measure_size_query_data;
+
+// render size query
+
+typedef struct lui_render_size_query_data {
+    float width;
+    float height;
+} lui_render_size_query_data;
 
 // transform
 
@@ -676,7 +707,7 @@ static inline lui_transform lui_mul(lui_transform p, lui_transform c) {
 // ===========================
 // Node helpers
 
-static const unsigned char NODE_TYPE_NO_FLAG_MASK = (unsigned char)(lui_node_flag_fill - 1);
+static const unsigned char NODE_TYPE_NO_FLAG_MASK = (unsigned char)(lui_node_flag_ignore_min - 1);
 
 static inline int helper_is_single_childed(lui_node_type type) {
     type &= NODE_TYPE_NO_FLAG_MASK;
@@ -1165,19 +1196,39 @@ static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node
         mc->instance = old_instance;
     } break;
 
-    case lui_node_transform:     measure_transform  (mc, node, idx, first_child_index); break;
-    case lui_node_padding:       measure_padding    (mc, node, idx, first_child_index); break;
-    case lui_node_sizebox:       measure_sizebox    (mc, node, idx, first_child_index); break;
-    case lui_node_row:           measure_row        (mc, node, idx, first_child_index); break;
-    case lui_node_column:        measure_column     (mc, node, idx, first_child_index); break;
-    case lui_node_text:          measure_text       (mc, node, idx, first_child_index); break;
+    case lui_node_measure_size_query: {
+        const lui_node* child = helper_get_node_single_child(node, mc->instance);
+
+        if (child) measure_copy_child(mc, node, idx, first_child_index);  // recurse into subtree
+        helper_measurement* own = &mc->measurements[idx];
+
+        lui_measure_size_query_data* query_target = (lui_measure_size_query_data*)helper_get_data(node, mc->instance);
+        query_target->width  = own->width; query_target->height = own->height;
+    } break;
+
+    case lui_node_transform:    measure_transform  (mc, node, idx, first_child_index); break;
+    case lui_node_padding:      measure_padding    (mc, node, idx, first_child_index); break;
+    case lui_node_sizebox:      measure_sizebox    (mc, node, idx, first_child_index); break;
+    case lui_node_row:          measure_row        (mc, node, idx, first_child_index); break;
+    case lui_node_column:       measure_column     (mc, node, idx, first_child_index); break;
+    case lui_node_text:         measure_text       (mc, node, idx, first_child_index); break;
 
     // default dispatch case
     default: measure_copy_child(mc, node, idx, first_child_index); break;
     }
 
-    // if fill flag, overwrite maxes
-    if (node->type & lui_node_flag_fill) {
+    // if ingore min flag, overwrite mins
+    if (node->type & lui_node_flag_ignore_min) {
+        helper_measurement* own = &mc->measurements[idx];
+        own->width.min  = 0;
+        own->width.flex = 1.0f;
+
+        own->height.min = 0;
+        own->height.flex = 1.0f;
+    }
+
+    // if ignore max flag, overwrite maxes
+    if (node->type & lui_node_flag_ignore_max) {
         helper_measurement* own = &mc->measurements[idx];
         own->width.max  = lui_inf_length;
         own->width.flex = 1.0f;
@@ -1698,6 +1749,12 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
 
         rc->instance = old_instance;
     } return;   // subtree explorated
+
+    case lui_node_render_size_query: {
+        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
+        lui_render_size_query_data* data = (lui_render_size_query_data*)helper_get_data(node, rc->instance);
+        data->width = trs.pixel_width; data->height = trs.pixel_height;
+    } break;
 
     // save current clipbox, overwrite, restore
     case lui_node_clipbox: {
