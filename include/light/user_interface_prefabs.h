@@ -145,7 +145,7 @@ static void vertical_scrollbox_input_func(
 }
 
 const lui_node luipf_vertical_scrollbox[] = {
-    {   // measure parent space - the clipbox dimensions
+    {   // measure parent space - the clipbox dimensions - the viewport size
         .type  = lui_node_render_size_query | lui_node_flag_data_instanced,
         .child = &luipf_vertical_scrollbox[1],
         .data_instance_offset = offsetof(luipf_vertical_scrollbox_data, state_render_size)
@@ -166,7 +166,7 @@ const lui_node luipf_vertical_scrollbox[] = {
         .data_instance_offset = 0 // the instance itself
     },
     // make row here
-    {   // measure child
+    {   // measure child - the content size
         .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
         .child = &luipf_vertical_scrollbox[5],
         .data_instance_offset = offsetof(luipf_vertical_scrollbox_data, state_measure_size)
