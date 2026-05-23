@@ -1,3 +1,25 @@
+/*
+----------------------------------------------------------------
+Contents
+This file provided commonly used prefab components for light user interface.
+
+----------------------------------------------------------------
+Code info:
+- luipf prefix
+- LIGHT_USER_INTERFACE_PREFABS_IMPL macro to build
+- user_interface.h dependent
+
+----------------------------------------------------------------
+Usage:
+- provided prefabs shall be instanced with lui_node_instance
+- use on of provided lui_node arrays as root and a matching data structure as data
+- enjoy
+
+----------------------------------------------------------------
+Possible refactor:
+- horizontal/vertical scrollbox code may be merged and reduced
+*/
+
 #ifndef LIGHT_USER_INTERFACE_PREFABS_H
 #define LIGHT_USER_INTERFACE_PREFABS_H
 
