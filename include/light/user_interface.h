@@ -35,17 +35,9 @@ Usage: See dedicated documentation
 
 #ifdef LIGHT_USER_INTERFACE_IMPL
     typedef struct lui_length     lui_length;
-    typedef struct lui_image_data lui_image_data;
     typedef struct lui_text_data  lui_text_data;
 
     // Measurements
-
-    static inline void lui_injection_measure_sized_image(
-        const lui_image_data*    data,
-        lui_length*              width_target, 
-        lui_length*              height_target,
-        void*                    user_context
-    );
 
     static inline void lui_injection_measure_text(
         const lui_text_data*     data,
@@ -239,21 +231,6 @@ typedef enum lui_node_type {
     // single childed
     lui_node_box,
 
-    // node image
-    // image render primitive
-    // it is spanned by it's children, unless with lui_node_flag_fill flag
-    // data - lui_image_data
-    // single childed
-    lui_node_image,
-
-    // node sized image
-    // other image render primitive
-    // renders given texture in it's desired size 
-    // (unless stretched by contents minimal size)
-    // data - lui_image_data
-    // single childed
-    lui_node_sized_image,
-
     // node text
     // text render primitive
     // renders text in it's desired size
@@ -376,17 +353,10 @@ typedef struct lui_column_data {
 // box
 
 typedef struct lui_box_data {
-    lui_color   color;      // box color
+    lui_color   tint;       // box color
+    const char* image;      // image name/path, may be NULL
     uint32_t    shader;     // shader effect index
 } lui_box_data;
-
-// image
-
-typedef struct lui_image_data {
-    const char* image;      // image name/path
-    lui_color   tint;       // image color modyficator
-    uint32_t    shader;     // shader effect index
-} lui_image_data;
 
 // text
  
@@ -403,7 +373,6 @@ typedef struct lui_text_data {
 
 typedef enum lui_draw_command_type {
     lui_draw_box,
-    lui_draw_image,
     lui_draw_text,
 } lui_draw_command_type;
 
@@ -418,7 +387,6 @@ typedef struct lui_draw_command {
 
     union {
         lui_box_data     box_data;
-        lui_image_data   image_data;
         lui_text_data    text_data;
     };
 } lui_draw_command;
@@ -1140,30 +1108,6 @@ static inline void measure_column(helper_measurement_walk_context* mc, const lui
     mc->measurements[idx] = own;
 }
 
-// Measure option for lui_node_sized_image
-// First measures subtree, then measures the image
-// In both axes:
-// min = max(subtree.min, image.min)
-// max = max(subtree.min, image.max)
-static inline void measure_sized_image(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    measure_copy_child(mc, node, idx, cidx);
-    helper_measurement* own = &mc->measurements[idx];
-
-    const lui_image_data* data = helper_get_data(node, mc->instance);
-    lui_length width, height; lui_injection_measure_sized_image(data, &width, &height, mc->user_context);
-
-    // lower limits
-    own->width.min  = helper_max(own->width.min, width.min);
-    own->height.min = helper_max(own->height.min, height.min);
-
-    // upper limits
-    own->width.max  = helper_max(own->width.min, width.max);
-    own->height.max = helper_max(own->height.min, height.max);
-
-    // do not flex
-    own->width.flex = 0.0f; own->height.flex = 0.0f;
-}
-
 // Measure option for lui_node_text
 // First measures subtree, then measures the text
 // In both axes:
@@ -1211,13 +1155,12 @@ static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node
         mc->instance = old_instance;
     } break;
 
-    case lui_node_transform:     measure_transform   (mc, node, idx, first_child_index); break;
-    case lui_node_padding:       measure_padding     (mc, node, idx, first_child_index); break;
-    case lui_node_sizebox:       measure_sizebox     (mc, node, idx, first_child_index); break;
-    case lui_node_row:           measure_row         (mc, node, idx, first_child_index); break;
-    case lui_node_column:        measure_column      (mc, node, idx, first_child_index); break;
-    case lui_node_sized_image:   measure_sized_image (mc, node, idx, first_child_index); break;
-    case lui_node_text:          measure_text        (mc, node, idx, first_child_index); break;
+    case lui_node_transform:     measure_transform  (mc, node, idx, first_child_index); break;
+    case lui_node_padding:       measure_padding    (mc, node, idx, first_child_index); break;
+    case lui_node_sizebox:       measure_sizebox    (mc, node, idx, first_child_index); break;
+    case lui_node_row:           measure_row        (mc, node, idx, first_child_index); break;
+    case lui_node_column:        measure_column     (mc, node, idx, first_child_index); break;
+    case lui_node_text:          measure_text       (mc, node, idx, first_child_index); break;
 
     // default dispatch case
     default: measure_copy_child(mc, node, idx, first_child_index); break;
@@ -1835,24 +1778,6 @@ static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* n
             .depth          = rc->current_depth,
             .clipbox_index  = rc->current_clipbox_index,
             .box_data       = *(const lui_box_data*)helper_get_data(node, rc->instance)
-        };
-
-        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
-            rc->cmd_arena, sizeof(lui_draw_command), &rc->jmp_target, lui_return_command_arena_too_small
-        ); *slot = cmd;
-    } break;
-
-    case lui_node_image: case lui_node_sized_image: {
-        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
-        
-        lui_draw_command cmd = {
-            .type           = lui_draw_image,
-            .transform      = trs.trans,
-            .pixels_width   = trs.pixel_width,
-            .pixels_height  = trs.pixel_height,
-            .depth          = rc->current_depth,
-            .clipbox_index  = rc->current_clipbox_index,
-            .image_data     = *(const lui_image_data*)helper_get_data(node, rc->instance)
         };
 
         lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
