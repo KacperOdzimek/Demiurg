@@ -4,16 +4,16 @@
 #include "light/user_interface.h"
 
 typedef struct luipf_button_data {
-    lui_node*               button_child;
-    lui_box_data            default_style;
-    lui_box_data            hovered_style;
-    lui_box_data            pressed_style;
-    lui_input_handler_func  on_clicked;
-    lui_input_handler_func  on_released;
-    lui_input_handler_func  on_held;
-    void*                   data;
-    int                     state_held;
-    lui_box_data            state_style;
+    lui_node*                   button_child;
+    lui_box_data                default_style;
+    lui_box_data                hovered_style;
+    lui_box_data                pressed_style;
+    lui_input_handler_func      on_clicked;
+    lui_input_handler_func      on_released;
+    lui_input_handler_func      on_held;
+    void*                       data;
+    int                         state_held;
+    lui_box_data                state_style;
 } luipf_button_data;
 
 extern const lui_node luipf_button[];
@@ -114,13 +114,15 @@ static void vertical_scrollbox_input_func(
     float                       delta_time
 ) {
     luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
-    if (!cursor_inside) return;
 
     int center_position = data->state_offset.offset_y;
 
     // scroll
-    float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
-    int pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_vertical;
+    int pixels_change = 0;
+    if (cursor_inside) {
+        float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
+        pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_vertical;
+    }
     center_position -= pixels_change;
 
     // sizes
