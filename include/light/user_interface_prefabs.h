@@ -4,16 +4,20 @@
 #include "light/user_interface.h"
 
 typedef struct luipf_button_data {
-    lui_node*                   button_child;
-    lui_box_data                default_style;
-    lui_box_data                hovered_style;
-    lui_box_data                pressed_style;
-    lui_input_handler_func      on_clicked;
-    lui_input_handler_func      on_released;
-    lui_input_handler_func      on_held;
-    void*                       data;
-    int                         state_held;
-    lui_box_data                state_style;
+    lui_node*       button_child;
+    lui_box_data    default_style;
+    lui_box_data    hovered_style;
+    lui_box_data    pressed_style;
+
+    lui_input_handler_func  on_clicked;
+    lui_input_handler_func  on_released;
+    lui_input_handler_func  on_held;
+    void*                   event_data;
+
+    lui_box_data    state_style;
+    char            state_held;
+    char            state_prev_left;
+    char            state_left_started_inside;
 } luipf_button_data;
 
 extern const lui_node luipf_button[];
@@ -56,34 +60,29 @@ static void button_input_func(
     luipf_button_data* data = (luipf_button_data*)input_box_data;
     int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
 
-    // just clicked
-    if (cursor_inside && left_pressed && !data->state_held) {
-        data->state_held  = 1;
+    char just_pressed  = left_pressed && !data->state_prev_left;
+    char just_released = !left_pressed && data->state_prev_left;
+
+    if (just_pressed && cursor_inside) {            // press started
+        data->state_held = 1;
+        data->state_left_started_inside = 1;
         data->state_style = data->pressed_style;
-        if (data->on_clicked) data->on_clicked(data->data, input_state, cursor_inside, delta_time);
+        if (data->on_clicked) data->on_clicked(data->event_data, input_state, cursor_inside, delta_time);
     }
-    // held
-    else if (cursor_inside && left_pressed && data->state_held) {
+    else if (left_pressed && data->state_held) {    // held
         data->state_style = data->pressed_style;
-        if (data->on_held) data->on_held(data->data, input_state, cursor_inside, delta_time);
+        if (data->on_held) data->on_held(data->event_data, input_state, cursor_inside, delta_time);
     }
-    // released
-    else if (data->state_held && !left_pressed) {
+    else if (just_released && data->state_held) {   // released
         data->state_held = 0;
+        if (cursor_inside)      data->state_style = data->hovered_style;
+        else                    data->state_style = data->default_style;
+        if (data->on_released)  data->on_released(data->event_data, input_state, cursor_inside, delta_time);
+    }
+    else if (cursor_inside) data->state_style = data->hovered_style;    // hover
+    else                    data->state_style = data->default_style;    // idle
 
-        if (cursor_inside)  data->state_style = data->hovered_style;
-        else                data->state_style = data->default_style;
-
-        if (data->on_released) data->on_released(data->data, input_state, cursor_inside, delta_time);
-    }
-    // just hovered
-    else if (cursor_inside) {
-        data->state_style = data->hovered_style;
-    }
-    // default
-    else {
-        data->state_style = data->default_style;
-    }
+    data->state_prev_left = left_pressed;
 }
 
 const lui_node luipf_button[] = {
@@ -110,7 +109,7 @@ const lui_node luipf_button[] = {
 
 static const float default_scroll_speed_vertical = 2000;
 
-static void vertical_scrollbox_apply_scroll(luipf_vertical_scrollbox_data* data) {
+static void vertical_scrollbox_apply_content_scroll(luipf_vertical_scrollbox_data* data) {
     // sizes
     int content_height  = data->state_measure_size.height.min;
     int viewport_height = data->state_render_size.height;
@@ -154,7 +153,7 @@ static void vertical_scrollbox_scroll_func(
     }
     data->state_offset -= pixels_change;
 
-    vertical_scrollbox_apply_scroll(data);
+    vertical_scrollbox_apply_content_scroll(data);
 }
 
 static void vertical_scrollbox_handle_func(
@@ -201,7 +200,7 @@ static void vertical_scrollbox_handle_func(
 
     // scroll by draging handle
     int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
-    if (cursor_inside && left_pressed) {
+    if (left_pressed) {
         int cursor_y; lui_injection_query_cursor_position(input_state, NULL, &cursor_y, NULL, NULL);
 
         // was dragged
@@ -210,14 +209,17 @@ static void vertical_scrollbox_handle_func(
             int pixels_change = data->state_handle_dragged_y - cursor_y;
 
             // calculate pixel movement within content
-            pixels_change *= (content_height / viewport_height) * 2;
+            pixels_change *= (content_height / viewport_height);
 
             // apply
             data->state_offset -= pixels_change;
-            vertical_scrollbox_apply_scroll(data);
-        }
+            vertical_scrollbox_apply_content_scroll(data);
 
-        data->state_handle_dragged_y = cursor_y;
+            data->state_handle_dragged_y = cursor_y;
+        }
+        else if (cursor_inside) {
+            data->state_handle_dragged_y = cursor_y;
+        }
     }
     else {
         data->state_handle_dragged_y = -1;
