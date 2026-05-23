@@ -20,34 +20,31 @@ typedef struct luipf_button_data {
 
 extern const lui_node luipf_button[];
 
-typedef struct luipf_horizontal_scrollbox_data {
-
-} luipf_horizontal_scrollbox_data;
-
-extern const lui_node luipf_horizontal_scrollbox[];
-
-typedef struct luipf_vertical_scrollbox_data {
+typedef struct luipf_scrollbox_data {
     float                       scroll_speed_mod;
     lui_node*                   scrolled_child;
-    lui_length                  handle_width;
+    lui_length                  handle_thickness;
     lui_node*                   handle_child;
-
+    
     int                         state_offset;
-    int                         state_handle_dragged_y;
+    int                         state_handle_dragged;
     lui_offset_data             state_child_offset;
     lui_offset_data             state_handle_offset;
     lui_sizebox_data            state_handle_sizebox;
     lui_measure_size_query_data state_measure_size;
     lui_render_size_query_data  state_render_size;
-} luipf_vertical_scrollbox_data;
+} luipf_scrollbox_data;
 
+extern const lui_node luipf_horizontal_scrollbox[];
 extern const lui_node luipf_vertical_scrollbox[];
 
 #endif // LIGHT_USER_INTERFACE_PREFABS_H
 
 #ifdef LIGHT_USER_INTERFACE_PREFABS_IMPL
 
-// Button
+/*
+    Button
+*/
 
 static void button_input_func(
     void*                       input_box_data,
@@ -99,13 +96,221 @@ const lui_node luipf_button[] = {
     }
 };
 
-// Horizontal Scrollbox
+/*
+    Horizontal Scrollbox
+*/
 
-// Vertical Scrollbox
+static const float default_scroll_speed_horizontal = 3500;
+
+static inline void horizontal_scrollbox_apply_content_scroll(luipf_scrollbox_data* data) {
+    // sizes
+    int content_width   = data->state_measure_size.width.min;
+    int viewport_width  = data->state_render_size.width;
+
+    int offset_to_align = content_width / 2;  // start offseting from align - hardcoded left
+    int total_offset = offset_to_align + data->state_offset;
+
+    // no scrolling needed
+    if (content_width <= viewport_width) {
+        total_offset = 0;
+        data->state_offset = 0;
+    } 
+    // clamp
+    else {
+        int max_offset = (content_width - viewport_width) / 2;
+        if (total_offset >  max_offset) {
+            total_offset = max_offset;
+            data->state_offset = max_offset - offset_to_align;
+        }
+        if (total_offset < -max_offset) {
+            total_offset = -max_offset;
+            data->state_offset = -max_offset - offset_to_align;
+        }
+    }
+
+    data->state_child_offset.offset_x = total_offset;
+}
+
+static inline void horizontal_scrollbox_apply_handle_scroll(luipf_scrollbox_data* data) {
+    // set height to user desires
+    data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all_height;
+    data->state_handle_sizebox.height = data->handle_thickness;
+
+    // sizes
+    float content_width   = data->state_measure_size.width.min;
+    float viewport_width  = data->state_render_size.width;
+
+    // set width to visible part of widget
+    data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all_width;
+
+    float visible_fraction = viewport_width / content_width;
+    if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
+
+    int width = viewport_width * visible_fraction;
+    data->state_handle_sizebox.width.min = width;
+    data->state_handle_sizebox.width.max = width;
+
+    // position handle
+    if (visible_fraction >= 1.0f) {
+        data->state_handle_offset.offset_x = 0;
+    }
+    else {
+        // find current lerp alpha of content between ends
+        float begin = (content_width - viewport_width) / 2;
+        float end   = -begin;
+        float alpha = (data->state_child_offset.offset_x - begin) / (end - begin);
+
+        // apply alpha to handle movement
+        begin = -(viewport_width / 2) + (width / 2);
+        end   = -begin;
+        data->state_handle_offset.offset_x = begin + (end - begin) * alpha;
+    }
+}
+
+static void horizontal_scrollbox_scroll_func(
+    void*                       input_box_data,
+    lui_injection_input_state*  input_state,
+    int                         cursor_inside,
+    float                       delta_time
+) {
+    luipf_scrollbox_data* data = (luipf_scrollbox_data*)input_box_data;
+
+    int pixels_change = 0;
+    if (cursor_inside) {
+        float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
+        pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_horizontal;
+    }
+    data->state_offset -= pixels_change;
+
+    horizontal_scrollbox_apply_content_scroll(data);
+}
+
+static void horizontal_scrollbox_handle_func(
+    void*                       input_box_data,
+    lui_injection_input_state*  input_state,
+    int                         cursor_inside,
+    float                       delta_time
+) {
+    luipf_scrollbox_data* data = (luipf_scrollbox_data*)input_box_data;
+
+    // position handle
+    horizontal_scrollbox_apply_handle_scroll(data);
+
+    // sizes
+    float content_width   = data->state_measure_size.width.min;
+    float viewport_width  = data->state_render_size.width;
+
+    // scroll by draging handle
+    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    if (left_pressed) {
+        int cursor_x; lui_injection_query_cursor_position(input_state, &cursor_x, NULL, NULL, NULL);
+
+        if (data->state_handle_dragged != -1) {                         // was dragged
+            int pixels_change = cursor_x - data->state_handle_dragged;  // calculate pixel movement within handle
+            pixels_change *= (content_width / viewport_width);          // calculate pixel movement within content
+
+            data->state_offset -= pixels_change;
+            horizontal_scrollbox_apply_content_scroll(data);
+
+            data->state_handle_dragged = cursor_x;
+        }
+        else if (cursor_inside) {
+            int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
+            int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
+            if (!(c_left_pressed && !p_left_pressed)) return; // avoid accidental drag, require new click inside handle
+            data->state_handle_dragged = cursor_x;
+        }
+    }
+    else data->state_handle_dragged = -1;
+}
+
+static lui_node horizontal_scrollbox_column[];
+
+const lui_node_array horizontal_scrollbox_column_array = {
+    .count = 2,
+    .nodes = horizontal_scrollbox_column
+};
+
+const lui_column_data horizontal_scrollbox_column_data = {
+    .horizontal_align = 0.5,
+    .vertical_align   = 0,
+    .spacing          = (lui_length){0, 0, 0}
+};
+
+// Linear Main Body
+const lui_node luipf_horizontal_scrollbox[] = {
+    {   // measure parent space - the clipbox dimensions - the viewport size
+        .type  = lui_node_render_size_query | lui_node_flag_data_instanced,
+        .child = &luipf_horizontal_scrollbox[1],
+        .data_instance_offset = offsetof(luipf_scrollbox_data, state_render_size)
+    },
+    {   // clip contents not viewed
+        .type  = lui_node_clipbox | lui_node_flag_ignore_min,
+        .child = &luipf_horizontal_scrollbox[2],
+        .data  = NULL
+    },
+    {   // set scrollbox callback
+        .type  = lui_node_input_handle,
+        .child = &luipf_horizontal_scrollbox[3],
+        .data  = horizontal_scrollbox_scroll_func,
+    },
+    {   // create scroll box input field
+        .type  = lui_node_input_box | lui_node_flag_data_instanced,
+        .child = &luipf_horizontal_scrollbox[4],
+        .data_instance_offset = 0 // the instance itself
+    },
+    {   // measure child - the content size
+        .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
+        .child = &luipf_horizontal_scrollbox[5],
+        .data_instance_offset = offsetof(luipf_scrollbox_data, state_measure_size)
+    },
+    {   // column - content, handle
+        .type        = lui_node_column,
+        .child_array = &horizontal_scrollbox_column_array,
+        .data        = &horizontal_scrollbox_column_data
+    },
+};
+
+// Handle
+static lui_node horizontal_scrollbox_handle[] = {
+    {
+        .type  = lui_node_input_handle,
+        .child = &horizontal_scrollbox_handle[1],
+        .data  = horizontal_scrollbox_handle_func
+    },
+    {
+        .type = lui_node_input_box | lui_node_flag_data_instanced,
+        .child = &horizontal_scrollbox_handle[2],
+        .data  = 0, // instance itself
+    },
+    {   // span handle
+        .type  = lui_node_sizebox | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
+        .child_instance_offset = offsetof(luipf_scrollbox_data, handle_child),
+        .data_instance_offset  = offsetof(luipf_scrollbox_data, state_handle_sizebox)
+    }
+};
+
+// Column Contents
+static lui_node horizontal_scrollbox_column[] = {
+    {
+        .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
+        .child_instance_offset  = offsetof(luipf_scrollbox_data, scrolled_child),
+        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
+    },
+    {
+        .type  = lui_node_offset | lui_node_flag_data_instanced,
+        .child = horizontal_scrollbox_handle,
+        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_handle_offset)
+    },
+};
+
+/*
+    Vertical Scrollbox
+*/
 
 static const float default_scroll_speed_vertical = 2000;
 
-static inline void vertical_scrollbox_apply_content_scroll(luipf_vertical_scrollbox_data* data) {
+static inline void vertical_scrollbox_apply_content_scroll(luipf_scrollbox_data* data) {
     // sizes
     int content_height  = data->state_measure_size.height.min;
     int viewport_height = data->state_render_size.height;
@@ -134,10 +339,10 @@ static inline void vertical_scrollbox_apply_content_scroll(luipf_vertical_scroll
     data->state_child_offset.offset_y = total_offset;
 }
 
-static inline void vertical_scrollbox_apply_handle_scroll(luipf_vertical_scrollbox_data* data) {
+static inline void vertical_scrollbox_apply_handle_scroll(luipf_scrollbox_data* data) {
     // set width to user desires
     data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all_width;
-    data->state_handle_sizebox.width = data->handle_width;
+    data->state_handle_sizebox.width = data->handle_thickness;
 
     // sizes
     float content_height  = data->state_measure_size.height.min;
@@ -176,7 +381,7 @@ static void vertical_scrollbox_scroll_func(
     int                         cursor_inside,
     float                       delta_time
 ) {
-    luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
+    luipf_scrollbox_data* data = (luipf_scrollbox_data*)input_box_data;
 
     int pixels_change = 0;
     if (cursor_inside) {
@@ -194,7 +399,7 @@ static void vertical_scrollbox_handle_func(
     int                         cursor_inside,
     float                       delta_time
 ) {
-    luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
+    luipf_scrollbox_data* data = (luipf_scrollbox_data*)input_box_data;
 
     // position handle
     vertical_scrollbox_apply_handle_scroll(data);
@@ -208,23 +413,23 @@ static void vertical_scrollbox_handle_func(
     if (left_pressed) {
         int cursor_y; lui_injection_query_cursor_position(input_state, NULL, &cursor_y, NULL, NULL);
 
-        if (data->state_handle_dragged_y != -1) {                           // was dragged
-            int pixels_change = data->state_handle_dragged_y - cursor_y;    // calculate pixel movement within handle
-            pixels_change *= (content_height / viewport_height);            // calculate pixel movement within content
+        if (data->state_handle_dragged != -1) {                         // was dragged
+            int pixels_change = data->state_handle_dragged - cursor_y;  // calculate pixel movement within handle
+            pixels_change *= (content_height / viewport_height);        // calculate pixel movement within content
 
             data->state_offset -= pixels_change;
             vertical_scrollbox_apply_content_scroll(data);
 
-            data->state_handle_dragged_y = cursor_y;
+            data->state_handle_dragged = cursor_y;
         }
         else if (cursor_inside) {
             int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
             int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
             if (!(c_left_pressed && !p_left_pressed)) return; // avoid accidental drag, require new click inside handle
-            data->state_handle_dragged_y = cursor_y;
+            data->state_handle_dragged = cursor_y;
         }
     }
-    else data->state_handle_dragged_y = -1;
+    else data->state_handle_dragged = -1;
 }
 
 static lui_node vertical_scrollbox_row[];
@@ -240,16 +445,12 @@ const lui_row_data vertical_scrollbox_row_data = {
     .spacing          = (lui_length){0, 0, 0}
 };
 
-const lui_box_data vertical_scrollbox_handle_data = {
-    .tint = LUI_HEX("#00FF00")
-};
-
 // Linear Main Body
 const lui_node luipf_vertical_scrollbox[] = {
     {   // measure parent space - the clipbox dimensions - the viewport size
         .type  = lui_node_render_size_query | lui_node_flag_data_instanced,
         .child = &luipf_vertical_scrollbox[1],
-        .data_instance_offset = offsetof(luipf_vertical_scrollbox_data, state_render_size)
+        .data_instance_offset = offsetof(luipf_scrollbox_data, state_render_size)
     },
     {   // clip contents not viewed
         .type  = lui_node_clipbox | lui_node_flag_ignore_min,
@@ -269,7 +470,7 @@ const lui_node luipf_vertical_scrollbox[] = {
     {   // measure child - the content size
         .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
         .child = &luipf_vertical_scrollbox[5],
-        .data_instance_offset = offsetof(luipf_vertical_scrollbox_data, state_measure_size)
+        .data_instance_offset = offsetof(luipf_scrollbox_data, state_measure_size)
     },
     {   // row - content, handle
         .type        = lui_node_row,
@@ -292,8 +493,8 @@ static lui_node vertical_scrollbox_handle[] = {
     },
     {   // span handle
         .type  = lui_node_sizebox | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
-        .child_instance_offset = offsetof(luipf_vertical_scrollbox_data, handle_child),
-        .data_instance_offset  = offsetof(luipf_vertical_scrollbox_data, state_handle_sizebox)
+        .child_instance_offset = offsetof(luipf_scrollbox_data, handle_child),
+        .data_instance_offset  = offsetof(luipf_scrollbox_data, state_handle_sizebox)
     }
 };
 
@@ -301,13 +502,13 @@ static lui_node vertical_scrollbox_handle[] = {
 static lui_node vertical_scrollbox_row[] = {
     {
         .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
-        .child_instance_offset  = offsetof(luipf_vertical_scrollbox_data, scrolled_child),
-        .data_instance_offset   = offsetof(luipf_vertical_scrollbox_data, state_child_offset)
+        .child_instance_offset  = offsetof(luipf_scrollbox_data, scrolled_child),
+        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
     },
     {
         .type  = lui_node_offset | lui_node_flag_data_instanced,
         .child = vertical_scrollbox_handle,
-        .data_instance_offset   = offsetof(luipf_vertical_scrollbox_data, state_handle_offset)
+        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_handle_offset)
     },
 };
 
