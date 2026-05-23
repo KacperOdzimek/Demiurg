@@ -33,6 +33,11 @@ Usage: See dedicated documentation
         lui_injection_input_state* state,
         int* left_pressed, int* right_pressed, float* scroll_input
     );
+
+    static inline void lui_injection_query_previous_cursor_state(
+        lui_injection_input_state* state,
+        int* left_pressed, int* right_pressed, float* scroll_input
+    );
 #endif
 
 #ifdef LIGHT_USER_INTERFACE_IMPL

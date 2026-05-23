@@ -16,8 +16,6 @@ typedef struct luipf_button_data {
 
     lui_box_data    state_style;
     char            state_held;
-    char            state_prev_left;
-    char            state_left_started_inside;
 } luipf_button_data;
 
 extern const lui_node luipf_button[];
@@ -58,18 +56,18 @@ static void button_input_func(
     float                       delta_time
 ) {
     luipf_button_data* data = (luipf_button_data*)input_box_data;
-    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
+    int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
 
-    char just_pressed  = left_pressed && !data->state_prev_left;
-    char just_released = !left_pressed && data->state_prev_left;
+    char just_pressed  = c_left_pressed && !p_left_pressed;
+    char just_released = !c_left_pressed && p_left_pressed;
 
     if (just_pressed && cursor_inside) {            // press started
         data->state_held = 1;
-        data->state_left_started_inside = 1;
         data->state_style = data->pressed_style;
         if (data->on_clicked) data->on_clicked(data->event_data, input_state, cursor_inside, delta_time);
     }
-    else if (left_pressed && data->state_held) {    // held
+    else if (c_left_pressed && data->state_held) {    // held
         data->state_style = data->pressed_style;
         if (data->on_held) data->on_held(data->event_data, input_state, cursor_inside, delta_time);
     }
@@ -81,8 +79,6 @@ static void button_input_func(
     }
     else if (cursor_inside) data->state_style = data->hovered_style;    // hover
     else                    data->state_style = data->default_style;    // idle
-
-    data->state_prev_left = left_pressed;
 }
 
 const lui_node luipf_button[] = {
@@ -109,7 +105,7 @@ const lui_node luipf_button[] = {
 
 static const float default_scroll_speed_vertical = 2000;
 
-static void vertical_scrollbox_apply_content_scroll(luipf_vertical_scrollbox_data* data) {
+static inline void vertical_scrollbox_apply_content_scroll(luipf_vertical_scrollbox_data* data) {
     // sizes
     int content_height  = data->state_measure_size.height.min;
     int viewport_height = data->state_render_size.height;
@@ -138,32 +134,7 @@ static void vertical_scrollbox_apply_content_scroll(luipf_vertical_scrollbox_dat
     data->state_child_offset.offset_y = total_offset;
 }
 
-static void vertical_scrollbox_scroll_func(
-    void*                       input_box_data,
-    lui_injection_input_state*  input_state,
-    int                         cursor_inside,
-    float                       delta_time
-) {
-    luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
-
-    int pixels_change = 0;
-    if (cursor_inside) {
-        float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
-        pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_vertical;
-    }
-    data->state_offset -= pixels_change;
-
-    vertical_scrollbox_apply_content_scroll(data);
-}
-
-static void vertical_scrollbox_handle_func(
-    void*                       input_box_data,
-    lui_injection_input_state*  input_state,
-    int                         cursor_inside,
-    float                       delta_time
-) {
-    luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
-
+static inline void vertical_scrollbox_apply_handle_scroll(luipf_vertical_scrollbox_data* data) {
     // set width to user desires
     data->state_handle_sizebox.flag |= lui_sizebox_overwrite_all_width;
     data->state_handle_sizebox.width = data->handle_width;
@@ -197,33 +168,63 @@ static void vertical_scrollbox_handle_func(
         end   = -begin;
         data->state_handle_offset.offset_y = begin + (end - begin) * alpha;
     }
+}
+
+static void vertical_scrollbox_scroll_func(
+    void*                       input_box_data,
+    lui_injection_input_state*  input_state,
+    int                         cursor_inside,
+    float                       delta_time
+) {
+    luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
+
+    int pixels_change = 0;
+    if (cursor_inside) {
+        float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
+        pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_vertical;
+    }
+    data->state_offset -= pixels_change;
+
+    vertical_scrollbox_apply_content_scroll(data);
+}
+
+static void vertical_scrollbox_handle_func(
+    void*                       input_box_data,
+    lui_injection_input_state*  input_state,
+    int                         cursor_inside,
+    float                       delta_time
+) {
+    luipf_vertical_scrollbox_data* data = (luipf_vertical_scrollbox_data*)input_box_data;
+
+    // position handle
+    vertical_scrollbox_apply_handle_scroll(data);
+
+    // sizes
+    float content_height  = data->state_measure_size.height.min;
+    float viewport_height = data->state_render_size.height;
 
     // scroll by draging handle
     int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
     if (left_pressed) {
         int cursor_y; lui_injection_query_cursor_position(input_state, NULL, &cursor_y, NULL, NULL);
 
-        // was dragged
-        if (data->state_handle_dragged_y != -1) {
-            // calculate pixel movement within handle
-            int pixels_change = data->state_handle_dragged_y - cursor_y;
+        if (data->state_handle_dragged_y != -1) {                           // was dragged
+            int pixels_change = data->state_handle_dragged_y - cursor_y;    // calculate pixel movement within handle
+            pixels_change *= (content_height / viewport_height);            // calculate pixel movement within content
 
-            // calculate pixel movement within content
-            pixels_change *= (content_height / viewport_height);
-
-            // apply
             data->state_offset -= pixels_change;
             vertical_scrollbox_apply_content_scroll(data);
 
             data->state_handle_dragged_y = cursor_y;
         }
         else if (cursor_inside) {
+            int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
+            int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
+            if (!(c_left_pressed && !p_left_pressed)) return; // avoid accidental drag, require new click inside handle
             data->state_handle_dragged_y = cursor_y;
         }
     }
-    else {
-        data->state_handle_dragged_y = -1;
-    }
+    else data->state_handle_dragged_y = -1;
 }
 
 static lui_node vertical_scrollbox_row[];
