@@ -269,7 +269,7 @@ const lui_node luipf_horizontal_scrollbox[] = {
         .data_instance_offset = offsetof(luipf_scrollbox_data, state_render_size)
     },
     {   // clip contents not viewed
-        .type  = lui_node_clipbox | lui_node_flag_ignore_min,
+        .type  = lui_node_clipbox | lui_node_flag_ignore_min_width,
         .child = &luipf_horizontal_scrollbox[2],
         .data  = NULL
     },
@@ -479,7 +479,7 @@ const lui_node luipf_vertical_scrollbox[] = {
         .data_instance_offset = offsetof(luipf_scrollbox_data, state_render_size)
     },
     {   // clip contents not viewed
-        .type  = lui_node_clipbox | lui_node_flag_ignore_min,
+        .type  = lui_node_clipbox | lui_node_flag_ignore_min_height,
         .child = &luipf_vertical_scrollbox[2],
         .data  = NULL
     },

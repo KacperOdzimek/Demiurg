@@ -264,27 +264,33 @@ typedef enum lui_node_type {
 
     // Extra Flags
 
-    // most nodes dimensions are dictated by their subtrees
-    // this flag allows nodes to be shrinked beyond their subtree limit (usefull for clipboxes)
-    // is it the same as overwriting length mins of target node with sizebox
-    lui_node_flag_ignore_min = 1 << 4,
+    // same as putting node inside sizebox that overwrites width min to 0
+    // allow shrinking beyond child minimum in width (usefull for clipboxes)
+    lui_node_flag_ignore_min_width  = 1 << 11,
 
-    // most nodes dimensions are dictated by their subtrees
-    // this flag cause the nodes to fill entire given space instead
-    // it is the same as overwriting length maxes of target node with sizebox
-    lui_node_flag_ignore_max = 1 << 5,
+    // same as putting node inside sizebox that overwrites height min to 0
+    // allow shrinking beyond child minimum in height (usefull for clipboxes)
+    lui_node_flag_ignore_min_height = 1 << 12,
+
+    // same as putting node inside sizebox that overwrites width max to lui_inf_length
+    // allow expansion of node beyond content max in width
+    lui_node_flag_ignore_max_width  = 1 << 13,
+
+    // same as putting node inside sizebox that overwrites height max to lui_inf_length
+    // allow expansion of node beyond content max in height
+    lui_node_flag_ignore_max_height = 1 << 14,
 
     // see lui_node_instance
     // if active, during measure and render travelsals
     // instead of reading node->data, parsing functions will read
     // (*(node_data_type*)(instance + node->data_instance_offset))
-    lui_node_flag_data_instanced  = 1 << 6,
+    lui_node_flag_data_instanced    = 1 << 15,
 
     // see lui_node_instance
     // if active, during measure and render travelsals
     // instead of reading node->data, parsing functions will read
     // (*(const lui_node*/lui_node_array*)(instance + node->child_instance_offset))
-    lui_node_flag_child_instanced = 1 << 7
+    lui_node_flag_child_instanced   = 1 << 16
 } lui_node_type;
 
 typedef struct lui_node lui_node;
@@ -714,7 +720,7 @@ static inline lui_transform lui_mul(lui_transform p, lui_transform c) {
 // ===========================
 // Node helpers
 
-static const unsigned char NODE_TYPE_NO_FLAG_MASK = (unsigned char)(lui_node_flag_ignore_min - 1);
+static const unsigned char NODE_TYPE_NO_FLAG_MASK = (unsigned char)(lui_node_flag_ignore_min_width - 1);
 
 static inline int helper_is_single_childed(lui_node_type type) {
     type &= NODE_TYPE_NO_FLAG_MASK;
@@ -1224,20 +1230,25 @@ static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node
     default: measure_copy_child(mc, node, idx, first_child_index); break;
     }
 
-    // if ingore min flag, overwrite mins
-    if (node->type & lui_node_flag_ignore_min) {
-        helper_measurement* own = &mc->measurements[idx];
+    // apply ignore flags
+    helper_measurement* own = &mc->measurements[idx];
+
+    if (node->type & lui_node_flag_ignore_min_width) {
         own->width.min  = 0;
         own->width.flex = 1.0f;
-        own->height.min = 0;
+    }
+
+    if (node->type & lui_node_flag_ignore_min_height) {
+        own->height.min  = 0;
         own->height.flex = 1.0f;
     }
 
-    // if ignore max flag, overwrite maxes
-    if (node->type & lui_node_flag_ignore_max) {
-        helper_measurement* own = &mc->measurements[idx];
+    if (node->type & lui_node_flag_ignore_max_width) {
         own->width.max  = lui_inf_length;
         own->width.flex = 1.0f;
+    }
+
+    if (node->type & lui_node_flag_ignore_max_height) {
         own->height.max = lui_inf_length;
         own->height.flex = 1.0f;
     }
