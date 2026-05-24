@@ -25,6 +25,7 @@ Possible refactor:
 
 #include "light/user_interface.h"
 
+// instance data for luipf_button
 typedef struct luipf_button_data {
     lui_node*                   button_child;
     lui_box_data                default_style;
@@ -40,8 +41,13 @@ typedef struct luipf_button_data {
     char                        state_held;
 } luipf_button_data;
 
+// button component
+// implements button behavior, can call callbacks : on_clicked, on_released, on_held
+// auto changes style based on it's tate
+// size : wraps on child
 extern const lui_node luipf_button[];
 
+// instance data for luipf_horizontal_scrollbox and luipf_vertical_scrollbox
 typedef struct luipf_scrollbox_data {
     float                       scroll_speed_mod;
     lui_node*                   scroll_child;
@@ -57,7 +63,14 @@ typedef struct luipf_scrollbox_data {
     lui_render_size_query_data  state_render_size;
 } luipf_scrollbox_data;
 
+// horizontal scrollbox component
+// implements scrollbox with handle, tries to fit entire scroll_child on screen, 
+// if fails allow scrolling behavior, keeps scroll child height
 extern const lui_node luipf_horizontal_scrollbox[];
+
+// vertical scrollbox component
+// implements scrollbox with handle, tries to fit entire scroll_child on screen, 
+// if fails allow scrolling behavior, keeps scroll child width
 extern const lui_node luipf_vertical_scrollbox[];
 
 #endif // LIGHT_USER_INTERFACE_PREFABS_H
