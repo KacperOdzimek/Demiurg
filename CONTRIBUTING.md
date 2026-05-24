@@ -62,6 +62,7 @@ Therefore state of code table:
 ## Upcoming content
 
 The following features may be implemented in the future:
+- Other graphics apis                   (graphics.h)
 - Async networking                      (networking.h)
 - Filesystem utilities                  (filesystem.h)
 - File compression and decompression    (compression.h)
