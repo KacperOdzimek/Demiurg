@@ -29,11 +29,17 @@ Usage: See dedicated documentation
         float*  cursor_norm_y_target  // normalized [-1, 1] for height
     );
 
+    // get given current cursor state despite it is consumed or not
     static inline void lui_injection_query_cursor_state(
-        lui_injection_input_state* state,
+        lui_injection_input_state* state, int check_consumed,
         int* left_pressed, int* right_pressed, float* scroll_input
     );
 
+    static inline void lui_injection_consume_cursor_state(
+        lui_injection_input_state* state, int left, int right, int scroll
+    );
+
+    // get input state from previous frame
     static inline void lui_injection_query_previous_cursor_state(
         lui_injection_input_state* state,
         int* left_pressed, int* right_pressed, float* scroll_input

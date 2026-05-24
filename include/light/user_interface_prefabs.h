@@ -75,7 +75,7 @@ static void button_input_func(
     float                       delta_time
 ) {
     luipf_button_data* data = (luipf_button_data*)input_box_data;
-    int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
+    int c_left_pressed; lui_injection_query_cursor_state(input_state, 1, &c_left_pressed, NULL, NULL);
     int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
 
     char just_pressed  = c_left_pressed && !p_left_pressed;
@@ -85,10 +85,12 @@ static void button_input_func(
         data->state_held = 1;
         data->state_style = data->pressed_style;
         if (data->on_clicked) data->on_clicked(data->event_data, input_state, cursor_inside, delta_time);
+        lui_injection_consume_cursor_state(input_state, 1, 0, 0);
     }
     else if (c_left_pressed && data->state_held) {    // held
         data->state_style = data->pressed_style;
         if (data->on_held) data->on_held(data->event_data, input_state, cursor_inside, delta_time);
+        lui_injection_consume_cursor_state(input_state, 1, 0, 0);
     }
     else if (just_released && data->state_held) {   // released
         data->state_held = 0;
@@ -201,8 +203,9 @@ static void horizontal_scrollbox_scroll_func(
 
     int pixels_change = 0;
     if (cursor_inside) {
-        float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
+        float scroll_dir; lui_injection_query_cursor_state(input_state, 1, NULL, NULL, &scroll_dir);
         pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_horizontal;
+        lui_injection_consume_cursor_state(input_state, 0, 0, 1);
     }
     data->state_offset -= pixels_change;
 
@@ -225,7 +228,7 @@ static void horizontal_scrollbox_handle_func(
     float viewport_width  = data->state_render_size.width;
 
     // scroll by draging handle
-    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    int left_pressed; lui_injection_query_cursor_state(input_state, 1, &left_pressed, NULL, NULL);
     if (left_pressed) {
         int cursor_x; lui_injection_query_cursor_position(input_state, &cursor_x, NULL, NULL, NULL);
 
@@ -237,12 +240,15 @@ static void horizontal_scrollbox_handle_func(
             horizontal_scrollbox_apply_content_scroll(data);
 
             data->state_handle_dragged = cursor_x;
+            lui_injection_consume_cursor_state(input_state, 1, 0, 0);
         }
         else if (cursor_inside) {
-            int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
+            int c_left_pressed; lui_injection_query_cursor_state(input_state, 1, &c_left_pressed, NULL, NULL);
             int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
             if (!(c_left_pressed && !p_left_pressed)) return; // avoid accidental drag, require new click inside handle
+
             data->state_handle_dragged = cursor_x;
+            lui_injection_consume_cursor_state(input_state, 1, 0, 0);
         }
     }
     else data->state_handle_dragged = -1;
@@ -411,8 +417,9 @@ static void vertical_scrollbox_scroll_func(
 
     int pixels_change = 0;
     if (cursor_inside) {
-        float scroll_dir; lui_injection_query_cursor_state(input_state, NULL, NULL, &scroll_dir);
+        float scroll_dir; lui_injection_query_cursor_state(input_state, 1, NULL, NULL, &scroll_dir);
         pixels_change = scroll_dir * delta_time * data->scroll_speed_mod * default_scroll_speed_vertical;
+        lui_injection_consume_cursor_state(input_state, 0, 0, 1);
     }
     data->state_offset -= pixels_change;
 
@@ -435,7 +442,7 @@ static void vertical_scrollbox_handle_func(
     float viewport_height = data->state_render_size.height;
 
     // scroll by draging handle
-    int left_pressed; lui_injection_query_cursor_state(input_state, &left_pressed, NULL, NULL);
+    int left_pressed; lui_injection_query_cursor_state(input_state, 1, &left_pressed, NULL, NULL);
     if (left_pressed) {
         int cursor_y; lui_injection_query_cursor_position(input_state, NULL, &cursor_y, NULL, NULL);
 
@@ -447,12 +454,15 @@ static void vertical_scrollbox_handle_func(
             vertical_scrollbox_apply_content_scroll(data);
 
             data->state_handle_dragged = cursor_y;
+            lui_injection_consume_cursor_state(input_state, 1, 0, 0);
         }
         else if (cursor_inside) {
-            int c_left_pressed; lui_injection_query_cursor_state(input_state, &c_left_pressed, NULL, NULL);
+            int c_left_pressed; lui_injection_query_cursor_state(input_state, 1, &c_left_pressed, NULL, NULL);
             int p_left_pressed; lui_injection_query_previous_cursor_state(input_state, &p_left_pressed, NULL, NULL);
             if (!(c_left_pressed && !p_left_pressed)) return; // avoid accidental drag, require new click inside handle
+            
             data->state_handle_dragged = cursor_y;
+            lui_injection_consume_cursor_state(input_state, 1, 0, 0);
         }
     }
     else data->state_handle_dragged = -1;
