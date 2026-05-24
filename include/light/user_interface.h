@@ -497,10 +497,15 @@ lui_return_flag lui_render(
     int             resolution_y,       // screen resolution height
     lui_arena*      commands_arena,     // arena for draw commands
     lui_arena*      clipboxs_arena,     // arena for clipboxes
-    lui_arena*      input_boxes_arena   // arena for input boxes (may be NULL)
+    lui_arena*      input_boxes_arena,  // arena for input boxes (may be NULL)
+    int             clear_input_boxes   // if true, clears input boxes arena, else adds to it
 );
 
-// input
+// additional step for ui - handling input
+// provided generated input boxes arena, calls assigned lui_input_handler_func functions in the depth-sorted order
+// in case of having multiple widgets in one window, combine all boxes into one arena
+// (do not clear_input_boxes on render, use single arena)
+// otherwise you will have input-consumption bugs
 void lui_input(
     lui_arena*                  input_boxes_arena,
     lui_arena*                  clipboxes_arena,
@@ -1906,12 +1911,16 @@ lui_return_flag lui_render(
     int             resolution_y,
     lui_arena*      commands_arena,
     lui_arena*      clipboxs_arena,
-    lui_arena*      input_boxes_arena
+    lui_arena*      input_boxes_arena,
+    int             clear_input_boxes
 ) {
     // reset write target arenas
     commands_arena->position = 0;
     clipboxs_arena->position = 0;
-    if (input_boxes_arena) input_boxes_arena->position = 0;
+    
+    if (input_boxes_arena && clear_input_boxes) {
+        input_boxes_arena->position = 0;
+    }
 
     helper_transform_pack trs = {
         .trans        = lui_default_trans,
@@ -1932,11 +1941,21 @@ lui_return_flag lui_render(
         .current_clipbox_index  = -1,
     };
 
+    // save input boxes arena position
+    // since this arena is not completly rewritten each time, but may be 
+    // expanded in few calls, it is important to retore it's state in case of error
+    size_t input_boxes_arena_position_snapshot = input_boxes_arena ? input_boxes_arena->position : 0;
+
     // be default returns 0 which is lui_return_ok
     lui_return_flag flag = setjmp(rc.jmp_target);
 
     // longjmp will not happen with lui_return_ok, therefore no loop in here
     if (flag == lui_return_ok) render_dispatch(&rc, root, 0, trs);
+
+    // failure; restore input boxes state
+    if (flag != lui_return_ok) {
+        input_boxes_arena->position = input_boxes_arena_position_snapshot;
+    }
 
     if (flag == lui_return_ok) {
         stable_sort(
