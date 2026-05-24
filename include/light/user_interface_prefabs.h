@@ -169,6 +169,8 @@ static inline void horizontal_scrollbox_apply_handle_scroll(luipf_scrollbox_data
     if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
 
     int width = viewport_width * visible_fraction;
+    if (width > data->state_measure_size.width.max) width = data->state_measure_size.width.max;
+
     data->state_handle_sizebox.width.min = width;
     data->state_handle_sizebox.width.max = width;
 
@@ -281,11 +283,6 @@ const lui_node luipf_horizontal_scrollbox[] = {
         .child = &luipf_horizontal_scrollbox[4],
         .data_instance_offset = 0 // the instance itself
     },
-    {   // measure child - the content size
-        .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
-        .child = &luipf_horizontal_scrollbox[5],
-        .data_instance_offset = offsetof(luipf_scrollbox_data, state_measure_size)
-    },
     {   // column - content, handle
         .type        = lui_node_column,
         .child_array = &horizontal_scrollbox_column_array,
@@ -314,15 +311,20 @@ static lui_node horizontal_scrollbox_handle[] = {
 
 // Column Contents
 static lui_node horizontal_scrollbox_column[] = {
-    {
-        .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
-        .child_instance_offset  = offsetof(luipf_scrollbox_data, scroll_child),
-        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
+    {   // measure child - the content size
+        .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
+        .child = &horizontal_scrollbox_column[2],
+        .data_instance_offset = offsetof(luipf_scrollbox_data, state_measure_size)
     },
-    {
+    {   // render offseted handle
         .type  = lui_node_offset | lui_node_flag_data_instanced,
         .child = horizontal_scrollbox_handle,
         .data_instance_offset   = offsetof(luipf_scrollbox_data, state_handle_offset)
+    },
+    {   // render offseted content
+        .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
+        .child_instance_offset  = offsetof(luipf_scrollbox_data, scroll_child),
+        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
     },
 };
 
@@ -377,6 +379,8 @@ static inline void vertical_scrollbox_apply_handle_scroll(luipf_scrollbox_data* 
     if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
 
     int height = viewport_height * visible_fraction;
+    if (height > data->state_measure_size.height.max) height = data->state_measure_size.height.max;
+    
     data->state_handle_sizebox.height.min = height;
     data->state_handle_sizebox.height.max = height;
 
@@ -489,11 +493,6 @@ const lui_node luipf_vertical_scrollbox[] = {
         .child = &luipf_vertical_scrollbox[4],
         .data_instance_offset = 0 // the instance itself
     },
-    {   // measure child - the content size
-        .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
-        .child = &luipf_vertical_scrollbox[5],
-        .data_instance_offset = offsetof(luipf_scrollbox_data, state_measure_size)
-    },
     {   // row - content, handle
         .type        = lui_node_row,
         .child_array = &vertical_scrollbox_row_array,
@@ -522,15 +521,20 @@ static lui_node vertical_scrollbox_handle[] = {
 
 // Row Contents
 static lui_node vertical_scrollbox_row[] = {
-    {
-        .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
-        .child_instance_offset  = offsetof(luipf_scrollbox_data, scroll_child),
-        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
+    {   // measure child - the content size
+        .type  = lui_node_measure_size_query | lui_node_flag_data_instanced,
+        .child = &vertical_scrollbox_row[2],
+        .data_instance_offset = offsetof(luipf_scrollbox_data, state_measure_size)
     },
-    {
+    {   // rebder offsetet handle
         .type  = lui_node_offset | lui_node_flag_data_instanced,
         .child = vertical_scrollbox_handle,
         .data_instance_offset   = offsetof(luipf_scrollbox_data, state_handle_offset)
+    },
+    {   // render offseted content
+        .type = lui_node_offset | lui_node_flag_child_instanced | lui_node_flag_data_instanced,
+        .child_instance_offset  = offsetof(luipf_scrollbox_data, scroll_child),
+        .data_instance_offset   = offsetof(luipf_scrollbox_data, state_child_offset)
     },
 };
 
