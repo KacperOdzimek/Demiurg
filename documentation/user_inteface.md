@@ -2,9 +2,9 @@
 
 ## Overview
 
-Light user inteface system is an immediate-mode UI layout and rendering library built around a declarative tree of **nodes**. User describe their UI as a hierarchy of typed nodes, pass the root to `lui_measure` and then `lui_render`, and consume the resulting draw commands to paint their frame.
+Light user interface system is an immediate-mode UI layout and rendering library built around a declarative tree of **nodes**. Users describe their UI as a hierarchy of typed nodes, pass the root to `lui_measure` and then `lui_render`, and consume the resulting draw commands to paint their frame.
 
-The library is a single-header file activated by the `LIGHT_FONT_IMPL` macro and uses an arena allocator model — no hidden heap allocations during a frame.
+The library is a single-header file activated by the `LIGHT_USER_INTERFACE_IMPL` macro and uses an arena allocator model — no hidden heap allocations during a frame.
 
 ---
 
@@ -12,19 +12,19 @@ The library is a single-header file activated by the `LIGHT_FONT_IMPL` macro and
 
 ### Concept
 
-Every piece of UI in lui is represented as a `lui_node`. Nodes are composed into a tree. A node may have one or multiple child, based on type. 
+Every piece of UI in lui is represented as a `lui_node`. Nodes are composed into a tree. A node may have one or multiple children, based on type.
 
 ```
 Root Node
  └─ Container (row/column)
      ├─ Child A (box + text)
-     └─ Child B (image)
+     └─ Child B (box)
 ```
 
 The tree is evaluated in two sequential passes each frame:
 
 **Pass 1 — Measure (`lui_measure`)**  
-Traverses the tree bottom-up, computing the desired dimensions of each node. Measurement functions for images and text are injected by the host application.
+Traverses the tree bottom-up, computing the desired dimensions of each node. Measurement functions for text are injected by the host application.
 
 **Pass 2 — Render (`lui_render`)**  
 Traverses the tree top-down with a known screen resolution, resolves flex sizing, and emits a flat list of `lui_draw_command` records into an arena. The resulting commands and input boxes are depth-sorted from deepest to topmost.
@@ -32,7 +32,7 @@ Traverses the tree top-down with a known screen resolution, resolves flex sizing
 **Input (`lui_input`)**  
 After rendering, call `lui_input` with the populated input-boxes arena to dispatch cursor events to registered handlers.
 
-You can render UI yourself by walking generated draw commands arena, or use user_interface_rendering.h pipeline.
+You can render UI yourself by walking the generated draw commands arena, or use the `user_interface_rendering.h` pipeline.
 
 ### The Frame Loop
 
@@ -45,9 +45,10 @@ lui_render(&root_node, &temp_arena,
            screen_w, screen_h,
            &commands_arena,
            &clipboxes_arena,
-           &input_boxes_arena);
+           &input_boxes_arena,
+           1 /* clear_input_boxes */);
 
-// 3. Draw — iterate commands_arena and render each lui_draw_command, or use user_interface_rendering.h
+// 3. Draw — iterate commands_arena and render each lui_draw_command
 
 // 4. Input — dispatch cursor/click events
 lui_input(&input_boxes_arena, &clipboxes_arena, &input_state, delta_time);
@@ -55,7 +56,7 @@ lui_input(&input_boxes_arena, &clipboxes_arena, &input_state, delta_time);
 
 ### Arenas
 
-lui uses `lui_arena` — a simple bump allocator — for all frame memory. Three arenas are required at render time:
+lui uses `lui_arena` — a simple bump allocator — for all frame memory. Four arenas are required at render time:
 
 | Arena | Purpose |
 |---|---|
@@ -102,6 +103,13 @@ Nodes are either **single-childed** (hold one `const lui_node*`) or **multi-chil
 |---|---|---|---|
 | `lui_node_instance` | single | instance pointer (`void*`) | Sets the active *instance pointer* carried into the subtree. Enables data and child instancing (see §Instancing). |
 
+### Queries
+
+| Type | Children | Data | Description |
+|---|---|---|---|
+| `lui_node_measure_size_query` | single | `lui_measure_size_query_data*` | After measuring its subtree, writes the child's measured `width` and `height` (`lui_length`) into the data struct. Useful for reading layout dimensions at measure time. |
+| `lui_node_render_size_query` | single | `lui_render_size_query_data*` | During the render pass, writes the resolved pixel `width` and `height` (`float`) into the data struct. Useful for reading the actual rendered size of a subtree. |
+
 ### Transform
 
 | Type | Children | Data | Description |
@@ -114,6 +122,7 @@ Nodes are either **single-childed** (hold one `const lui_node*`) or **multi-chil
 |---|---|---|---|
 | `lui_node_clipbox` | single | — | Constrains rendering of its subtree to its own resolved rectangle. Pair with `lui_node_sizebox` for precise clipping. |
 | `lui_node_depth` | single | `lui_depth_data` | Shifts the depth value of all commands in the subtree. Decreasing depth moves elements visually *into* the screen. |
+| `lui_node_offset` | single | `lui_offset_data` | Offsets child rendering by a fixed number of pixels (`offset_x`, `offset_y`) without affecting measurement. |
 
 ### Input
 
@@ -133,7 +142,7 @@ typedef void (*lui_input_handler_func)(
 );
 ```
 
-Handlers are called from the topmost (highest depth) box downward. To prevent click-through, clear the relevant flag on `input_state` inside an upper handler so lower handlers do not see it.
+Handlers are called from the topmost (highest depth) box downward. To prevent click-through, consume the relevant state on `input_state` inside an upper handler so lower handlers do not see it.
 
 ### Basic Layout
 
@@ -162,9 +171,7 @@ Alignment values follow a 0 → 1 range: `0` = start (left/top), `0.5` = center,
 
 | Type | Children | Data | Description |
 |---|---|---|---|
-| `lui_node_box` | single | `lui_box_data` | Renders a solid-color rectangle with an optional shader index.
-| `lui_node_image` | single | `lui_image_data` | Renders a tinted texture. |
-| `lui_node_sized_image` | single | `lui_image_data` | Renders a texture at its intrinsic size (queried via the injected `lui_injection_measure_sized_image`), growing only if child content demands it. |
+| `lui_node_box` | single | `lui_box_data` | Renders a rectangle with a color tint, an optional image, and an optional shader index. |
 | `lui_node_text` | single | `lui_text_data` | Renders a text string at its measured size (queried via `lui_injection_measure_text`). |
 
 ### Extra Flags
@@ -173,15 +180,18 @@ Flags are OR-ed into the `type` field of any node:
 
 | Flag | Effect |
 |---|---|
-| `lui_node_flag_fill` | Forces the node to fill all available space on both axes, equivalent to setting `max` to `lui_inf_length` via a sizebox. |
-| `lui_node_flag_data_instanced` | Read node data from the active instance pointer at `data_instance_offset` instead of `node->data`. |
-| `lui_node_flag_child_instanced` | Read node child/child_array from the active instance pointer at `child_instance_offset` instead of `node->child`. |
+| `lui_node_flag_ignore_min_width` | Forces the node's width minimum to 0 and enables width flex. Equivalent to wrapping in a sizebox that overwrites `width.min`. Useful when paired with `lui_node_clipbox` to allow shrinking below content minimum. |
+| `lui_node_flag_ignore_min_height` | Same as above for the height axis. |
+| `lui_node_flag_ignore_max_width` | Forces the node's width maximum to `lui_inf_length` and enables width flex. Allows expanding beyond content maximum in width. |
+| `lui_node_flag_ignore_max_height` | Same as above for the height axis. |
+| `lui_node_flag_data_instanced` | Read node data from the active instance pointer at `data_instance_offset` instead of `node->data`. See §Instancing. |
+| `lui_node_flag_child_instanced` | Read node child/child_array from the active instance pointer at `child_instance_offset` instead of `node->child`. See §Instancing. |
 
 Example:
 
 ```c
 lui_node my_box = {
-    .type  = lui_node_box | lui_node_flag_fill,
+    .type  = lui_node_box | lui_node_flag_ignore_max_width | lui_node_flag_ignore_max_height,
     .child = NULL,
     .data  = &box_style
 };
@@ -189,13 +199,15 @@ lui_node my_box = {
 
 ## Node Sizes
 
-Most nodes, by default inherit their children size. Only some pushes their own requirements:
+Most nodes, by default, inherit their children's size. Only some push their own requirements:
+
 ```
-lui_node_text        - requires space to fit all text
-lui_node_sized_image - requires texture intrinsic size
-lui_node_sizebox     - allows user to push own requirements
+lui_node_text    - requires space to fit all text
+lui_node_sizebox - allows user to push own requirements
 ```
-If user were to render following widget:
+
+If a user were to render the following widget:
+
 ```c
 lui_node txt = {
     .type  = lui_node_text,
@@ -209,9 +221,10 @@ lui_node box = {
     .data  = ...
 };
 ```
-A box tightly wrapping rendering text would appear.  
 
-If user were to add ``lui_node_flag_fill`` flag to box type:  ``lui_node_box | lui_node_flag_fill``, then box would render across entire screen/given space.
+A box tightly wrapping the rendered text would appear.
+
+If the user were to add `lui_node_flag_ignore_max_width | lui_node_flag_ignore_max_height` flags to the box type, the box would render across the entire screen/given space.
 
 ---
 
@@ -221,11 +234,11 @@ Instancing allows a single static node tree to be rendered multiple times with d
 
 ### How It Works
 
-1. Define a instance struct - an arbitrary structure with thing you want to set per instance
-2. Define an UI tree. On nodes that should vary per-instance, add `lui_node_flag_data_instanced` and/or `lui_node_flag_child_instanced` to their `type`.
-3. If instancing data, instead of `node->data`, set `node->data_instance_offset` to the byte offset of the relevant field inside your instance struct (`offsetof(MyInstance, my_field)`)
-4. If instancing child, instead of `node->child` set``node->child_instance_offset`` to the byte offset of child pointer/child array in instance struct.
-5. Instance your element with ``lui_node_instance`` - set child to element root and data to an instance of instance struct - now all instanced fields, instead of directly, will be read from instance struct
+1. Define an instance struct — an arbitrary structure with the fields you want to vary per instance.
+2. Define a UI tree. On nodes that should vary per-instance, add `lui_node_flag_data_instanced` and/or `lui_node_flag_child_instanced` to their `type`.
+3. If instancing data, instead of `node->data`, set `node->data_instance_offset` to the byte offset of the relevant field inside your instance struct (`offsetof(MyInstance, my_field)`).
+4. If instancing child, instead of `node->child`, set `node->child_instance_offset` to the byte offset of the child pointer/child array in the instance struct.
+5. Wire it up with `lui_node_instance` — set its child to the element root and its data to a pointer to your instance struct. All instanced fields in the subtree will then be read from that struct.
 
 ### Example
 
@@ -248,27 +261,27 @@ static const lui_node item_box = {
     .data_instance_offset = offsetof(ListItemInstance, bg)      // pull data from instance
 };
 
-// Using reusable widget
+// Using the reusable widget
 
 ListItemInstance my_instance = {
     .label = {
         .text = "An apple",
-        (...)
+        // ...
     },
     .bg = {
-        .color = LUI_HEX("#FF00FF"),
-        (...)
+        .tint = LUI_HEX("#FF00FF"),
+        // ...
     },
 };
 
 static const lui_node item_root = {
     .type  = lui_node_instance,
-    .child = &item_box,     // since item_box is root of the reusable component
-    .data  = &my_instance   // reusable component will now pull data from this struct instance
+    .child = &item_box,     // root of the reusable component
+    .data  = &my_instance   // component will pull data from this struct instance
 };
 ```
 
-This behavior work for all nodes, despite ``data`` type. You can even chain instances and instance the ``lui_node_instance->data``.
+This behavior works for all nodes regardless of data type. Instances can even be chained — you can instance the `data` of a `lui_node_instance` itself.
 
 ### Child Instancing
 
@@ -298,7 +311,7 @@ t = lui_rot(t, 45.0f);          // rotate CW
 static const lui_transform t = LUI_TRANS(dx, dy, sx, sy, deg_cw);
 ```
 
-Rotation direction defaults to clockwise. Define `lui_IMPL_INVERT_ROTATION` before including the header to flip it.
+Rotation direction defaults to clockwise. Define `LUI_IMPL_INVERT_ROTATION` before including the header to flip it.
 
 ---
 
@@ -322,14 +335,15 @@ The `#` prefix is required. Six hex digits set alpha to `0xFF`; eight hex digits
 
 ## Injections
 
-lui delegates two platform-specific concerns to the host application via injected functions:
+lui delegates platform-specific concerns to the host application via injected functions:
 
 | Function | When | Purpose |
 |---|---|---|
-| `lui_injection_measure_sized_image` | Measure pass | Returns intrinsic width/height of a `lui_node_sized_image`. |
 | `lui_injection_measure_text` | Measure pass | Returns measured width/height of a `lui_node_text`. |
-| `lui_injection_query_cursor_position` | Input pass | Provides normalised cursor coordinates in `[-1, 1]`. |
-| `lui_injection_query_cursor_state` | Input pass | Provides button states and scroll delta. |
+| `lui_injection_query_cursor_position` | Input pass | Provides pixel and normalised cursor coordinates. |
+| `lui_injection_query_cursor_state` | Input pass | Provides button states and scroll delta. Pass `check_consumed = 1` to skip already-consumed state. |
+| `lui_injection_consume_cursor_state` | Input pass | Marks left button, right button, and/or scroll as consumed so deeper handlers ignore them. |
+| `lui_injection_query_previous_cursor_state` | Input pass | Provides button states and scroll delta from the previous frame. |
 
 Define `LIGHT_USER_INTERFACE_IMPL` before including the header in exactly one translation unit to expose the measurement injection declarations.
 

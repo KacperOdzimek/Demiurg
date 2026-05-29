@@ -6,7 +6,7 @@ This file implements lui ui system.
 ----------------------------------------------------------------
 Code info:
 - lui prefix
-- LIGHT_FONT_IMPL macro to build
+- LIGHT_USER_INTERFACE_IMPL macro to build
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
