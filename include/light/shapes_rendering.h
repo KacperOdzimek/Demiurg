@@ -24,7 +24,6 @@ Usage
 
 ----------------------------------------------------------------
 Notes
-
 - The implementation has misnamed struct gpu_instance which should be something like
     struct gpu_triangle_render_info, but I am not going to change that now, it is 3 am.
 */

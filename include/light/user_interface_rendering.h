@@ -43,9 +43,10 @@ Possible Optimizations:
         float uv_max_x, uv_max_y;
     } luirp_atlas_position_uv;
 
+    // will be called when data.image != NULL
     // texture can be set to NULL if query fails
     static inline void luirp_injection_query_image(
-        const lui_image_data*       data, 
+        const lui_box_data*         data, 
         lgx_texture**               texture,
         luirp_atlas_position_uv*    atlas_position
     );
@@ -631,39 +632,29 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
     state->draws_cursor++;
 
     if (cmd->type == lui_draw_box) {
-        return push_instance(mapped, state, (gpu_instance){
-            .clip_index = cmd->clipbox_index,
-            .transform  = cmd->transform,
-            .r = (float)cmd->box_data.color.r / 255.0f,
-            .g = (float)cmd->box_data.color.g / 255.0f,
-            .b = (float)cmd->box_data.color.b / 255.0f,
-            .a = (float)cmd->box_data.color.a / 255.0f,
-            .texture_index = 0, // no texture
-            .shader = cmd->box_data.shader,
-        });
-    }
-    else if (cmd->type == lui_draw_image) {
-        if (state->staging_memory_left < sizeof(gpu_instance)) return NULL;
-        
-        lgx_texture* the_texture = NULL;
+        // default for no texture
+        int                     texture_index = 0;
         luirp_atlas_position_uv atlas_position = {
             .uv_min_x = 0, .uv_min_y = 0,
             .uv_max_x = 1, .uv_max_y = 1
         };
-        luirp_injection_query_image(
-            &cmd->image_data, &the_texture, &atlas_position
-        );
+
+        // try to get texture
+        if (cmd->box_data.image != NULL) {
+            lgx_texture* texture = NULL; luirp_injection_query_image(&cmd->box_data, &texture, &atlas_position);
+            texture_index = get_texture_index(state, texture, 0);
+        }
 
         return push_instance(mapped, state, (gpu_instance){
             .clip_index = cmd->clipbox_index,
             .transform  = cmd->transform,
-            .r = (float)cmd->image_data.tint.r / 255.0f,
-            .g = (float)cmd->image_data.tint.g / 255.0f,
-            .b = (float)cmd->image_data.tint.b / 255.0f,
-            .a = (float)cmd->image_data.tint.a / 255.0f,
-            .texture_index = get_texture_index(state, the_texture, 0),
-            .atlas_position = atlas_position,
-            .shader = cmd->image_data.shader
+            .r = (float)cmd->box_data.tint.r / 255.0f,
+            .g = (float)cmd->box_data.tint.g / 255.0f,
+            .b = (float)cmd->box_data.tint.b / 255.0f,
+            .a = (float)cmd->box_data.tint.a / 255.0f,
+            .shader = cmd->box_data.shader,
+            .texture_index  = texture_index,
+            .atlas_position = atlas_position
         });
     }
     else if (cmd->type == lui_draw_text) {
@@ -685,7 +676,7 @@ char* process_draw_command(char* mapped, upload_state* state, lui_arena* draws) 
             .b = (float)cmd->text_data.tint.b / 255.0f,
             .a = (float)cmd->text_data.tint.a / 255.0f,
             .texture_index = get_texture_index(state, lfont_get_texture(font), 1),
-            .shader = cmd->text_data.shader
+            .shader = cmd->text_data.shader,
         };
 
         // in below code, we multiply font metrics by two, since
@@ -918,29 +909,6 @@ void luirp_gcmd_render_ui(
     lgx_gcmd_bind_graphics_pipeline_vertex_buffer(list, contextes->owning_shared->vertex_buffer, 0, 0);
     lgx_gcmd_draw_vertices(list, 4, 0, frame->instances_to_render, 0);
 }
-
-static inline void lui_injection_measure_sized_image(
-    const lui_image_data* image, 
-    lui_length* width_target, lui_length* height_target,
-    void* user_context
-) {
-    lgx_texture*                        image_tex;
-    luirp_atlas_position_uv    atlas;
-    luirp_injection_query_image(image, &image_tex, &atlas);
-
-    if (!image_tex) {
-        *width_target  = (lui_length){0, 0, 0};
-        *height_target = (lui_length){0, 0, 0};
-        return;
-    }
-
-    lgx_texture_dimensions dim = lgx_texture_get_dimensions(image_tex);
-    float width  = dim.x * (atlas.uv_max_x - atlas.uv_min_x);
-    float height = dim.y * (atlas.uv_max_y - atlas.uv_min_y);
-
-    *width_target  = (lui_length){width,  width,  0};
-    *height_target = (lui_length){height, height, 0};
-};
 
 static inline void lui_injection_measure_text(
     const lui_text_data* data,

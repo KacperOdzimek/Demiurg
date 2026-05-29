@@ -48,22 +48,22 @@ Therefore state of code table:
 
 | Library File  | State |
 | ------------- | ------------- |
+| font.h                        | Correct |
 | graphics.h                    | Stable, extra validations may be added, can be refactored in some areas |
 | input.h                       | Stable. Internal refactoring would still be nice. |
 | linear_algebra.h              | Claude-d, needs to be tested and checked |
-| user_interface.h              | Correct |
-| synchronised_window.h         | Correct |
-| font.h                        | Correct |
+| serialization.h               | Correct |
 | shapes_rendering.h            | Correct |
+| synchronised_window.h         | Correct |
+| user_inteface_prefabs.h       | Functional, loc can be reduced |
 | user_interface_rendering.h    | Functional, but open for refactoring and performance optimizations. |
+| user_interface.h              | Some refactor would be nice, maybe some comments on implementation |
 
 ## Upcoming content
 
 The following features may be implemented in the future:
-
-- UI prefabs                            (user_inteface_prefabs.h)
+- Other graphics apis                   (graphics.h)
 - Async networking                      (networking.h)
 - Filesystem utilities                  (filesystem.h)
 - File compression and decompression    (compression.h)
 - File encryption on compression        (compression.h)
-- Serialization and deserialization     (serialization.h)
