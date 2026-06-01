@@ -83,30 +83,35 @@ typedef struct lui_type {
 
     // First layout stage
     // Generates desired nodes widths, bottom-up
+    // If left NULL: width = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
     // IN:  [children measured width]
     // OUT: [own measured width]
     lui_node_layout_func    width_measure;
 
     // Second layout stage
     // Generates actuall nodes widths, top-down
+    // If left NULL: children width = parent width, with applied maxes
     // IN:  [width measurements, own given width]
     // OUT: [children given width]
     lui_node_layout_func    width_distribute;
 
     // Third layout stage
     // Generates desired nodes widths, bottom-up
+    // If left NULL: height = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
     // IN:  [given widths, children measured heights]
     // OUT: [own measured height]
     lui_node_layout_func    height_measure;
 
     // Fourth layout stage
     // Generates actuall nodes heights, top-down
+    // If left NULL: children height = parent height, with applied maxes
     // IN:  [given widths, measured heights, own given height]
     // OUT  [children given heights]
     lui_node_layout_func    height_distribute;
 
     // Fifth layout stage
     // Position nodes on screen, top-down
+    // If left NULL: childrens are centered in parent
     // IN:  [all widths and heights]
     // OUT: [node offset from ]
     lui_node_layout_func    position;
@@ -114,6 +119,7 @@ typedef struct lui_type {
     // Render functions
     // This pass renders boxes and texts in implementation
     // Allows user to alter children transforms
+    // If left NULL: transform passed to children untouched
     // IN:  [complete layout states, own render transform]
     // OUT: [children render transform]
     lui_node_render_func    render;
@@ -265,6 +271,22 @@ static inline lui_color lui_hex(const char* hex) {
 
 #include <stdlib.h>
 
+/*
+    HELPERS PART
+*/
+
+// ===========================
+// Math helpers
+
+static inline int min_int(int a, int b) { return a < b ? a : b; }
+static inline int max_int(int a, int b) { return a < b ? b : a; }
+
+static inline int clamp_length_in_desire(int length, lui_length limits) {
+    if (length > limits.max) length = limits.max;
+    if (length < limits.min) length = limits.min;
+    return length;
+}
+
 // ===========================
 // Node fields reads
 
@@ -311,6 +333,10 @@ void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void
     free(tmp);
     return;
 }
+
+/*
+    CACHE AND PASSES PART
+*/
 
 // ===========================
 // Cache Object
@@ -493,49 +519,73 @@ void lui_update_cache(
 // ===========================
 // Default Methods
 
-static inline int min_int(int a, int b) { return a < b ? a : b; }
-static inline int max_int(int a, int b) { return a < b ? b : a; }
+void default_width_measure(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state* children_states) {
+    (void)node_data; lui_length own = {0, 0, 0.0f};
 
-/*void default_measure_width(lui_cache* cache, size_t count, const void* data) {
-    lui_length own = {0, 0, 1};
-
-    for (uint32_t i = 0; i < count; i++) {
-        lui_length spaning = lui_cache_query_child_width_measurement(cache, i);
-        own.min  = max_int(own.min, spaning.min);
-        own.max  = max_int(own.max, spaning.max);
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i].measured_width;
+        own.min  = max_int(own.min, child.min);
+        own.max  = max_int(own.max, child.max);
     }
 
-    lui_cache_measure_width_result(cache, own);
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_width = own;
 }
 
-void default_distribute_width(lui_cache* cache, size_t count, const void* data, int given) {
-    for (uint32_t i = 0; i < count; i++) lui_cache_distribute_width_result(cache, i, given);
+void default_width_distribute(
+    const void*            node_data,
+    lui_node_layout_state* node_state,
+    size_t                 children_count,
+    lui_node_layout_state* children_states
+) {
+    (void)node_data;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i].given_width = clamp_length_in_desire(node_state->given_width, children_states[i].measured_width);
+    }
 }
 
-void default_measure_height(lui_cache* cache, size_t count, const void* data) {
-    lui_length own = {0, 0, 1};
+void default_height_measure(
+    const void*            node_data,
+    lui_node_layout_state* node_state,
+    size_t                 children_count,
+    lui_node_layout_state* children_states
+) {
+    (void)node_data; lui_length own = {0, 0, 0.0f};
 
-    for (uint32_t i = 0; i < count; i++) {
-        lui_length spaning = lui_cache_query_child_height_measurement(cache, i);
-        own.min  = max_int(own.min, spaning.min);
-        own.max  = max_int(own.max, spaning.max);
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i].measured_height;
+        own.min  = max_int(own.min, child.min);
+        own.max  = max_int(own.max, child.max);
     }
 
-    lui_cache_measure_height_result(cache, own);
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_height = own;
 }
 
-void default_distribute_height(lui_cache* cache, size_t count, const void* data, int given) {
-    for (uint32_t i = 0; i < count; i++) lui_cache_distribute_height_result(cache, i, given);
+void default_height_distribute(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state* children_states) {
+    (void)node_data;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i].given_height = clamp_length_in_desire(node_state->given_height, children_states[i].measured_height);
+    }
 }
 
-void default_render(lui_cache* cache, size_t count, const void* data, lla_mat2x3 transform) {
-    for (uint32_t i = 0; i < count; i++) lui_cache_render_child(cache, i, transform);
-}*/
+void default_position(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state* children_states) {
+    (void)node_data;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i].left_offset = node_state->left_offset;
+        children_states[i].top_offset  = node_state->top_offset;
+    }
+}
+
+/*
+    NODE TYPES PART
+*/
 
 // ===========================
-// Node predefinied types
-
-// Box
+// Box Type
 
 void box_render(lui_cache* cache, const void* node_data, lla_mat2x3* transform) {
     lui_box_data* bdata = (lui_box_data*)node_data;
@@ -559,6 +609,7 @@ void box_render(lui_cache* cache, const void* node_data, lla_mat2x3* transform) 
 const lui_type lui_box_type = {
     .render = box_render
 };
+
 
 // Row
 /*
@@ -662,6 +713,10 @@ const lui_type lui_row_type = {
     .height_measure     = row_height_measure,
     .height_distribute  = row_height_distribute
 };*/
+
+/*
+    RENDERING PART
+*/
 
 // ===========================
 // Rendering Common
