@@ -54,22 +54,69 @@ static inline lui_color lui_hex(const char* hex);
 // ===========================
 // Node Typedefs
 
-typedef void(*lui_measure_func)
-    (lui_cache* cache, size_t count, const void* data);
+typedef struct lui_node_layout_state {
+    lui_length              measured_width;     // desired width  of this node
+    lui_length              measured_height;    // desired height of this node
+    int                     given_width;        // received width
+    int                     given_height;       // received height
+    int                     left_offset;        // node center horizontal offset from left screen edge
+    int                     top_offset;         // node center horizontal offset from upper screen edge
+} lui_node_layout_state;
 
-typedef void(*lui_distribute_func)
-    (lui_cache* cache, size_t count, const void* data, int given);
+typedef void(*lui_node_layout_func)(
+    const void*             node_data,          // node data
+    lui_node_layout_state*  node_state,         // node own state
+    size_t                  children_count,     // node children count
+    lui_node_layout_state*  children_states     // node children states
+);
 
-typedef void(*lui_render_func)
-    (lui_cache* cache, size_t count, const void* data, lla_mat2x3 transform);
+typedef void(*lui_node_render_func)(
+    lui_cache*              cache,              // cache to cache render requests
+    const void*             node_data,          // node data
+    lla_mat2x3*             transform           // given transform, can be changed
+);
 
 typedef struct lui_type {
-    int                 array_child;
-    lui_measure_func    width_measure;
-    lui_distribute_func width_distribute;
-    lui_measure_func    height_measure;
-    lui_distribute_func height_distribute;
-    lui_render_func     render;
+    // Whether child pointer in node means single node
+    // Or and array terminated with LUI_ARRAY_END
+    int array_child;
+
+    // First layout stage
+    // Generates desired nodes widths, bottom-up
+    // IN:  [children measured width]
+    // OUT: [own measured width]
+    lui_node_layout_func    width_measure;
+
+    // Second layout stage
+    // Generates actuall nodes widths, top-down
+    // IN:  [width measurements, own given width]
+    // OUT: [children given width]
+    lui_node_layout_func    width_distribute;
+
+    // Third layout stage
+    // Generates desired nodes widths, bottom-up
+    // IN:  [given widths, children measured heights]
+    // OUT: [own measured height]
+    lui_node_layout_func    height_measure;
+
+    // Fourth layout stage
+    // Generates actuall nodes heights, top-down
+    // IN:  [given widths, measured heights, own given height]
+    // OUT  [children given heights]
+    lui_node_layout_func    height_distribute;
+
+    // Fifth layout stage
+    // Position nodes on screen, top-down
+    // IN:  [all widths and heights]
+    // OUT: [node offset from ]
+    lui_node_layout_func    position;
+
+    // Render functions
+    // This pass renders boxes and texts in implementation
+    // Allows user to alter children transforms
+    // IN:  [complete layout states, own render transform]
+    // OUT: [children render transform]
+    lui_node_render_func    render;
 } lui_type;
 
 typedef enum lui_flag {
@@ -104,63 +151,26 @@ typedef struct lui_node {
 
 extern const lui_type lui_box_type;
 typedef struct lui_box_data {
-    lui_color       tint;   // box color
-    const char*     image;  // image name/path, may be NULL
-    uint32_t        shader; // shader effect index
+    lui_color       tint;               // box color
+    const char*     image;              // image name/path, may be NULL
+    uint32_t        shader;             // shader effect index
 } lui_box_data;
 
 extern const lui_type lui_text_type;
 typedef struct lui_text_data {
-    unsigned int    size;     // font size
-    const char*     font;     // font name/path
-    const char*     text;     // text pointer
-    lui_color       tint;     // text color modyficator
-    uint32_t        shader;   // shader effect index
+    unsigned int    size;               // font size
+    const char*     font;               // font name/path
+    const char*     text;               // text pointer
+    lui_color       tint;               // text color modyficator
+    uint32_t        shader;             // shader effect index
 } lui_text_data;
 
 extern const lui_type lui_row_type;
 typedef struct lui_row_data {
-    float           horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
-    float           vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    lui_length      spacing;          // spacing between childrens
+    float           horizontal_align;   // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
+    float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
+    lui_length      spacing;            // spacing between childrens
 } lui_row_data;
-
-// ===========================
-// Type callbacks methods
-
-typedef struct lui_glyph {
-    lgx_uv_2d   atlas_position;
-    int         off_x,  off_y;
-    int         size_x, size_y;
-} lui_glyph;
-
-lui_length lui_cache_query_child_width_measurement  // returns current node's child width measurement
-(lui_cache* cache, size_t child_index);
-
-lui_length lui_cache_query_child_height_measurement  // returns current node's child height measurement
-(lui_cache* cache, size_t child_index);
-
-
-void lui_cache_measure_width_result     // sets current node width measurements, applies ignore flags
-(lui_cache* cache, lui_length width);
-
-void lui_cache_measure_height_result    // sets current node height measurements, applies ignore flags
-(lui_cache* cache, lui_length height);
-
-
-void lui_cache_distribute_width_result  // sets child width, respects node measurement
-(lui_cache* cache, size_t child_index, int width);
-
-void lui_cache_distribute_height_result // sets child height, respects node measurement
-(lui_cache* cache, size_t child_index, int width);
-
-
-void lui_cache_render_child             // continues rendering down the tree
-(lui_cache* cache, size_t child_index, lla_mat2x3 parent_transfrom);
-
-
-void lui_cache_render_request
-(lui_cache* cache, lla_mat2x3 transform, lgx_texture* texture, lui_color color, int shader, int glyphs_begin, int glyphs_count);
 
 // ===========================
 // Cache
@@ -309,7 +319,6 @@ typedef struct cache_slot cache_slot;
 typedef struct draw_request draw_request;
 
 struct lui_cache {
-    const lui_node* walk_current_node;
     const void*     walk_current_instance;
     int             walk_current_depth;
 
@@ -339,18 +348,11 @@ typedef struct node_stable_index {
     const void*     instance;
 } node_stable_index;
 
-typedef struct node_cache {
-    size_t      children_count;
-    lui_length  measured_width;
-    lui_length  measured_height;
-    int         given_width;
-    int         given_height;
-} node_cache;
-
 typedef struct cache_slot {
-    node_stable_index   key;
-    node_cache          value;
-    unsigned char       occupied;
+    node_stable_index       key;
+    size_t                  value_child_count;
+    lui_node_layout_state   value_state;
+    unsigned char           occupied;
 } cache_slot;
 
 static uint64_t hash_ptr(const void* p) {
@@ -366,7 +368,7 @@ static size_t hash_key(node_stable_index key) {
     return (size_t)(h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)));
 }
 
-static node_cache* cache_get_or_insert(lui_cache* cache, node_stable_index key);
+static cache_slot* cache_get_or_insert(lui_cache* cache, node_stable_index key);
 static void cache_grow(lui_cache* cache) {
     size_t      old_cap   = cache->cache_capacity;
     cache_slot* old_slots = cache->cache_slots;
@@ -379,15 +381,15 @@ static void cache_grow(lui_cache* cache) {
 
     for (size_t i = 0; i < old_cap; ++i) {
         if (!old_slots[i].occupied) continue;
-        node_cache* dst = cache_get_or_insert(cache, old_slots[i].key);
-        *dst = old_slots[i].value;
+        cache_slot* dst = cache_get_or_insert(cache, old_slots[i].key);
+        *dst = old_slots[i];
     }
 
     free(old_slots);
 }
 
 // gets or creates new cache entry for node
-static node_cache* cache_get_or_insert(lui_cache* cache, node_stable_index key) {
+static cache_slot* cache_get_or_insert(lui_cache* cache, node_stable_index key) {
     if ((cache->cache_fill + 1) * 10 >= cache->cache_capacity * 7) cache_grow(cache);
 
     size_t mask = cache->cache_capacity - 1;
@@ -397,13 +399,16 @@ static node_cache* cache_get_or_insert(lui_cache* cache, node_stable_index key) 
         cache_slot* slot = &cache->cache_slots[idx];
 
         if (!slot->occupied) {
-            slot->occupied = 1; slot->key = key;
-            slot->value = (node_cache){0};
+            *slot = (cache_slot){
+                .key        = key,
+                .occupied   = 1
+            };
+
             ++cache->cache_fill;
-            return &slot->value;
+            return slot;
         }
 
-        if (slot->key.node == key.node && slot->key.instance == key.instance) return &slot->value;
+        if (slot->key.node == key.node && slot->key.instance == key.instance) return slot;
 
         idx = (idx + 1) & mask;
     }
@@ -442,163 +447,29 @@ static void cache_push_draw_request(lui_cache* cache, draw_request req) {
 }
 
 // ===========================
-// Callback Methods
-
-static inline node_cache* get_walk_current_node_cache(lui_cache* cache) {
-    return cache_get_or_insert(
-        cache, (node_stable_index){cache->walk_current_node, cache->walk_current_instance}
-    );
-}
-
-static inline node_cache* get_walk_current_node_child_cache(lui_cache* cache, size_t child_index) {
-    const lui_node* children = get_node_child(cache->walk_current_node, cache->walk_current_instance);
-    return cache_get_or_insert(
-        cache, (node_stable_index){&children[child_index], cache->walk_current_instance}
-    );
-}
-
-lui_length lui_cache_query_child_width_measurement(lui_cache* cache, size_t child_index) {
-    node_cache* ncache = get_walk_current_node_child_cache(cache, child_index);
-    return ncache->measured_width;
-}
-
-lui_length lui_cache_query_child_height_measurement(lui_cache* cache, size_t child_index) {
-    node_cache* ncache = get_walk_current_node_child_cache(cache, child_index);
-    return ncache->measured_height;
-}
-
-void lui_cache_measure_width_result(lui_cache* cache, lui_length width) {
-    node_cache* ncache = get_walk_current_node_cache(cache);
-    ncache->measured_width = width;
-}
-
-void lui_cache_measure_height_result(lui_cache* cache, lui_length height) {
-    node_cache* ncache = get_walk_current_node_cache(cache);
-    ncache->measured_height = height;
-}
-
-void lui_cache_distribute_width_result(lui_cache* cache, size_t child_index, int width) {
-    node_cache* ncache = get_walk_current_node_child_cache(cache, child_index);
-    // todo
-}
-
-void lui_cache_distribute_height_result(lui_cache* cache, size_t child_index, int height) {
-    node_cache* ncache = get_walk_current_node_child_cache(cache, child_index);
-    // todo
-}
-
-void lui_cache_render_child(lui_cache* cache, size_t child_index, lla_mat2x3 parent_transfrom) {
-    node_cache* ncache = get_walk_current_node_child_cache(cache, child_index);
-    // todo
-}
-
-// ===========================
-// Walks
-
-void default_measure_width      (lui_cache* cache, size_t count, const void* data);
-void default_distribute_width   (lui_cache* cache, size_t count, const void* data, int given);
-void default_measure_height     (lui_cache* cache, size_t count, const void* data);
-void default_distribute_height  (lui_cache* cache, size_t count, const void* data, int given);
-void default_render             (lui_cache* cache, size_t count, const void* data, lla_mat2x3 transform);
-
-// returns children count
-static inline size_t dfs_recurse_for_all_children
-(lui_cache* cache, const lui_node* current, const lui_node* child, void(*func)(lui_cache* cache, const lui_node* current)) {
-    size_t count = 0;
-
-    // single child
-    if (!current->type->array_child) {
-        if (child) func(cache, child); 
-        count += (child != NULL);
-    }
-    // multiple children
-    else {
-        const lui_node* current_child = child;
-        while (current_child->type != NULL) {
-            func(cache, current_child); current_child++; count++;
-        }
-    }
-
-    return count;
-}
-
-void measure_dfs_for_width(lui_cache* cache, const lui_node* current) {
-    if (!current || !current->type) return;
-
-    const lui_node*     child   = get_node_child(current, cache->walk_current_instance);
-    const void*         data    = get_node_data (current, cache->walk_current_instance);
-    node_stable_index   index   = {current, cache->walk_current_instance};
-    node_cache*         ncache  = cache_get_or_insert(cache, index);
-
-    // store children count for all following measure passes
-    ncache->children_count = dfs_recurse_for_all_children(cache, current, child, measure_dfs_for_width);
-
-    lui_measure_func func = current->type->width_measure ? current->type->width_measure : default_measure_width;
-    func(cache, ncache->children_count, data);
-}
-
-void distribute_dfs_for_width(lui_cache* cache, const lui_node* current) {
-    if (!current || !current->type) return;
-    
-    const lui_node*     child   = get_node_child(current, cache->walk_current_instance);
-    const void*         data    = get_node_data (current, cache->walk_current_instance);
-    node_stable_index   index   = {current, cache->walk_current_instance};
-    node_cache*         ncache  = cache_get_or_insert(cache, index);
-
-    lui_distribute_func func = current->type->width_distribute ? current->type->width_distribute : default_distribute_width;
-    func(cache, ncache->children_count, data, 0);
-
-    dfs_recurse_for_all_children(cache, current, child, distribute_dfs_for_width);
-}
-
-void measure_dfs_for_height(lui_cache* cache, const lui_node* current) {
-    if (!current || !current->type) return;
-
-    const lui_node*     child   = get_node_child(current, cache->walk_current_instance);
-    const void*         data    = get_node_data (current, cache->walk_current_instance);
-    node_stable_index   index   = {current, cache->walk_current_instance};
-    node_cache*         ncache  = cache_get_or_insert(cache, index);
-
-    dfs_recurse_for_all_children(cache, current, child, measure_dfs_for_height);
-
-    lui_measure_func func = current->type->height_measure ? current->type->height_measure : default_measure_height;
-    func(cache, ncache->children_count, data);
-}
-
-void distribute_dfs_for_height(lui_cache* cache, const lui_node* current) {
-    if (!current || !current->type) return;
-    
-    const lui_node*     child   = get_node_child(current, cache->walk_current_instance);
-    const void*         data    = get_node_data (current, cache->walk_current_instance);
-    node_stable_index   index   = {current, cache->walk_current_instance};
-    node_cache*         ncache  = cache_get_or_insert(cache, index);
-
-    lui_distribute_func func = current->type->height_distribute ? current->type->height_distribute : default_distribute_height;
-    func(cache, ncache->children_count, data, 0);
-
-    dfs_recurse_for_all_children(cache, current, child, distribute_dfs_for_height);
-}
-
-void render_dfs(lui_cache* cache, const lui_node* current, void* instance, lla_mat2x3 parent_transform) {
-   if (!current || !current->type) return;
-    
-    const lui_node*     child   = get_node_child(current, cache->walk_current_instance);
-    const void*         data    = get_node_data (current, cache->walk_current_instance);
-    node_stable_index   index   = {current, cache->walk_current_instance};
-    node_cache*         ncache  = cache_get_or_insert(cache, index);
-
-    lui_render_func func = current->type->render ? current->type->render : default_render;
-    func(cache, ncache->children_count, data, parent_transform);
-}
-
-// ===========================
 // Cache Update
 
 // ensure valid state at run begin
 void setup_cache_pre_walk(lui_cache* cache) {
-    cache->walk_current_node     = NULL;
     cache->walk_current_instance = NULL;
     cache->walk_current_depth    = 0;
+}
+
+// Renders widget
+void render_dfs(lui_cache* cache, const lui_node* node, lla_mat2x3 transform) {
+    // get node data
+    const lui_node* child = get_node_child(node, cache->walk_current_instance);
+    const void*     data  = get_node_data (node, cache->walk_current_instance);
+
+    // do render if method provided
+    if (node->type->render) node->type->render(cache, data, &transform);
+
+    // single child
+    if (!node->type->array_child && child) render_dfs(cache, node, transform);
+    // multiple children
+    else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
+        render_dfs(cache, node, transform); current_child++;
+    }
 }
 
 void lui_update_cache(
@@ -606,14 +477,14 @@ void lui_update_cache(
     const lui_node* root
 ) {
     // Full measure pass
-    setup_cache_pre_walk(cache); measure_dfs_for_width    (cache, root);
-    setup_cache_pre_walk(cache); distribute_dfs_for_width (cache, root);
-    setup_cache_pre_walk(cache); measure_dfs_for_height   (cache, root);
-    setup_cache_pre_walk(cache); distribute_dfs_for_height(cache, root);
+    //setup_cache_pre_walk(cache); measure_dfs_for_width    (cache, root);
+    //setup_cache_pre_walk(cache); distribute_dfs_for_width (cache, root);
+    //setup_cache_pre_walk(cache); measure_dfs_for_height   (cache, root);
+    //setup_cache_pre_walk(cache); distribute_dfs_for_height(cache, root);
 
     // Render pass
     cache->draw_requests_count = 0;
-    render_dfs(cache, root, NULL, lla_mat2x3_identity());
+    render_dfs(cache, root, lla_mat2x3_identity());
 
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
@@ -625,7 +496,7 @@ void lui_update_cache(
 static inline int min_int(int a, int b) { return a < b ? a : b; }
 static inline int max_int(int a, int b) { return a < b ? b : a; }
 
-void default_measure_width(lui_cache* cache, size_t count, const void* data) {
+/*void default_measure_width(lui_cache* cache, size_t count, const void* data) {
     lui_length own = {0, 0, 1};
 
     for (uint32_t i = 0; i < count; i++) {
@@ -659,18 +530,18 @@ void default_distribute_height(lui_cache* cache, size_t count, const void* data,
 
 void default_render(lui_cache* cache, size_t count, const void* data, lla_mat2x3 transform) {
     for (uint32_t i = 0; i < count; i++) lui_cache_render_child(cache, i, transform);
-}
+}*/
 
 // ===========================
 // Node predefinied types
 
 // Box
 
-void box_render(lui_cache* cache, size_t count, const void* data, lla_mat2x3 transform) {
-    lui_box_data* bdata = (lui_box_data*)data;
+void box_render(lui_cache* cache, const void* node_data, lla_mat2x3* transform) {
+    lui_box_data* bdata = (lui_box_data*)node_data;
 
     cache_push_draw_request(cache, (draw_request){
-        .transform      = transform,
+        .transform      = *transform,
         .texture_index  = 0,                // todo
         .texture_atlas  = (lgx_uv_2d){0},   // todo
         .clip_index     = 0,                // todo
@@ -683,8 +554,6 @@ void box_render(lui_cache* cache, size_t count, const void* data, lla_mat2x3 tra
         .glyph_first    = -1,
         .glyph_count    = 1
     });
-
-    default_render(cache, count, data, transform);
 }
 
 const lui_type lui_box_type = {
@@ -692,7 +561,7 @@ const lui_type lui_box_type = {
 };
 
 // Row
-
+/*
 void row_width_measure(lui_cache* cache, size_t count, const void* raw_data) {
     const lui_row_data* data = (const lui_row_data*)raw_data;
     
@@ -792,7 +661,7 @@ const lui_type lui_row_type = {
     .width_distribute   = row_width_distribute,
     .height_measure     = row_height_measure,
     .height_distribute  = row_height_distribute
-};
+};*/
 
 // ===========================
 // Rendering Common
