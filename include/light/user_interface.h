@@ -186,7 +186,9 @@ void lui_free_cache(lui_cache*);
 
 void lui_update_cache(
     lui_cache*      cache,
-    const lui_node* root
+    const lui_node* root,
+    int             resolution_x,
+    int             resolution_y
 );
 
 // ===========================
@@ -345,8 +347,11 @@ typedef struct cache_slot cache_slot;
 typedef struct draw_request draw_request;
 
 struct lui_cache {
-    const void*     walk_current_instance;
-    int             walk_current_depth;
+    int             walk_current_resolution_x;  // constant through all passes
+    int             walk_current_resolution_y;  // constant through all passes
+    const void*     walk_current_instance;      // tracked in every pass
+    int             walk_current_depth;         // tracked in render pass
+    unsigned char   walk_current_frame_index;   // tracked in render pass
 
     size_t          cache_capacity;
     size_t          cache_fill;
@@ -378,7 +383,11 @@ typedef struct cache_slot {
     node_stable_index       key;
     size_t                  value_child_count;
     lui_node_layout_state   value_state;
-    unsigned char           occupied;
+
+    // 0     - empty cell
+    // 1     - just added, not rendered yet
+    // 2-255 - rendered
+    unsigned char last_frame_used_in_render;  
 } cache_slot;
 
 static uint64_t hash_ptr(const void* p) {
@@ -406,7 +415,7 @@ static void cache_grow(lui_cache* cache) {
     cache->cache_fill = 0;
 
     for (size_t i = 0; i < old_cap; ++i) {
-        if (!old_slots[i].occupied) continue;
+        if (!old_slots[i].last_frame_used_in_render) continue;
         cache_slot* dst = cache_get_or_insert(cache, old_slots[i].key);
         *dst = old_slots[i];
     }
@@ -424,10 +433,10 @@ static cache_slot* cache_get_or_insert(lui_cache* cache, node_stable_index key) 
     for (;;) {
         cache_slot* slot = &cache->cache_slots[idx];
 
-        if (!slot->occupied) {
+        if (!slot->last_frame_used_in_render) {
             *slot = (cache_slot){
-                .key        = key,
-                .occupied   = 1
+                .key                        = key,
+                .last_frame_used_in_render  = 1
             };
 
             ++cache->cache_fill;
@@ -481,44 +490,102 @@ void setup_cache_pre_walk(lui_cache* cache) {
     cache->walk_current_depth    = 0;
 }
 
-// implements each pass
+void width_measure_dfs(lui_cache* cache) {
+    
+}
 
 // Renders widget
-void render_dfs(lui_cache* cache, const lui_node* node, lla_mat2x3 transform) {
+void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* node, lla_mat2x3 transform) {
     // get node data
     const lui_node* child = get_node_child(node, cache->walk_current_instance);
     const void*     data  = get_node_data (node, cache->walk_current_instance);
+    cache_slot*     own   = cache_get_or_insert(cache, (node_stable_index){node, cache->walk_current_instance});
+    own->last_frame_used_in_render = cache->walk_current_frame_index;   // mark used, no to garbage collect
 
     // change transform based on node's position and scale
-    // todo
+    if (previous) {
+        int offset_left = previous->value_state.left_offset - own->value_state.left_offset;
+        int offset_top  = previous->value_state.top_offset  - own->value_state.top_offset;
+
+        float off_x   = ((float)offset_left) / cache->walk_current_resolution_x;
+        float off_y   = ((float)offset_left) / cache->walk_current_resolution_y;
+        float scale_x = ((float)own->value_state.given_width)  / previous->value_state.given_width;
+        float scale_y = ((float)own->value_state.given_height) / previous->value_state.given_height;
+
+        transform = lla_mat2x3_mul(transform, lla_mat2x3_scaling(scale_x, scale_y));
+    }
 
     // do render if method provided
     if (node->type->render) node->type->render(cache, data, &transform);
 
     // single child
-    if (!node->type->array_child && child) render_dfs(cache, node, transform);
+    if (!node->type->array_child && child) render_dfs(cache, own, node, transform);
     // multiple children
     else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, node, transform); current_child++;
+        render_dfs(cache, own, node, transform); current_child++;
     }
 }
 
+/*
+    Garbage collect on text:
+    - every frame rewrite occupied regions descripotr
+    - if occupiacny not copied inherently free
+*/
+
+/*
+    Measure passes at exit shall apply flags
+    Distribute passes shall apply measurements limits at entry
+*/
+
 void lui_update_cache(
     lui_cache*      cache,
-    const lui_node* root
+    const lui_node* root,
+    int             resolution_x,
+    int             resolution_y
 ) {
+    cache->walk_current_resolution_x = resolution_x;
+    cache->walk_current_resolution_y = resolution_y;
+
     // All layout passes
+    if (1) {
+        cache_slot* root_cache = cache_get_or_insert(cache, (node_stable_index){root, NULL});
+
+        // give root entire screen
+        // will auto bound to desired at distribute
+        root_cache->value_state.given_width  = resolution_x;
+        root_cache->value_state.given_height = resolution_y;
+
+
+
+
+
+    }
     //setup_cache_pre_walk(cache); measure_dfs_for_width    (cache, root);
     //setup_cache_pre_walk(cache); distribute_dfs_for_width (cache, root);
     //setup_cache_pre_walk(cache); measure_dfs_for_height   (cache, root);
     //setup_cache_pre_walk(cache); distribute_dfs_for_height(cache, root);
 
+    // Pick next frame index
+    cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 2) cache->walk_current_frame_index = 2;
+
     // Render pass
     cache->draw_requests_count = 0;
-    render_dfs(cache, root, lla_mat2x3_identity());
+    render_dfs(cache, NULL, root, lla_mat2x3_identity());
 
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
+
+    // Garbage collect dead cache entries
+    // If entry was not used in render, mark it free
+    // Do every 16 frames not to spend to much time on it
+    if (cache->walk_current_frame_index % 16 == 0) {
+        for (size_t i = 0; i < cache->cache_capacity; i++) {
+            cache_slot* slot = &cache->cache_slots[i];
+            if (slot->last_frame_used_in_render != cache->walk_current_frame_index) {
+                slot->last_frame_used_in_render = 0; // mark free
+            }
+        }
+    }
 }
 
 // ===========================
