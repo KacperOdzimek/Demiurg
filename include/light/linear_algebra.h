@@ -49,6 +49,7 @@ typedef struct { float x, y, z, w; } lla_vec4;
  
 // Column-major: m[col][row]
 typedef struct { float m[2][2]; } lla_mat2x2;
+typedef struct { float m[3][2]; } lla_mat2x3;
 typedef struct { float m[3][3]; } lla_mat3x3;
 typedef struct { float m[4][4]; } lla_mat4x4;
  
@@ -312,6 +313,134 @@ static inline lla_mat2x2 lla_mat2x2_rotation(float angle) {
 static inline lla_mat2x2 lla_mat2x2_scaling(float sx, float sy) {
     lla_mat2x2 r = {0};
     r.m[0][0] = sx; r.m[1][1] = sy;
+    return r;
+}
+
+// ===========================
+// lla_mat2x3 
+
+// Element access
+static inline float    lla_mat2x3_get(lla_mat2x3 m, int col, int row)           { return m.m[col][row]; }
+static inline void     lla_mat2x3_set(lla_mat2x3 *m, int col, int row, float v) { m->m[col][row] = v;   }
+static inline lla_vec2 lla_mat2x3_col(lla_mat2x3 m, int c) { return (lla_vec2){m.m[c][0], m.m[c][1]}; }
+
+// Arithmetic
+static inline lla_mat2x3 lla_mat2x3_add(lla_mat2x3 a, lla_mat2x3 b) {
+    lla_mat2x3 r; int i, j;
+    for (i = 0; i < 3; i++) for (j = 0; j < 2; j++) r.m[i][j] = a.m[i][j]+b.m[i][j];
+    return r;
+}
+static inline lla_mat2x3 lla_mat2x3_sub(lla_mat2x3 a, lla_mat2x3 b) {
+    lla_mat2x3 r; int i, j;
+    for (i = 0; i < 3; i++) for (j = 0; j < 2; j++) r.m[i][j] = a.m[i][j]-b.m[i][j];
+    return r;
+}
+static inline lla_mat2x3 lla_mat2x3_scale(lla_mat2x3 a, float s) {
+    lla_mat2x3 r; int i, j;
+    for (i = 0; i < 3; i++) for (j = 0; j < 2; j++) r.m[i][j] = a.m[i][j]*s;
+    return r;
+}
+
+// Compose two affine transforms (a * b), respecting the implicit [0 0 1] bottom row
+static inline lla_mat2x3 lla_mat2x3_mul(lla_mat2x3 a, lla_mat2x3 b) {
+    lla_mat2x3 r;
+    r.m[0][0] = a.m[0][0]*b.m[0][0] + a.m[1][0]*b.m[0][1];
+    r.m[0][1] = a.m[0][1]*b.m[0][0] + a.m[1][1]*b.m[0][1];
+    r.m[1][0] = a.m[0][0]*b.m[1][0] + a.m[1][0]*b.m[1][1];
+    r.m[1][1] = a.m[0][1]*b.m[1][0] + a.m[1][1]*b.m[1][1];
+    r.m[2][0] = a.m[0][0]*b.m[2][0] + a.m[1][0]*b.m[2][1] + a.m[2][0];
+    r.m[2][1] = a.m[0][1]*b.m[2][0] + a.m[1][1]*b.m[2][1] + a.m[2][1];
+    return r;
+}
+// Transform a point (w=1, includes translation)
+static inline lla_vec2 lla_mat2x3_mulv(lla_mat2x3 m, lla_vec2 v) {
+    return (lla_vec2){ m.m[0][0]*v.x + m.m[1][0]*v.y + m.m[2][0],
+                       m.m[0][1]*v.x + m.m[1][1]*v.y + m.m[2][1] };
+}
+// Transform a direction (w=0, translation ignored)
+static inline lla_vec2 lla_mat2x3_mul_dir(lla_mat2x3 m, lla_vec2 d) {
+    return (lla_vec2){ m.m[0][0]*d.x + m.m[1][0]*d.y,
+                       m.m[0][1]*d.x + m.m[1][1]*d.y };
+}
+
+// Inverse (returns {0} when singular)
+// Exploits affine structure: inv(linear) for the 2×2 part, -inv(linear)*t for translation
+static inline lla_mat2x3 lla_mat2x3_inverse(lla_mat2x3 m) {
+    float det = m.m[0][0]*m.m[1][1] - m.m[1][0]*m.m[0][1];
+    if (fabsf(det) < 1e-8f) return (lla_mat2x3){0};
+    float inv = 1.f / det;
+    lla_mat2x3 r;
+    r.m[0][0] =  m.m[1][1]*inv;
+    r.m[0][1] = -m.m[0][1]*inv;
+    r.m[1][0] = -m.m[1][0]*inv;
+    r.m[1][1] =  m.m[0][0]*inv;
+    r.m[2][0] = -(r.m[0][0]*m.m[2][0] + r.m[1][0]*m.m[2][1]);
+    r.m[2][1] = -(r.m[0][1]*m.m[2][0] + r.m[1][1]*m.m[2][1]);
+    return r;
+}
+
+// Transform factories
+static inline lla_mat2x3 lla_mat2x3_identity(void) {
+    lla_mat2x3 r = {0};
+    r.m[0][0] = 1.f; r.m[1][1] = 1.f;
+    return r;
+}
+static inline lla_mat2x3 lla_mat2x3_translation(float tx, float ty) {
+    lla_mat2x3 r = {0};
+    r.m[0][0] = 1.f; r.m[1][1] = 1.f;
+    r.m[2][0] = tx;  r.m[2][1] = ty;
+    return r;
+}
+static inline lla_mat2x3 lla_mat2x3_translation_v(lla_vec2 t) {
+    return lla_mat2x3_translation(t.x, t.y);
+}
+// 2-D counter-clockwise rotation, angle in radians
+static inline lla_mat2x3 lla_mat2x3_rotation(float angle) {
+    float c = cosf(angle), s = sinf(angle);
+    lla_mat2x3 r = {0};
+    r.m[0][0] =  c; r.m[0][1] = s;
+    r.m[1][0] = -s; r.m[1][1] = c;
+    return r;
+}
+static inline lla_mat2x3 lla_mat2x3_scaling(float sx, float sy) {
+    lla_mat2x3 r = {0};
+    r.m[0][0] = sx; r.m[1][1] = sy;
+    return r;
+}
+// TRS composite: T * R * S
+static inline lla_mat2x3 lla_mat2x3_trs(lla_vec2 t, float angle, lla_vec2 s) {
+    return lla_mat2x3_mul(
+        lla_mat2x3_mul(
+            lla_mat2x3_translation_v(t),
+            lla_mat2x3_rotation(angle)
+        ),
+        lla_mat2x3_scaling(s.x, s.y)
+    );
+}
+
+// Conversions
+// Extract the linear part as a mat2x2 (drops translation column)
+static inline lla_mat2x2 lla_mat2x3_to_mat2x2(lla_mat2x3 m) {
+    lla_mat2x2 r;
+    r.m[0][0]=m.m[0][0]; r.m[0][1]=m.m[0][1];
+    r.m[1][0]=m.m[1][0]; r.m[1][1]=m.m[1][1];
+    return r;
+}
+// Embed into a mat3x3 with explicit [0 0 1] bottom row
+static inline lla_mat3x3 lla_mat2x3_to_mat3x3(lla_mat2x3 m) {
+    lla_mat3x3 r = {0};
+    r.m[0][0]=m.m[0][0]; r.m[0][1]=m.m[0][1];
+    r.m[1][0]=m.m[1][0]; r.m[1][1]=m.m[1][1];
+    r.m[2][0]=m.m[2][0]; r.m[2][1]=m.m[2][1];
+    r.m[2][2]=1.f;
+    return r;
+}
+// Extract from a mat3x3 (drops the bottom row)
+static inline lla_mat2x3 lla_mat2x3_from_mat3x3(lla_mat3x3 m) {
+    lla_mat2x3 r;
+    r.m[0][0]=m.m[0][0]; r.m[0][1]=m.m[0][1];
+    r.m[1][0]=m.m[1][0]; r.m[1][1]=m.m[1][1];
+    r.m[2][0]=m.m[2][0]; r.m[2][1]=m.m[2][1];
     return r;
 }
  
