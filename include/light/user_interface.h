@@ -481,11 +481,16 @@ void setup_cache_pre_walk(lui_cache* cache) {
     cache->walk_current_depth    = 0;
 }
 
+// implements each pass
+
 // Renders widget
 void render_dfs(lui_cache* cache, const lui_node* node, lla_mat2x3 transform) {
     // get node data
     const lui_node* child = get_node_child(node, cache->walk_current_instance);
     const void*     data  = get_node_data (node, cache->walk_current_instance);
+
+    // change transform based on node's position and scale
+    // todo
 
     // do render if method provided
     if (node->type->render) node->type->render(cache, data, &transform);
@@ -502,7 +507,7 @@ void lui_update_cache(
     lui_cache*      cache,
     const lui_node* root
 ) {
-    // Full measure pass
+    // All layout passes
     //setup_cache_pre_walk(cache); measure_dfs_for_width    (cache, root);
     //setup_cache_pre_walk(cache); distribute_dfs_for_width (cache, root);
     //setup_cache_pre_walk(cache); measure_dfs_for_height   (cache, root);
