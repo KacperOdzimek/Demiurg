@@ -612,6 +612,12 @@ size_t width_distribute_dfs(
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
+    // ensure received width is okay
+    current->value_state.given_width = clamp_length_in_desire(
+        current->value_state.given_width,
+        current->value_state.measured_width
+    );
+
     // do call
     lui_node_layout_func func = current->key.node->type->width_distribute;
     if (func == NULL) func = default_width_distribute;
@@ -666,6 +672,12 @@ size_t height_distribute_dfs(
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
+    // ensure received height is okay
+    current->value_state.given_height = clamp_length_in_desire(
+        current->value_state.given_height,
+        current->value_state.measured_height
+    );
+
     // do call
     lui_node_layout_func func = current->key.node->type->height_distribute;
     if (func == NULL) func = default_height_distribute;
@@ -688,10 +700,12 @@ size_t position_dfs(
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
+    // do call
     lui_node_layout_func func = current->key.node->type->position;
     if (func == NULL) func = default_position;
     func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
 
+    // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
         last_descendant = position_dfs(walk_order, children[i], last_descendant);
     }
