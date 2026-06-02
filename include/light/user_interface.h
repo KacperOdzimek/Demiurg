@@ -714,6 +714,8 @@ size_t position_dfs(
 }
 
 // Renders widget
+// Issues rendering of ui primitives
+
 void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* node, lla_mat2x3 transform) {
     // get node data
     const lui_node* child = get_node_child(node, cache->walk_current_instance);
@@ -723,14 +725,11 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
 
     // change transform based on node's position and scale
     if (previous) {
-        int offset_right = own->value_state.hori_offset;
-        int offset_top   = own->value_state.vert_offset;
-
-        float off_x   = ((float)offset_right) / cache->walk_current_resolution_x;
-        float off_y   = ((float)offset_top)   / cache->walk_current_resolution_y;
-        float scale_x = ((float)own->value_state.given_width)  / previous->value_state.given_width;
-        float scale_y = ((float)own->value_state.given_height) / previous->value_state.given_height;
-
+        float off_x   = ((float)own->value_state.hori_offset)   / (cache->walk_current_resolution_x / 2);
+        float off_y   = ((float)own->value_state.vert_offset)   / (cache->walk_current_resolution_y / 2);
+        float scale_x = ((float)own->value_state.given_width)   / previous->value_state.given_width;
+        float scale_y = ((float)own->value_state.given_height)  / previous->value_state.given_height;
+        transform = lla_mat2x3_mul(transform, lla_mat2x3_translation(off_x, off_y));
         transform = lla_mat2x3_mul(transform, lla_mat2x3_scaling(scale_x, scale_y));
     }
 
@@ -741,22 +740,9 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
     if (!node->type->array_child && child) render_dfs(cache, own, node, transform);
     // multiple children
     else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own, current_child, transform); current_child++;
+        render_dfs(cache, own, current_child, transform);
     }
 }
-
-/*
-    Garbage collect on text:
-    - every frame rewrite occupied regions descripotr
-    - if occupiacny not copied inherently free
-*/
-
-/*
-    Measure passes at exit shall apply flags
-    Distribute passes shall apply measurements limits at entry
-*/
-
-
 
 void lui_update_cache(
     lui_cache*      cache,
@@ -1003,24 +989,27 @@ void row_position(
 ) {
     const lui_row_data* data = (const lui_row_data*)node_data;
 
+    for (size_t i = 0; i < children_count; i++) {
+        children_states[i]->hori_offset = i * 100;
+    }
+
     int total_width = 0;
     for (size_t i = 0; i < children_count; ++i) total_width += children_states[i]->given_width;
     if (children_count > 1) total_width += (int)((children_count - 1) * data->spacing.min);
 
-    int x = (int)((node_state->given_width - total_width) * data->horizontal_align);
-
+    int cursor_x = -1 * node_state->given_width / 2;
     for (size_t i = 0; i < children_count; ++i) {
         lui_node_layout_state* child = children_states[i];
+
         int y = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
+        int half_width = child->given_width / 2;
 
-        child->hori_offset = x;
-        child->vert_offset  = y;
+        cursor_x += half_width; // to center
+        child->hori_offset = cursor_x;
+        child->vert_offset = y;
+        cursor_x += half_width; // to right edge
 
-        x += child->given_width;
-
-        if (i + 1 < children_count) {
-            x += data->spacing.min;
-        }
+        if (i + 1 < children_count) cursor_x += data->spacing.min;
     }
 }
 
