@@ -67,7 +67,7 @@ typedef void(*lui_node_layout_func)(
     const void*             node_data,          // node data
     lui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
-    lui_node_layout_state*  children_states     // node children states
+    lui_node_layout_state** children_states     // node children states
 );
 
 typedef void(*lui_node_render_func)(
@@ -444,7 +444,6 @@ static cache_slot* cache_get_or_insert(lui_cache* cache, node_stable_index key) 
         }
 
         if (slot->key.node == key.node && slot->key.instance == key.instance) return slot;
-
         idx = (idx + 1) & mask;
     }
 }
@@ -484,14 +483,117 @@ static void cache_push_draw_request(lui_cache* cache, draw_request req) {
 // ===========================
 // Cache Update
 
-// ensure valid state at run begin
-void setup_cache_pre_walk(lui_cache* cache) {
-    cache->walk_current_instance = NULL;
-    cache->walk_current_depth    = 0;
+// Cache Walk Pass
+// Called on remeasure
+// Computes: 
+//  - walk order (the order caches are visited, to avoid hashmaping multiple times)
+//  - nodes children count (simplify implementations)
+
+typedef struct caches_walk_order {
+    size_t                  capacity;   // in cache_slot pointers
+    size_t                  position;   // in cache_slot pointers
+    cache_slot**            slots;      // sized capacity
+    lui_node_layout_state** states;     // sized capacity
+} caches_walk_order;
+
+// returns non-zero at success
+static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot) {
+    if (walk_order->position + 1 >= walk_order->capacity) {
+        size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
+    
+        cache_slot**            new_slt = realloc(walk_order->slots,  walk_order->capacity * sizeof(cache_slot*));
+        lui_node_layout_state** new_sts = realloc(walk_order->states, walk_order->capacity * sizeof(lui_node_layout_state*));
+
+        if (!new_slt || !new_sts) return 0; // failed to realloc -> failed to ensure space
+
+        walk_order->capacity = new_cap;
+        walk_order->slots    = new_slt;
+        walk_order->states   = new_sts;
+    }
+
+    walk_order->slots[walk_order->position++]  = slot;
+    walk_order->states[walk_order->position++] = &slot->value_state;
+
+    return 1; // success
 }
 
-void width_measure_dfs(lui_cache* cache) {
+// pushes all child nodes caches of node to caches_walk_order
+// recurse into children left to right
+// returns non-zero at success
+int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* walk_order, void* instance) {
+    const lui_node* node  = current->key.node;
+    const lui_node* child = get_node_child(current->key.node, current->key.instance);
+    size_t          count = 0;
+    int             scc   = 1;
+
+    if (!node->type->array_child && child) {
+        cache_slot* child_slot = cache_get_or_insert(cache, (node_stable_index){child, instance});
+        scc &= caches_walk_dfs(cache, child_slot, walk_order, instance); count++;
+    }
+    else if (child) for (const lui_node* cc = child; cc->type != NULL; cc++) {
+        cache_slot* child_slot = cache_get_or_insert(cache, (node_stable_index){cc, instance});
+        scc &= caches_walk_dfs(cache, child_slot, walk_order, instance); count++;
+    }
+
+    current->value_child_count = count;
+    return scc;
+}
+
+void free_caches_walk_order(caches_walk_order* order) {
+    free(order->slots);
+}
+
+static inline lui_node_layout_func get_offseted_func_out_of_type(const lui_type* type, size_t type_function_member_offset) {
+    return *(lui_node_layout_func*)(((char*)type) + type_function_member_offset);
+}
+
+// returns last visited node index
+size_t bottom_up_layout_dfs(
+    caches_walk_order*      walk_order, 
+    cache_slot*             current, 
+    size_t                  first_child, 
+    size_t                  type_function_member_offset,
+    lui_node_layout_func    default_layout
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) last_descendant = bottom_up_layout_dfs(
+        walk_order, children[i], last_descendant, type_function_member_offset, default_layout
+    );
+
+    // do call
+    lui_node_layout_func func = get_offseted_func_out_of_type(current->key.node->type, type_function_member_offset);
+    if (func == NULL) func = default_layout;
+    func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
     
+    return last_descendant;
+}
+
+size_t top_down_layout_dfs(
+    caches_walk_order*      walk_order, 
+    cache_slot*             current, 
+    size_t                  first_child, 
+    size_t                  type_function_member_offset,
+    lui_node_layout_func    default_layout
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // do call
+    lui_node_layout_func func = get_offseted_func_out_of_type(current->key.node->type, type_function_member_offset);
+    if (func == NULL) func = default_layout;
+    func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) last_descendant = bottom_up_layout_dfs(
+        walk_order, children[i], last_descendant, type_function_member_offset, default_layout
+    );
+
+    return last_descendant;
 }
 
 // Renders widget
@@ -537,6 +639,23 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
     Distribute passes shall apply measurements limits at entry
 */
 
+// Default methods forwards
+
+void default_width_measure
+(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
+
+void default_width_distribute
+(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
+
+void default_height_measure
+(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
+
+void default_height_distribute
+(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
+
+void default_position
+(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
+
 void lui_update_cache(
     lui_cache*      cache,
     const lui_node* root,
@@ -550,20 +669,25 @@ void lui_update_cache(
     if (1) {
         cache_slot* root_cache = cache_get_or_insert(cache, (node_stable_index){root, NULL});
 
-        // give root entire screen
-        // will auto bound to desired at distribute
+        // Give root entire screen
+        // Will auto bound to desired at distribute
         root_cache->value_state.given_width  = resolution_x;
         root_cache->value_state.given_height = resolution_y;
 
+        // Find walk order
+        caches_walk_order walk_order = {0};
+        caches_walk_dfs(cache, root_cache, &walk_order, NULL);
+        
+        // Perform layout passes
+        bottom_up_layout_dfs(&walk_order, root_cache, 0, offsetof(lui_type, width_measure),     default_width_measure);
+        top_down_layout_dfs (&walk_order, root_cache, 0, offsetof(lui_type, width_distribute),  default_width_distribute);
+        bottom_up_layout_dfs(&walk_order, root_cache, 0, offsetof(lui_type, height_measure),    default_height_measure);
+        top_down_layout_dfs (&walk_order, root_cache, 0, offsetof(lui_type, height_distribute), default_height_distribute);
+        top_down_layout_dfs (&walk_order, root_cache, 0, offsetof(lui_type, position),          default_position);
 
-
-
-
+        // Could potentialy be cached and used at render
+        free_caches_walk_order(&walk_order);
     }
-    //setup_cache_pre_walk(cache); measure_dfs_for_width    (cache, root);
-    //setup_cache_pre_walk(cache); distribute_dfs_for_width (cache, root);
-    //setup_cache_pre_walk(cache); measure_dfs_for_height   (cache, root);
-    //setup_cache_pre_walk(cache); distribute_dfs_for_height(cache, root);
 
     // Pick next frame index
     cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 2) cache->walk_current_frame_index = 2;
@@ -591,11 +715,16 @@ void lui_update_cache(
 // ===========================
 // Default Methods
 
-void default_width_measure(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state* children_states) {
+void default_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
     (void)node_data; lui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i].measured_width;
+        lui_length child = children_states[i]->measured_width;
         own.min  = max_int(own.min, child.min);
         own.max  = max_int(own.max, child.max);
     }
@@ -605,28 +734,28 @@ void default_width_measure(const void* node_data, lui_node_layout_state* node_st
 }
 
 void default_width_distribute(
-    const void*            node_data,
-    lui_node_layout_state* node_state,
-    size_t                 children_count,
-    lui_node_layout_state* children_states
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
 ) {
     (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
-        children_states[i].given_width = clamp_length_in_desire(node_state->given_width, children_states[i].measured_width);
+        children_states[i]->given_width = clamp_length_in_desire(node_state->given_width, children_states[i]->measured_width);
     }
 }
 
 void default_height_measure(
-    const void*            node_data,
-    lui_node_layout_state* node_state,
-    size_t                 children_count,
-    lui_node_layout_state* children_states
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
 ) {
     (void)node_data; lui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i].measured_height;
+        lui_length child = children_states[i]->measured_height;
         own.min  = max_int(own.min, child.min);
         own.max  = max_int(own.max, child.max);
     }
@@ -635,20 +764,30 @@ void default_height_measure(
     node_state->measured_height = own;
 }
 
-void default_height_distribute(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state* children_states) {
+void default_height_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
     (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
-        children_states[i].given_height = clamp_length_in_desire(node_state->given_height, children_states[i].measured_height);
+        children_states[i]->given_height = clamp_length_in_desire(node_state->given_height, children_states[i]->measured_height);
     }
 }
 
-void default_position(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state* children_states) {
+void default_position(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
     (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
-        children_states[i].left_offset = node_state->left_offset;
-        children_states[i].top_offset  = node_state->top_offset;
+        children_states[i]->left_offset = node_state->left_offset;
+        children_states[i]->top_offset  = node_state->top_offset;
     }
 }
 
@@ -684,7 +823,7 @@ const lui_type lui_box_type = {
 
 
 // Row
-/*
+
 void row_width_measure(lui_cache* cache, size_t count, const void* raw_data) {
     const lui_row_data* data = (const lui_row_data*)raw_data;
     
@@ -774,6 +913,8 @@ void row_height_distribute(lui_cache* cache, size_t count, const void* data, int
     for (size_t i = 0; i < count; i++) lui_cache_distribute_height_result(cache, i, given);
 }
 
+// and position
+
 void row_render(lui_cache* cache, size_t count, const void* data, lla_mat2x3 transform) {
 
 }
@@ -784,7 +925,7 @@ const lui_type lui_row_type = {
     .width_distribute   = row_width_distribute,
     .height_measure     = row_height_measure,
     .height_distribute  = row_height_distribute
-};*/
+};
 
 /*
     RENDERING PART
