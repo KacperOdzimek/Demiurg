@@ -613,8 +613,8 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
 
     // change transform based on node's position and scale
     if (previous) {
-        int offset_right = previous->value_state.hori_offset;
-        int offset_top   = previous->value_state.vert_offset;
+        int offset_right = own->value_state.hori_offset;
+        int offset_top   = own->value_state.vert_offset;
 
         float off_x   = ((float)offset_right) / cache->walk_current_resolution_x;
         float off_y   = ((float)offset_top)   / cache->walk_current_resolution_y;
@@ -841,29 +841,20 @@ void row_width_measure(
     lui_node_layout_state** children_states
 ) {
     const lui_row_data* data = (const lui_row_data*)node_data;
-
-    lui_length own = {0, 0, 0.0f};
+    lui_length          own  = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
         lui_length child = children_states[i]->measured_width;
-        own.min += child.min;
-        own.max += child.max;
+        own.min += child.min; own.max += child.max;
     }
 
     size_t spaces = children_count ? children_count - 1 : 0;
-
     own.min += spaces * data->spacing.min;
 
-    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) {
-        own.max += spaces * data->spacing.max;
-    } else {
-        own.max = lui_inf_length;
-    }
+    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) own.max += spaces * data->spacing.max;
+    else own.max = lui_inf_length;
 
-    if (own.min != own.max) {
-        own.flex = 1.0f;
-    }
-
+    if (own.min != own.max) own.flex = 1.0f;
     node_state->measured_width = own;
 }
 
@@ -876,90 +867,36 @@ void row_width_distribute(
     (void)node_data;
 
     float flexsum = 0.0f;
-
     for (size_t i = 0; i < children_count; ++i) {
         flexsum += children_states[i]->measured_width.flex;
+        children_states[i]->given_width = 0;
     }
 
-    int* assigned = calloc(children_count, sizeof(int));
-
-    size_t unsolved = children_count;
-    int available   = node_state->given_width;
+    size_t  unsolved  = children_count;
+    int     available = node_state->given_width;
 
     while (unsolved && available > 1 && flexsum > 0.0f) {
-        unsolved = 0;
-        float next_flexsum = 0.0f;
-
+        float next_flexsum = 0.0f; unsolved = 0;
+        int   partitioned  = 0;
+        
         for (size_t i = 0; i < children_count; ++i) {
-            lui_length m = children_states[i]->measured_width;
-
-            if (assigned[i] == m.max)
-                continue;
+            lui_length  m = children_states[i]->measured_width;
+            int* assigned = &children_states[i]->given_width;
+            if (*assigned == m.max) continue;
 
             int gain = (int)(available * (m.flex / flexsum));
+            if (*assigned + gain < m.min)      gain = m.min - *assigned;
+            else if (*assigned + gain > m.max) gain = m.max - *assigned;
 
-            if (assigned[i] + gain < m.min) {
-                gain = m.min - assigned[i];
-            } else if (assigned[i] + gain > m.max) {
-                gain = m.max - assigned[i];
-            }
+            *assigned   += gain;
+            partitioned += gain;
 
-            assigned[i] += gain;
-
-            if (assigned[i] != m.max) {
-                next_flexsum += m.flex;
-                ++unsolved;
-            }
+            if (*assigned != m.max) next_flexsum += m.flex; ++unsolved;
         }
 
-        flexsum = next_flexsum;
-    }
-
-    for (size_t i = 0; i < children_count; ++i) {
-        children_states[i]->given_width = assigned[i];
-    }
-
-    free(assigned);
-}
-
-void row_height_measure(
-    const void*             node_data,
-    lui_node_layout_state*  node_state,
-    size_t                  children_count,
-    lui_node_layout_state** children_states
-) {
-    (void)node_data;
-
-    lui_length own = {0, 0, 0.0f};
-
-    for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i]->measured_height;
-
-        own.min = max_int(own.min, child.min);
-        own.max = max_int(own.max, child.max);
-    }
-
-    if (own.min != own.max) {
-        own.flex = 1.0f;
-    }
-
-    node_state->measured_height = own;
-}
-
-void row_height_distribute(
-    const void*             node_data,
-    lui_node_layout_state*  node_state,
-    size_t                  children_count,
-    lui_node_layout_state** children_states
-) {
-    (void)node_data;
-
-    for (size_t i = 0; i < children_count; ++i) {
-        children_states[i]->given_height =
-            clamp_length_in_desire(
-                node_state->given_height,
-                children_states[i]->measured_height
-            );
+        if (partitioned == 0) break;
+        available -= partitioned;
+        flexsum    = next_flexsum;
     }
 }
 
@@ -972,14 +909,8 @@ void row_position(
     const lui_row_data* data = (const lui_row_data*)node_data;
 
     int total_width = 0;
-
-    for (size_t i = 0; i < children_count; ++i) {
-        total_width += children_states[i]->given_width;
-    }
-
-    if (children_count > 1) {
-        total_width += (int)((children_count - 1) * data->spacing.min);
-    }
+    for (size_t i = 0; i < children_count; ++i) total_width += children_states[i]->given_width;
+    if (children_count > 1) total_width += (int)((children_count - 1) * data->spacing.min);
 
     int x = (int)((node_state->given_width - total_width) * data->horizontal_align);
 
@@ -1002,8 +933,8 @@ const lui_type lui_row_type = {
     .array_child        = 1,
     .width_measure      = row_width_measure,
     .width_distribute   = row_width_distribute,
-    .height_measure     = row_height_measure,
-    .height_distribute  = row_height_distribute,
+    .height_measure     = NULL,
+    .height_distribute  = NULL,
     .position           = row_position
 };
 
