@@ -945,39 +945,65 @@ void row_width_distribute(
     size_t                  children_count,
     lui_node_layout_state** children_states
 ) {
-    (void)node_data;
+    const lui_row_data* data = (const lui_row_data*)node_data;
 
-    float flexsum = 0.0f;
+    // Find spaces count
+    size_t spaces_count = children_count ? children_count - 1 : 0;
+
+    // Minimal pass
+    int   used_width = 0;
+    float flexsum    = 0.0f;
+    int   spacing    = data->spacing.min;
     for (size_t i = 0; i < children_count; ++i) {
         flexsum += children_states[i]->measured_width.flex;
-        children_states[i]->given_width = 0;
+        children_states[i]->given_width = children_states[i]->measured_width.min;
+        used_width += children_states[i]->given_width;
     }
+    flexsum += data->spacing.flex;
+    used_width += spaces_count * data->spacing.min;
 
-    size_t  unsolved  = children_count;
-    int     available = node_state->given_width;
-
-    while (unsolved && available > 1 && flexsum > 0.0f) {
-        float next_flexsum = 0.0f; unsolved = 0;
+    // Divide extra space
+    int left_width = node_state->given_width - used_width;
+    if (left_width < 0) left_width = 0;
+    while (left_width) {
+        float next_flexsum = 0.0f;
         int   partitioned  = 0;
         
+        // add to spacing
+        if (spacing < data->spacing.max) {
+            int gain_all = (int)(left_width * (data->spacing.flex / flexsum));
+
+            int gain = gain_all / spaces_count;
+            if (spacing + gain < data->spacing.min)      gain = data->spacing.min - spacing;
+            else if (spacing + gain > data->spacing.max) gain = data->spacing.max - spacing;
+
+            spacing     += gain;
+            partitioned += gain;
+
+            if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
+        }
+
+        // add to children
         for (size_t i = 0; i < children_count; ++i) {
             lui_length  m = children_states[i]->measured_width;
             int* assigned = &children_states[i]->given_width;
-            if (*assigned == m.max) continue;
+            if (*assigned == m.max) continue;   // maxed
 
-            int gain = (int)(available * (m.flex / flexsum));
+            int gain = (int)(left_width * (m.flex / flexsum));
             if (*assigned + gain < m.min)      gain = m.min - *assigned;
             else if (*assigned + gain > m.max) gain = m.max - *assigned;
 
             *assigned   += gain;
             partitioned += gain;
 
-            if (*assigned != m.max) next_flexsum += m.flex; ++unsolved;
+            if (*assigned != m.max) next_flexsum += m.flex;
         }
 
+        // if failed to divide the space, break
         if (partitioned == 0) break;
-        available -= partitioned;
-        flexsum    = next_flexsum;
+
+        left_width -= partitioned;
+        flexsum     = next_flexsum;
     }
 }
 
@@ -988,14 +1014,6 @@ void row_position(
     lui_node_layout_state** children_states
 ) {
     const lui_row_data* data = (const lui_row_data*)node_data;
-
-    for (size_t i = 0; i < children_count; i++) {
-        children_states[i]->hori_offset = i * 100;
-    }
-
-    int total_width = 0;
-    for (size_t i = 0; i < children_count; ++i) total_width += children_states[i]->given_width;
-    if (children_count > 1) total_width += (int)((children_count - 1) * data->spacing.min);
 
     int cursor_x = -1 * node_state->given_width / 2;
     for (size_t i = 0; i < children_count; ++i) {
@@ -1009,7 +1027,7 @@ void row_position(
         child->vert_offset = y;
         cursor_x += half_width; // to right edge
 
-        if (i + 1 < children_count) cursor_x += data->spacing.min;
+        cursor_x += spacing;    // todo: cross stage cache (aux cache)
     }
 }
 
