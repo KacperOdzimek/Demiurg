@@ -117,7 +117,7 @@ typedef struct lui_type {
 
     // Fifth layout stage
     // Position nodes on screen, top-down
-    // If left NULL: does nothing (by default children are centered, if not positioned in previous passes)
+    // If left NULL: centers children inside parent
     // IN:  [all widths and heights]
     // OUT: [node offset from ]
     lui_node_layout_func    position;
@@ -187,6 +187,14 @@ typedef struct lui_row_data {
     float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
     lui_length      spacing;            // spacing between children
 } lui_row_data;
+
+// Layouts children in a column, top to down
+// Data is lui_column_data, array children
+extern const lui_type lui_column_type;
+typedef struct lui_column_data {
+    float           horizontal_align;   // 0 - align left,  0.5 - align center, 1.0 - align right, other values also work
+    lui_length      spacing;            // spacing between children
+} lui_column_data;
 
 // Rendering Nodes
 
@@ -634,6 +642,9 @@ static inline void default_height_measure
 static inline void default_height_distribute
 (const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
 
+static inline void default_position
+(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
+
 // Layout passes
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
@@ -769,8 +780,9 @@ size_t position_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->position;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
-
+    if (func == NULL) default_position(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    else func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
         last_descendant = position_dfs(walk_order, children[i], last_descendant);
@@ -979,6 +991,20 @@ static inline void default_height_distribute(
     }
 }
 
+static inline void default_position(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    (void)node_data;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i]->hori_offset = 0;
+        children_states[i]->vert_offset = 0;
+    }
+}
+
 // ===========================
 // Instance type
 // This type is specially handled in pass implementation
@@ -992,12 +1018,19 @@ const lui_type lui_invalidation_type = {0};
 // ===========================
 // Overlay Type
 
+// happend, all default methods work like overlay would
 const lui_type lui_overlay_type = {
     .array_child = 1
 };
 
 // ===========================
 // Row Type
+
+static inline int limit_gain(int current, lui_length limit, int proposed) {
+    if (current + proposed < limit.min) return limit.min - current;
+    if (current + proposed > limit.max) return limit.max - current;
+    return proposed;
+}
 
 void row_width_measure(
     const void*             node_data,
@@ -1055,13 +1088,11 @@ void row_width_distribute(
         
         // add to spacing
         if (spacing < data->spacing.max) {
-            int gain_all = (int)(left_width * (data->spacing.flex / flexsum));
+            int gain = (int)(left_width * (data->spacing.flex / flexsum));
+            if (spaces_count) gain /= (int)spaces_count;
+            gain = limit_gain(spacing, data->spacing, gain);
 
-            int gain = gain_all / spaces_count;
-            if (spacing + gain < data->spacing.min)      gain = data->spacing.min - spacing;
-            else if (spacing + gain > data->spacing.max) gain = data->spacing.max - spacing;
-
-            spacing     += gain;
+            spacing     += gain; 
             partitioned += gain;
 
             if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
@@ -1074,8 +1105,7 @@ void row_width_distribute(
             if (*assigned == m.max) continue;   // maxed
 
             int gain = (int)(left_width * (m.flex / flexsum));
-            if (*assigned + gain < m.min)      gain = m.min - *assigned;
-            else if (*assigned + gain > m.max) gain = m.max - *assigned;
+            gain = limit_gain(*assigned, m, gain);
 
             *assigned   += gain;
             partitioned += gain;
@@ -1091,18 +1121,12 @@ void row_width_distribute(
     }
 
     // Position children in horizontal axis
-    int cursor_x = -1 * node_state->given_width / 2;
+    int cursor_x = -node_state->given_width / 2;
     for (size_t i = 0; i < children_count; ++i) {
         lui_node_layout_state* child = children_states[i];
-
-        int y = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
-        int half_width = child->given_width / 2;
-
-        cursor_x += half_width; // to center
+        cursor_x += child->given_width / 2;
         child->hori_offset = cursor_x;
-        cursor_x += half_width; // to right edge
-
-        cursor_x += spacing;
+        cursor_x += child->given_width / 2 + spacing;
     }
 }
 
