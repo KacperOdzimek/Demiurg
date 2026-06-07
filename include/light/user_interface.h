@@ -77,9 +77,13 @@ typedef void(*lui_node_render_func)(
 );
 
 typedef struct lui_type {
+    // STRUCTURE
+
     // Whether child pointer in node means single node
     // Or and array terminated with LUI_ARRAY_END
     int array_child;
+
+    // LAYOUT
 
     // First layout stage
     // Generates desired nodes widths, bottom-up
@@ -111,17 +115,25 @@ typedef struct lui_type {
 
     // Fifth layout stage
     // Position nodes on screen, top-down
-    // If left NULL: childrens are centered in parent
+    // If left NULL: does nothing (by default children are centered, if not positioned in previous passes)
     // IN:  [all widths and heights]
     // OUT: [node offset from ]
     lui_node_layout_func    position;
 
-    // Render functions
-    // This pass renders boxes and texts in implementation
-    // Allows user to alter children transforms
-    // If left NULL: transform passed to children untouched
+    // RENDERING
+
+    // First render stage
+    // Allow altering children render transforms, top down, interleaved with render functions (called first)
+    // If left NULL: transform left untouched
+    // IN:  [complete layout states, parent render transform]
+    // OUT: [own and children render transform]
+    lui_node_render_func    transform;
+
+    // Second render stage
+    // Renders boxes, textes and others, top down, interleaved with transform functions (called seconds)
+    // If left NULL: does nothing
     // IN:  [complete layout states, own render transform]
-    // OUT: [children render transform]
+    // OUT: [draw requests]
     lui_node_render_func    render;
 } lui_type;
 
@@ -175,7 +187,7 @@ extern const lui_type lui_row_type;
 typedef struct lui_row_data {
     float           horizontal_align;   // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
     float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    lui_length      spacing;            // spacing between childrens
+    lui_length      spacing;            // spacing between children
 } lui_row_data;
 
 // ===========================
@@ -552,19 +564,16 @@ void free_caches_walk_order(caches_walk_order* order) {
 
 // Default methods forwards
 
-void default_width_measure
+static inline void default_width_measure
 (const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
 
-void default_width_distribute
+static inline void default_width_distribute
 (const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
 
-void default_height_measure
+static inline void default_height_measure
 (const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
 
-void default_height_distribute
-(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
-
-void default_position
+static inline void default_height_distribute
 (const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
 
 // Layout passes
@@ -587,8 +596,8 @@ size_t width_measure_dfs(
 
     // call own measure
     lui_node_layout_func func = current->key.node->type->width_measure;
-    if (func == NULL) func = default_width_measure;
-    func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func == NULL) default_width_measure(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    else func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_width) {
@@ -620,8 +629,8 @@ size_t width_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->width_distribute;
-    if (func == NULL) func = default_width_distribute;
-    func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func == NULL) default_width_distribute(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    else func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -647,8 +656,8 @@ size_t height_measure_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_measure;
-    if (func == NULL) func = default_height_measure;
-    func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func == NULL) default_height_measure(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    else func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_height) {
@@ -680,8 +689,8 @@ size_t height_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_distribute;
-    if (func == NULL) func = default_height_distribute;
-    func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func == NULL) default_height_distribute(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    else func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -702,8 +711,7 @@ size_t position_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->position;
-    if (func == NULL) func = default_position;
-    func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -732,6 +740,9 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
         transform = lla_mat2x3_mul(transform, lla_mat2x3_translation(off_x, off_y));
         transform = lla_mat2x3_mul(transform, lla_mat2x3_scaling(scale_x, scale_y));
     }
+
+    // do transform if method provided
+    if (node->type->transform) node->type->transform(cache, data, &transform);
 
     // do render if method provided
     if (node->type->render) node->type->render(cache, data, &transform);
@@ -806,7 +817,7 @@ void lui_update_cache(
 // ===========================
 // Default Methods
 
-void default_width_measure(
+static inline void default_width_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -824,7 +835,7 @@ void default_width_measure(
     node_state->measured_width = own;
 }
 
-void default_width_distribute(
+static inline void default_width_distribute(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -837,7 +848,7 @@ void default_width_distribute(
     }
 }
 
-void default_height_measure(
+static inline void default_height_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -855,7 +866,7 @@ void default_height_measure(
     node_state->measured_height = own;
 }
 
-void default_height_distribute(
+static inline void default_height_distribute(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -865,20 +876,6 @@ void default_height_distribute(
 
     for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_height = clamp_length_in_desire(node_state->given_height, children_states[i]->measured_height);
-    }
-}
-
-void default_position(
-    const void*             node_data,
-    lui_node_layout_state*  node_state,
-    size_t                  children_count,
-    lui_node_layout_state** children_states
-) {
-    (void)node_data;
-
-    for (size_t i = 0; i < children_count; ++i) {
-        children_states[i]->hori_offset = 0;
-        children_states[i]->vert_offset = 0;
     }
 }
 
@@ -1005,6 +1002,21 @@ void row_width_distribute(
         left_width -= partitioned;
         flexsum     = next_flexsum;
     }
+
+    // Position children in horizontal axis
+    int cursor_x = -1 * node_state->given_width / 2;
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_node_layout_state* child = children_states[i];
+
+        int y = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
+        int half_width = child->given_width / 2;
+
+        cursor_x += half_width; // to center
+        child->hori_offset = cursor_x;
+        cursor_x += half_width; // to right edge
+
+        cursor_x += spacing;
+    }
 }
 
 void row_position(
@@ -1015,19 +1027,10 @@ void row_position(
 ) {
     const lui_row_data* data = (const lui_row_data*)node_data;
 
-    int cursor_x = -1 * node_state->given_width / 2;
+    // Position children in vertial axis, assign heights
     for (size_t i = 0; i < children_count; ++i) {
         lui_node_layout_state* child = children_states[i];
-
-        int y = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
-        int half_width = child->given_width / 2;
-
-        cursor_x += half_width; // to center
-        child->hori_offset = cursor_x;
-        child->vert_offset = y;
-        cursor_x += half_width; // to right edge
-
-        cursor_x += spacing;    // todo: cross stage cache (aux cache)
+        child->vert_offset = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
     }
 }
 
