@@ -175,6 +175,31 @@ extern const lui_type lui_invalidation_type;
 
 // Layout Nodes
 
+// During layout, overwrites selected fields with provided values
+// Data is lui_sizebox_data, single child
+extern const lui_type lui_sizebox_type;
+
+typedef enum lui_sizebox_overwrite_flag {
+    lui_sizebox_overwrite_none        = 0,
+    lui_sizebox_overwrite_all         = 255,
+    lui_sizebox_overwrite_all_width   = 7,
+    lui_sizebox_overwrite_all_height  = 56,
+
+    lui_sizebox_overwrite_width_min   = 1 << 0,
+    lui_sizebox_overwrite_width_max   = 1 << 1,
+    lui_sizebox_overwrite_width_flex  = 1 << 2,
+
+    lui_sizebox_overwrite_height_min  = 1 << 3,
+    lui_sizebox_overwrite_height_max  = 1 << 4,
+    lui_sizebox_overwrite_height_flex = 1 << 5
+} lui_sizebox_overwrite_flag;
+
+typedef struct lui_sizebox_data {
+    lui_sizebox_overwrite_flag  flag;
+    lui_length                  width;
+    lui_length                  height;    
+} lui_sizebox_data;
+
 // Layouts children one on another
 // The first child is deepest, rendered first
 // No data, array children
@@ -812,15 +837,17 @@ void render_dfs(
     // change instance for subtree
     if (node->type == &lui_instance_type) instance = data;
 
+    // get previous node dimensions
+    int previous_given_width  = previous ? previous->value_state.given_width  : cache->walk_current_resolution_x;
+    int previous_given_height = previous ? previous->value_state.given_height : cache->walk_current_resolution_y;
+
     // change transform based on node's position and scale
-    if (previous) {
-        float off_x   = ((float)own->value_state.hori_offset)   / (cache->walk_current_resolution_x / 2);
-        float off_y   = ((float)own->value_state.vert_offset)   / (cache->walk_current_resolution_y / 2);
-        float scale_x = ((float)own->value_state.given_width)   / previous->value_state.given_width;
-        float scale_y = ((float)own->value_state.given_height)  / previous->value_state.given_height;
-        transform = lla_mat2x3_mul(transform, lla_mat2x3_translation(off_x, off_y));
-        transform = lla_mat2x3_mul(transform, lla_mat2x3_scaling(scale_x, scale_y));
-    }
+    float off_x   = ((float)own->value_state.hori_offset)   / (cache->walk_current_resolution_x / 2);
+    float off_y   = ((float)own->value_state.vert_offset)   / (cache->walk_current_resolution_y / 2);
+    float scale_x = ((float)own->value_state.given_width)   / previous_given_width;
+    float scale_y = ((float)own->value_state.given_height)  / previous_given_height;
+    transform = lla_mat2x3_mul(transform, lla_mat2x3_translation(off_x, off_y));
+    transform = lla_mat2x3_mul(transform, lla_mat2x3_scaling(scale_x, scale_y));
 
     // do transform if method provided
     if (node->type->transform) node->type->transform(
@@ -1021,6 +1048,40 @@ const lui_type lui_invalidation_type = {0};
 // happend, all default methods work like overlay would
 const lui_type lui_overlay_type = {
     .array_child = 1
+};
+
+// ===========================
+// Sizebox Type
+
+void sizebox_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    const lui_sizebox_data* data = node_data;
+    default_width_measure(node_data, node_state, children_count, children_states);
+    if (data->flag & lui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
+    if (data->flag & lui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
+    if (data->flag & lui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
+}
+
+void sizebox_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    const lui_sizebox_data* data = node_data;
+    default_height_measure(node_data, node_state, children_count, children_states);
+    if (data->flag & lui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
+    if (data->flag & lui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
+    if (data->flag & lui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
+}
+
+const lui_type lui_sizebox_type = {
+    .width_measure  = sizebox_width_measure,
+    .height_measure = sizebox_height_measure,
 };
 
 // ===========================
