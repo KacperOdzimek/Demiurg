@@ -73,7 +73,9 @@ typedef void(*lui_node_layout_func)(
 typedef void(*lui_node_render_func)(
     lui_cache*              cache,              // cache to cache render requests
     const void*             node_data,          // node data
-    lla_mat2x3*             transform           // given transform, can be changed
+    lla_mat2x3*             transform,          // given transform, can be changed
+    int                     resolution_x,       // screen resolution x
+    int                     resolution_y        // screen resolution y
 );
 
 typedef struct lui_type {
@@ -809,7 +811,11 @@ void render_dfs(
     }
 
     // do transform if method provided
-    if (node->type->transform) node->type->transform(cache, data, &transform);
+    if (node->type->transform) node->type->transform(
+        cache, data, &transform, 
+        cache->walk_current_resolution_x, 
+        cache->walk_current_resolution_y
+    );
     
     // special nodes (box, text, depth,clipbox)
     if (node->type == &lui_box_type){
