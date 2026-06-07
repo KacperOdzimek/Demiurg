@@ -1138,7 +1138,7 @@ void row_position(
 ) {
     const lui_row_data* data = (const lui_row_data*)node_data;
 
-    // Position children in vertial axis, assign heights
+    // Position children in vertial axis
     for (size_t i = 0; i < children_count; ++i) {
         lui_node_layout_state* child = children_states[i];
         child->vert_offset = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
@@ -1152,6 +1152,131 @@ const lui_type lui_row_type = {
     .height_measure     = NULL,
     .height_distribute  = NULL,
     .position           = row_position
+};
+
+// ===========================
+// Column Type
+
+void column_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    const lui_column_data* data = (const lui_column_data*)node_data;
+    lui_length             own  = {0, 0, 0.0f};
+
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i]->measured_height;
+        own.min += child.min; own.max += child.max;
+    }
+
+    size_t spaces = children_count ? children_count - 1 : 0;
+    own.min += spaces * data->spacing.min;
+
+    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) own.max += spaces * data->spacing.max;
+    else own.max = lui_inf_length;
+
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_height = own;
+}
+
+void column_height_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    const lui_column_data* data = (const lui_column_data*)node_data;
+
+    // Find spaces count
+    size_t spaces_count = children_count ? children_count - 1 : 0;
+
+    // Minimal pass
+    int   used_height = 0;
+    float flexsum     = 0.0f;
+    int   spacing     = data->spacing.min;
+    for (size_t i = 0; i < children_count; ++i) {
+        flexsum += children_states[i]->measured_height.flex;
+        children_states[i]->given_height = children_states[i]->measured_height.min;
+        used_height += children_states[i]->given_height;
+    }
+    flexsum += data->spacing.flex;
+    used_height += spaces_count * data->spacing.min;
+
+    // Divide extra space
+    int left_height = node_state->given_height - used_height;
+    if (left_height < 0) left_height = 0;
+    while (left_height) {
+        float next_flexsum = 0.0f;
+        int   partitioned  = 0;
+
+        // add to spacing
+        if (spacing < data->spacing.max) {
+            int gain = (int)(left_height * (data->spacing.flex / flexsum));
+            if (spaces_count) gain /= (int)spaces_count;
+            gain = limit_gain(spacing, data->spacing, gain);
+
+            spacing     += gain;
+            partitioned += gain;
+
+            if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
+        }
+
+        // add to children
+        for (size_t i = 0; i < children_count; ++i) {
+            lui_length  m = children_states[i]->measured_height;
+            int* assigned = &children_states[i]->given_height;
+            if (*assigned == m.max) continue;   // maxed
+
+            int gain = (int)(left_height * (m.flex / flexsum));
+            gain = limit_gain(*assigned, m, gain);
+
+            *assigned   += gain;
+            partitioned += gain;
+
+            if (*assigned != m.max) next_flexsum += m.flex;
+        }
+
+        // if failed to divide the space, break
+        if (partitioned == 0) break;
+
+        left_height -= partitioned;
+        flexsum      = next_flexsum;
+    }
+
+    // Position children in vertical axis
+    int cursor_y = node_state->given_height / 2;
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_node_layout_state* child = children_states[i];
+        cursor_y -= child->given_height / 2;
+        child->vert_offset = cursor_y;
+        cursor_y -= child->given_height / 2 + spacing;
+    }
+}
+
+void column_position(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    const lui_column_data* data = (const lui_column_data*)node_data;
+
+    // Position children in horizontal axis
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_node_layout_state* child = children_states[i];
+        child->hori_offset = node_state->hori_offset + (int)((node_state->given_width - child->given_width) * data->horizontal_align);
+    }
+}
+
+const lui_type lui_column_type = {
+    .array_child        = 1,
+    .width_measure      = NULL,
+    .width_distribute   = NULL,
+    .height_measure     = column_height_measure,
+    .height_distribute  = column_height_distribute,
+    .position           = column_position
 };
 
 // ===========================
