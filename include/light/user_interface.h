@@ -77,13 +77,13 @@ typedef void(*lui_node_render_func)(
 );
 
 typedef struct lui_type {
-    // STRUCTURE
+    // Structure Stage
 
     // Whether child pointer in node means single node
     // Or and array terminated with LUI_ARRAY_END
     int array_child;
 
-    // LAYOUT
+    // Layout Stages
 
     // First layout stage
     // Generates desired nodes widths, bottom-up
@@ -120,7 +120,7 @@ typedef struct lui_type {
     // OUT: [node offset from ]
     lui_node_layout_func    position;
 
-    // RENDERING
+    // Rendering Stages
 
     // First render stage
     // Allow altering children render transforms, top down, interleaved with render functions (called first)
@@ -167,6 +167,36 @@ typedef struct lui_node {
 // ===========================
 // Predefinied Types
 
+// Architectural Nodes
+
+// Sets instance pointer to own data value
+// data shall be arbitrary pointer (or offset in current instance) to instance structure
+extern const lui_type lui_instance_type;
+
+// Layout-rebuild gate for the subtree - children layout will only
+// be rebuilt if invalidation node was marked with a proper dirty flag
+// no data, no children
+extern const lui_type lui_invalidation_type;
+
+// Layout Nodes
+
+// Layouts children in a row, left to right
+// data is lui_row_data, array children
+extern const lui_type lui_row_type;
+typedef struct lui_row_data {
+    float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
+    lui_length      spacing;            // spacing between children
+} lui_row_data;
+
+// Rendering Nodes
+
+// Puts children inside a clipbox
+// all children will be cliped to it's edge at render
+// No data, single child
+extern const lui_type lui_clipbox_type;
+
+// Box render primitive
+// data is lui_box_data, single child
 extern const lui_type lui_box_type;
 typedef struct lui_box_data {
     lui_color       tint;               // box color
@@ -174,6 +204,8 @@ typedef struct lui_box_data {
     uint32_t        shader;             // shader effect index
 } lui_box_data;
 
+// Text render primitive
+// data is lui_text_data, single child
 extern const lui_type lui_text_type;
 typedef struct lui_text_data {
     unsigned int    size;               // font size
@@ -182,13 +214,6 @@ typedef struct lui_text_data {
     lui_color       tint;               // text color modyficator
     uint32_t        shader;             // shader effect index
 } lui_text_data;
-
-extern const lui_type lui_row_type;
-typedef struct lui_row_data {
-    float           horizontal_align;   // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
-    float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    lui_length      spacing;            // spacing between children
-} lui_row_data;
 
 // ===========================
 // Cache
@@ -361,7 +386,8 @@ typedef struct draw_request draw_request;
 struct lui_cache {
     int             walk_current_resolution_x;  // constant through all passes
     int             walk_current_resolution_y;  // constant through all passes
-    const void*     walk_current_instance;      // tracked in every pass
+
+    const void*     walk_current_instance;      // tracked in render pass
     int             walk_current_depth;         // tracked in render pass
     unsigned char   walk_current_frame_index;   // tracked in render pass
 
@@ -513,8 +539,8 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
     if (walk_order->position + 1 >= walk_order->capacity) {
         size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
     
-        cache_slot**            new_slt = realloc(walk_order->slots,  walk_order->capacity * sizeof(cache_slot*));
-        lui_node_layout_state** new_sts = realloc(walk_order->states, walk_order->capacity * sizeof(lui_node_layout_state*));
+        cache_slot**            new_slt = realloc(walk_order->slots,  new_cap * sizeof(cache_slot*));
+        lui_node_layout_state** new_sts = realloc(walk_order->states, new_cap * sizeof(lui_node_layout_state*));
 
         if (!new_slt || !new_sts) return 0; // failed to realloc -> failed to ensure space
 
@@ -533,11 +559,16 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
 // Pushes all child nodes caches of node to caches_walk_order
 // Recurse into children left to right
 // Returns non-zero at success
-int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* walk_order, void* instance) {
+int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* walk_order, const void* instance) {
     const lui_node* node  = current->key.node;
     const lui_node* child = get_node_child(current->key.node, current->key.instance);
     size_t          count = 0;
     int             scc   = 1;
+
+    // change instance for subtree
+    if (node->type == &lui_instance_type) {
+        instance = get_node_data(current->key.node, instance);
+    }
 
     if (!node->type->array_child && child) {
         cache_slot* child_slot = cache_get_or_insert(cache, (node_stable_index){child, instance});
@@ -551,7 +582,7 @@ int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* wa
     // recurse
     size_t begin_pos = walk_order->position - count;
     for (size_t i = 0; i < count; i++) {
-        scc &= caches_walk_dfs(cache, walk_order->slots[begin_pos], walk_order, instance);
+        scc &= caches_walk_dfs(cache, walk_order->slots[begin_pos + i], walk_order, instance);
     }
 
     current->value_child_count = count;
@@ -560,6 +591,7 @@ int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* wa
 
 void free_caches_walk_order(caches_walk_order* order) {
     free(order->slots);
+    free(order->states);
 }
 
 // Default methods forwards
@@ -724,12 +756,15 @@ size_t position_dfs(
 // Renders widget
 // Issues rendering of ui primitives
 
-void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* node, lla_mat2x3 transform) {
+void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* node, lla_mat2x3 transform, const void* instance) {
     // get node data
-    const lui_node* child = get_node_child(node, cache->walk_current_instance);
-    const void*     data  = get_node_data (node, cache->walk_current_instance);
-    cache_slot*     own   = cache_get_or_insert(cache, (node_stable_index){node, cache->walk_current_instance});
+    const lui_node* child = get_node_child(node, instance);
+    const void*     data  = get_node_data (node, instance);
+    cache_slot*     own   = cache_get_or_insert(cache, (node_stable_index){node, instance});
     own->last_frame_used_in_render = cache->walk_current_frame_index;   // mark used, no to garbage collect
+
+    // change instance for subtree
+    if (node->type == &lui_instance_type) instance = data;
 
     // change transform based on node's position and scale
     if (previous) {
@@ -748,10 +783,10 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
     if (node->type->render) node->type->render(cache, data, &transform);
 
     // single child
-    if (!node->type->array_child && child) render_dfs(cache, own, node, transform);
+    if (!node->type->array_child && child) render_dfs(cache, own, child, transform, instance);
     // multiple children
     else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own, current_child, transform);
+        render_dfs(cache, own, current_child, transform, instance);
     }
 }
 
@@ -796,7 +831,7 @@ void lui_update_cache(
 
     // Render pass
     cache->draw_requests_count = 0;
-    render_dfs(cache, NULL, root, lla_mat2x3_identity());
+    render_dfs(cache, NULL, root, lla_mat2x3_identity(), NULL);
 
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
@@ -884,32 +919,17 @@ static inline void default_height_distribute(
 */
 
 // ===========================
-// Box Type
+// Instance type
+// This type is specially handled in implementation
 
-void box_render(lui_cache* cache, const void* node_data, lla_mat2x3* transform) {
-    lui_box_data* bdata = (lui_box_data*)node_data;
+const lui_type lui_instance_type = {0};
 
-    cache_push_draw_request(cache, (draw_request){
-        .transform      = *transform,
-        .texture_index  = 0,                // todo
-        .texture_atlas  = (lgx_uv_2d){0},   // todo
-        .clip_index     = 0,                // todo
-        .depth_index    = 0,                // todo
-        .r              = bdata->tint.r,
-        .g              = bdata->tint.g,
-        .b              = bdata->tint.b,
-        .a              = bdata->tint.a,
-        .shader         = bdata->shader,
-        .glyph_first    = -1,
-        .glyph_count    = 1
-    });
-}
+// ===========================
+// Invalidation type
+// This type is specially handled in implementation
+const lui_type lui_invalidation_type = {0};
 
-const lui_type lui_box_type = {
-    .render = box_render
-};
-
-
+// ===========================
 // Row
 
 void row_width_measure(
@@ -1041,6 +1061,32 @@ const lui_type lui_row_type = {
     .height_measure     = NULL,
     .height_distribute  = NULL,
     .position           = row_position
+};
+
+// ===========================
+// Box Type
+
+void box_render(lui_cache* cache, const void* node_data, lla_mat2x3* transform) {
+    lui_box_data* bdata = (lui_box_data*)node_data;
+
+    cache_push_draw_request(cache, (draw_request){
+        .transform      = *transform,
+        .texture_index  = 0,                // todo
+        .texture_atlas  = (lgx_uv_2d){0},   // todo
+        .clip_index     = 0,                // todo
+        .depth_index    = 0,                // todo
+        .r              = bdata->tint.r,
+        .g              = bdata->tint.g,
+        .b              = bdata->tint.b,
+        .a              = bdata->tint.a,
+        .shader         = bdata->shader,
+        .glyph_first    = -1,
+        .glyph_count    = 1
+    });
+}
+
+const lui_type lui_box_type = {
+    .render = box_render
 };
 
 /*
@@ -1435,7 +1481,7 @@ void lui_free_frames(lui_frames* frames) {
 // Walk and generate render desires
 // Sort render desires by depth
 // Upload
-// Problematic upload : text - automatically issue previous to free after new allocated
+// Problematic upload : text - automatically issue previous to free after new allocated todo
 
 void lui_upload_cache(
     lui_cache*          cache,
