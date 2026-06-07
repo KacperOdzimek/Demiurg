@@ -163,18 +163,23 @@ typedef struct lui_node {
 // Architectural Nodes
 
 // Sets instance pointer to own data value
-// data shall be arbitrary pointer (or offset in current instance) to instance structure
+// Data shall be arbitrary pointer (or offset in current instance) to instance structure
 extern const lui_type lui_instance_type;
 
 // Layout-rebuild gate for the subtree - children layout will only
 // be rebuilt if invalidation node was marked with a proper dirty flag
-// no data, no children
+// No data, single child
 extern const lui_type lui_invalidation_type;
 
 // Layout Nodes
 
+// Layouts children one on another
+// The first child is deepest, rendered first
+// No data, array children
+extern const lui_type lui_overlay_type;
+
 // Layouts children in a row, left to right
-// data is lui_row_data, array children
+// Data is lui_row_data, array children
 extern const lui_type lui_row_type;
 typedef struct lui_row_data {
     float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
@@ -183,13 +188,20 @@ typedef struct lui_row_data {
 
 // Rendering Nodes
 
-// Puts children inside a clipbox
-// all children will be cliped to it's edge at render
+// Constrains rendering to own dimensions
 // No data, single child
 extern const lui_type lui_clipbox_type;
 
+// Adds node depth offset
+// Decreasing depth means going 'into' the screen
+// Data is lui_depth_data, ingle childed
+extern const lui_type lui_depth_type;
+typedef struct lui_depth_data {
+    short depth_change;
+} lui_depth_data;
+
 // Box render primitive
-// data is lui_box_data, single child
+// Data is lui_box_data, single child
 extern const lui_type lui_box_type;
 typedef struct lui_box_data {
     lui_color       tint;               // box color
@@ -198,7 +210,7 @@ typedef struct lui_box_data {
 } lui_box_data;
 
 // Text render primitive
-// data is lui_text_data, single child
+// Data is lui_text_data, single child
 extern const lui_type lui_text_type;
 typedef struct lui_text_data {
     unsigned int    size;               // font size
@@ -483,7 +495,7 @@ struct draw_request {
     int             texture_index;
     lgx_uv_2d       texture_atlas;
     int             clip_index;
-    int             depth_index;
+    short           depth_index;
     unsigned char   r, g, b, a;
     int             shader;
     int             glyph_first;
@@ -774,7 +786,7 @@ void render_dfs(
     const lui_node*     node,
     lla_mat2x3          transform, 
     const void*         instance,
-    int                 depth_index,
+    short               depth_index,
     int                 clipbox_index
 ) {
     // get node data
@@ -799,9 +811,9 @@ void render_dfs(
     // do transform if method provided
     if (node->type->transform) node->type->transform(cache, data, &transform);
     
-    // special nodes (box, text, clipbox)
+    // special nodes (box, text, depth,clipbox)
     if (node->type == &lui_box_type){
-        lui_box_data* bdata = (lui_box_data*)data;
+        const lui_box_data* bdata = data;
         cache_push_draw_request(cache, (draw_request){
             .transform      = transform,
             .texture_index  = 0,                // todo
@@ -817,9 +829,13 @@ void render_dfs(
             .glyph_count    = 1
         });
     }
+    else if (node->type == &lui_depth_type) {
+        const lui_depth_data* ddata = data;
+        depth_index += ddata->depth_change;
+    }
     else if (node->type == &lui_clipbox_type) {
         clipbox_index = cache_clipbox_request(cache, (clipbox_request){
-            .transform = lla_mat2x3_mul(transform, lla_mat2x3_rotation(0.25))
+            .transform = transform
         });
     }
 
@@ -968,6 +984,13 @@ const lui_type lui_instance_type = {0};
 const lui_type lui_invalidation_type = {0};
 
 // ===========================
+// Overlay Type
+
+const lui_type lui_overlay_type = {
+    .array_child = 1
+};
+
+// ===========================
 // Row Type
 
 void row_width_measure(
@@ -1105,6 +1128,11 @@ const lui_type lui_row_type = {
 // Clipbox Type
 // This type is specially handled in pass implementation
 const lui_type lui_clipbox_type = {0};
+
+// ===========================
+// Depth Type
+// This type is specially handled in pass implementation
+const lui_type lui_depth_type = {0};
 
 // ===========================
 // Box Type
@@ -1537,10 +1565,10 @@ void lui_upload_cache(
             .transform      = req.transform,
             .texture_index  = req.texture_index,
             .clipbox_index  = req.clip_index,
-            .r              = req.r,
-            .g              = req.g,
-            .b              = req.b,
-            .a              = req.a,
+            .r              = (float)req.r / 255.0f,
+            .g              = (float)req.g / 255.0f,
+            .b              = (float)req.b / 255.0f,
+            .a              = (float)req.a / 255.0f,
             .shader         = req.shader
         };
 
