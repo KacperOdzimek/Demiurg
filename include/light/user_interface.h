@@ -123,18 +123,11 @@ typedef struct lui_type {
     // Rendering Stages
 
     // First render stage
-    // Allow altering children render transforms, top down, interleaved with render functions (called first)
+    // Allow altering children render transforms, top down
     // If left NULL: transform left untouched
     // IN:  [complete layout states, parent render transform]
     // OUT: [own and children render transform]
     lui_node_render_func    transform;
-
-    // Second render stage
-    // Renders boxes, textes and others, top down, interleaved with transform functions (called seconds)
-    // If left NULL: does nothing
-    // IN:  [complete layout states, own render transform]
-    // OUT: [draw requests]
-    lui_node_render_func    render;
 } lui_type;
 
 typedef enum lui_flag {
@@ -310,10 +303,6 @@ static inline lui_color lui_hex(const char* hex) {
 
 #include <stdlib.h>
 
-/*
-    HELPERS PART
-*/
-
 // ===========================
 // Math helpers
 
@@ -373,31 +362,33 @@ void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void
     return;
 }
 
-/*
-    CACHE AND PASSES PART
-*/
-
 // ===========================
 // Cache Object
 
 typedef struct cache_slot cache_slot;
 typedef struct draw_request draw_request;
+typedef struct clipbox_request clipbox_request;
 
 struct lui_cache {
-    int             walk_current_resolution_x;  // constant through all passes
-    int             walk_current_resolution_y;  // constant through all passes
+    // Passes constants
+    int                 walk_current_resolution_x;
+    int                 walk_current_resolution_y;
+    unsigned char       walk_current_frame_index;
 
-    const void*     walk_current_instance;      // tracked in render pass
-    int             walk_current_depth;         // tracked in render pass
-    unsigned char   walk_current_frame_index;   // tracked in render pass
-
-    size_t          cache_capacity;
-    size_t          cache_fill;
-    cache_slot*     cache_slots;
+    // Nodes cache hashmap
+    size_t              cache_capacity;
+    size_t              cache_fill;
+    cache_slot*         cache_slots;
     
-    size_t          draw_request_capacity;
-    size_t          draw_requests_count;
-    draw_request*   draw_requests;
+    // Draw requests dynamic array
+    size_t              draw_request_capacity;
+    size_t              draw_requests_count;
+    draw_request*       draw_requests;
+
+    // Clipbox requests dynamic array
+    size_t              clipbox_request_capacity;
+    size_t              clipbox_requests_count;
+    clipbox_request*    clipbox_requests;
 };
 
 lui_cache* lui_create_cache() {
@@ -408,6 +399,7 @@ lui_cache* lui_create_cache() {
 void lui_free_cache(lui_cache* cache) {
     if (!cache) return;
     free(cache->draw_requests);
+    free(cache->clipbox_requests);
     free(cache->cache_slots);
     free(cache);
 }
@@ -505,6 +497,7 @@ static inline int helper_draw_requests_greater_depth(const void* av, const void*
     return 0;
 }
 
+// Auto fills clip_index and depth_index
 static void cache_push_draw_request(lui_cache* cache, draw_request req) {
     if (cache->draw_requests_count + 1 > cache->draw_request_capacity) {
         size_t          new_cap = cache->draw_request_capacity ? cache->draw_request_capacity * 2 : 64;
@@ -516,6 +509,25 @@ static void cache_push_draw_request(lui_cache* cache, draw_request req) {
     }
 
     cache->draw_requests[cache->draw_requests_count++] = req;
+}
+
+struct clipbox_request {
+    lla_mat2x3  transform;
+};
+
+// Returns clipbox index
+static int cache_clipbox_request(lui_cache* cache, clipbox_request req) {
+    if (cache->clipbox_requests_count + 1 > cache->clipbox_request_capacity) {
+        size_t              new_cap = cache->clipbox_request_capacity ? cache->clipbox_request_capacity * 2 : 64;
+        clipbox_request*    new_req = realloc(cache->clipbox_requests, new_cap * sizeof(clipbox_request));
+        if (!new_req)       return -1; // failed to resize
+
+        cache->clipbox_requests         = new_req;
+        cache->clipbox_request_capacity = new_cap;
+    }
+
+    cache->clipbox_requests[cache->clipbox_requests_count] = req;
+    return cache->clipbox_requests_count++;
 }
 
 // ===========================
@@ -756,7 +768,15 @@ size_t position_dfs(
 // Renders widget
 // Issues rendering of ui primitives
 
-void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* node, lla_mat2x3 transform, const void* instance) {
+void render_dfs(
+    lui_cache*          cache, 
+    const cache_slot*   previous, 
+    const lui_node*     node,
+    lla_mat2x3          transform, 
+    const void*         instance,
+    int                 depth_index,
+    int                 clipbox_index
+) {
     // get node data
     const lui_node* child = get_node_child(node, instance);
     const void*     data  = get_node_data (node, instance);
@@ -778,15 +798,36 @@ void render_dfs(lui_cache* cache, const cache_slot* previous, const lui_node* no
 
     // do transform if method provided
     if (node->type->transform) node->type->transform(cache, data, &transform);
-
-    // do render if method provided
-    if (node->type->render) node->type->render(cache, data, &transform);
+    
+    // special nodes (box, text, clipbox)
+    if (node->type == &lui_box_type){
+        lui_box_data* bdata = (lui_box_data*)data;
+        cache_push_draw_request(cache, (draw_request){
+            .transform      = transform,
+            .texture_index  = 0,                // todo
+            .texture_atlas  = (lgx_uv_2d){0},   // todo
+            .clip_index     = clipbox_index,
+            .depth_index    = depth_index,
+            .r              = bdata->tint.r,
+            .g              = bdata->tint.g,
+            .b              = bdata->tint.b,
+            .a              = bdata->tint.a,
+            .shader         = bdata->shader,
+            .glyph_first    = -1,
+            .glyph_count    = 1
+        });
+    }
+    else if (node->type == &lui_clipbox_type) {
+        clipbox_index = cache_clipbox_request(cache, (clipbox_request){
+            .transform = lla_mat2x3_mul(transform, lla_mat2x3_rotation(0.25))
+        });
+    }
 
     // single child
-    if (!node->type->array_child && child) render_dfs(cache, own, child, transform, instance);
+    if (!node->type->array_child && child) render_dfs(cache, own, child, transform, instance, depth_index, clipbox_index);
     // multiple children
     else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own, current_child, transform, instance);
+        render_dfs(cache, own, current_child, transform, instance, depth_index, clipbox_index);
     }
 }
 
@@ -831,7 +872,7 @@ void lui_update_cache(
 
     // Render pass
     cache->draw_requests_count = 0;
-    render_dfs(cache, NULL, root, lla_mat2x3_identity(), NULL);
+    render_dfs(cache, NULL, root, lla_mat2x3_identity(), NULL, 0, -1);
 
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
@@ -841,9 +882,11 @@ void lui_update_cache(
     // Do every 16 frames not to spend to much time on it
     if (cache->walk_current_frame_index % 16 == 0) {
         for (size_t i = 0; i < cache->cache_capacity; i++) {
-            cache_slot* slot = &cache->cache_slots[i];
-            if (slot->last_frame_used_in_render != cache->walk_current_frame_index) {
-                slot->last_frame_used_in_render = 0; // mark free
+            cache_slot*    slot = &cache->cache_slots[i];
+            unsigned char* time = &slot->last_frame_used_in_render;
+            if (*time && *time != cache->walk_current_frame_index) {
+                *time = 0; // mark free
+                cache->cache_fill--;
             }
         }
     }
@@ -914,23 +957,18 @@ static inline void default_height_distribute(
     }
 }
 
-/*
-    NODE TYPES PART
-*/
-
 // ===========================
 // Instance type
-// This type is specially handled in implementation
-
+// This type is specially handled in pass implementation
 const lui_type lui_instance_type = {0};
 
 // ===========================
 // Invalidation type
-// This type is specially handled in implementation
+// This type is specially handled in pass implementation
 const lui_type lui_invalidation_type = {0};
 
 // ===========================
-// Row
+// Row Type
 
 void row_width_measure(
     const void*             node_data,
@@ -1064,34 +1102,14 @@ const lui_type lui_row_type = {
 };
 
 // ===========================
+// Clipbox Type
+// This type is specially handled in pass implementation
+const lui_type lui_clipbox_type = {0};
+
+// ===========================
 // Box Type
-
-void box_render(lui_cache* cache, const void* node_data, lla_mat2x3* transform) {
-    lui_box_data* bdata = (lui_box_data*)node_data;
-
-    cache_push_draw_request(cache, (draw_request){
-        .transform      = *transform,
-        .texture_index  = 0,                // todo
-        .texture_atlas  = (lgx_uv_2d){0},   // todo
-        .clip_index     = 0,                // todo
-        .depth_index    = 0,                // todo
-        .r              = bdata->tint.r,
-        .g              = bdata->tint.g,
-        .b              = bdata->tint.b,
-        .a              = bdata->tint.a,
-        .shader         = bdata->shader,
-        .glyph_first    = -1,
-        .glyph_count    = 1
-    });
-}
-
-const lui_type lui_box_type = {
-    .render = box_render
-};
-
-/*
-    RENDERING PART
-*/
+// This type is specially handled in pass implementation
+const lui_type lui_box_type = {0};
 
 // ===========================
 // Rendering Common
@@ -1111,7 +1129,7 @@ typedef struct gpu_draw_item {
 } gpu_draw_item;
 
 typedef struct gpu_clipbox {
-    lla_mat2x3 clip;
+    lla_mat2x3 transform;
 } gpu_clipbox;
 
 typedef struct gpu_glyph {
@@ -1497,22 +1515,24 @@ void lui_upload_cache(
 ) {
     lgx_hardware*   hardware = frames->owning_shared->owning_hardware;
 
-    uint32_t        item_count; 
-    uint64_t        item_bytes;
+    uint32_t        items_count; 
+    uint64_t        items_bytes;
     gpu_draw_item*  items;
 
     uint32_t        instances_count = 0;
     uint64_t        instances_bytes = 0;
     gpu_instance*   instances;
+
+    uint32_t        clipboxes_count; 
+    uint64_t        clipboxes_bytes;
+    gpu_clipbox*    clipboxes;
     
     // Generate GPU Items, findout instances count
-    item_count = cache->draw_requests_count;
-    item_bytes = cache->draw_requests_count * sizeof(gpu_draw_item);
-    items = malloc(item_bytes);
-
-    for (uint32_t i = 0; i < item_count; i++) {
+    items_count = cache->draw_requests_count;
+    items_bytes = cache->draw_requests_count * sizeof(gpu_draw_item);
+    items = malloc(items_bytes);
+    for (uint32_t i = 0; i < items_count; i++) {
         draw_request req = cache->draw_requests[i];
-
         items[i] = (gpu_draw_item){
             .transform      = req.transform,
             .texture_index  = req.texture_index,
@@ -1542,21 +1562,37 @@ void lui_upload_cache(
     }
 
     // Generate GPU Clipboxes
-    // Todo
+    clipboxes_count = cache->clipbox_requests_count;
+    clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_draw_item);
+    clipboxes       = malloc(clipboxes_bytes);
+    for (uint32_t i = 0; i < clipboxes_count; i++) {
+        clipbox_request req = cache->clipbox_requests[i];
+        clipboxes[i] = (gpu_clipbox){
+            .transform = req.transform
+        };
+    }
 
     // Ensure Buffer Sizes
-    int rebind = 0;
-    single_frame* frame = &frames->frames[frame_idx];
+    int rebind = 0; single_frame* frame = &frames->frames[frame_idx];
 
-    if (lgx_buffer_get_size_bytes(frame->draw_items_buffer) < item_bytes) {
+    // Items buffer
+    if (lgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
         lgx_free_buffer(frame->draw_items_buffer);
-        frame->draw_items_buffer = create_ssbo(hardware, item_bytes);
+        frame->draw_items_buffer = create_ssbo(hardware, items_bytes);
         rebind = 1;
     }
 
+    // Instanced buffer
     if (lgx_buffer_get_size_bytes(frame->instances_buffer) < instances_bytes) {
         lgx_free_buffer(frame->instances_buffer);
         frame->instances_buffer = create_ssbo(hardware, instances_bytes);
+        rebind = 1;
+    }
+
+    // Clipboxes buffer
+    if (lgx_buffer_get_size_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+        lgx_free_buffer(frame->clipboxes_buffer);
+        frame->clipboxes_buffer = create_ssbo(hardware, clipboxes_bytes);
         rebind = 1;
     }
 
@@ -1570,7 +1606,13 @@ void lui_upload_cache(
             .buffer         = frame->draw_items_buffer,
             .buffer_offset  = 0,
             .source_data    = items,
-            .source_bytes   = item_count * sizeof(gpu_draw_item)
+            .source_bytes   = items_count * sizeof(gpu_draw_item)
+        },
+        {
+            .buffer         = frame->clipboxes_buffer,
+            .buffer_offset  = 0,
+            .source_data    = clipboxes,
+            .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
         },
         {
             .buffer         = frame->instances_buffer,
@@ -1594,6 +1636,9 @@ void lui_upload_cache(
 
     // Mark to render
     frame->instances_to_render = instances_count;
+
+    // Free allocated memory
+    free(items); free(clipboxes); free(instances);
 }
 
 void lui_gcmd_render(
