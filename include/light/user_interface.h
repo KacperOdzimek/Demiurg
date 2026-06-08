@@ -63,20 +63,22 @@ typedef struct lui_node_layout_state {
     int                     vert_offset;        // node center vertical offset from parent center
 } lui_node_layout_state;
 
-typedef void(*lui_node_layout_func)(
+typedef void(lui_node_layout_signature)(
     const void*             node_data,          // node data
     lui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
     lui_node_layout_state** children_states     // node children states
 );
+typedef lui_node_layout_signature* lui_node_layout_func;
 
-typedef void(*lui_node_render_func)(
+typedef void(lui_node_render_signature)(
     lui_cache*              cache,              // cache to cache render requests
     const void*             node_data,          // node data
     lla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
     int                     resolution_y        // screen resolution y
 );
+typedef lui_node_render_signature* lui_node_render_func;
 
 typedef struct lui_type {
     // Structure Stage
@@ -89,35 +91,30 @@ typedef struct lui_type {
 
     // First layout stage
     // Generates desired nodes widths, bottom-up
-    // If left NULL: width = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
     // IN:  [children measured width]
     // OUT: [own measured width]
     lui_node_layout_func    width_measure;
 
     // Second layout stage
     // Generates actuall nodes widths, top-down
-    // If left NULL: children width = parent width, with applied maxes
     // IN:  [width measurements, own given width]
     // OUT: [children given width]
     lui_node_layout_func    width_distribute;
 
     // Third layout stage
     // Generates desired nodes widths, bottom-up
-    // If left NULL: height = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
     // IN:  [given widths, children measured heights]
     // OUT: [own measured height]
     lui_node_layout_func    height_measure;
 
     // Fourth layout stage
     // Generates actuall nodes heights, top-down
-    // If left NULL: children height = parent height, with applied maxes
     // IN:  [given widths, measured heights, own given height]
     // OUT  [children given heights]
     lui_node_layout_func    height_distribute;
 
     // Fifth layout stage
     // Position nodes on screen, top-down
-    // If left NULL: centers children inside parent
     // IN:  [all widths and heights]
     // OUT: [node offset from ]
     lui_node_layout_func    position;
@@ -126,7 +123,6 @@ typedef struct lui_type {
 
     // First render stage
     // Allow altering children render transforms, top down
-    // If left NULL: transform left untouched
     // IN:  [complete layout states, parent render transform]
     // OUT: [own and children render transform]
     lui_node_render_func    transform;
@@ -158,6 +154,25 @@ typedef struct lui_node {
 
 // Sentinel value to mark array end
 #define LUI_ARRAY_END (lui_node){.type = NULL, .child = NULL, .data = NULL}
+
+// ===========================
+// Predefinied Functions
+// Those implement basic box/overlay behavior, used by most nodes
+
+// width = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
+lui_node_layout_signature lui_overlay_width_measure_func;
+
+// children width = parent width, with applied maxes
+lui_node_layout_signature lui_overlay_width_distribute_func;
+
+// height = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
+lui_node_layout_signature lui_overlay_height_measure_func;
+
+// children height = parent height, with applied maxes
+lui_node_layout_signature lui_overlay_height_distribute_func;
+
+// centers children inside parent
+lui_node_layout_signature lui_overlay_position_func;
 
 // ===========================
 // Predefinied Types
@@ -677,23 +692,6 @@ void free_caches_walk_order(caches_walk_order* order) {
     free(order->states);
 }
 
-// Default methods forwards
-
-static inline void default_width_measure
-(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
-
-static inline void default_width_distribute
-(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
-
-static inline void default_height_measure
-(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
-
-static inline void default_height_distribute
-(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
-
-static inline void default_position
-(const void* node_data, lui_node_layout_state* node_state, size_t children_count, lui_node_layout_state** children_states);
-
 // Layout passes
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
@@ -714,8 +712,7 @@ size_t width_measure_dfs(
 
     // call own measure
     lui_node_layout_func func = current->key.node->type->width_measure;
-    if (func == NULL) default_width_measure(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
-    else func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_width) {
@@ -747,8 +744,7 @@ size_t width_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->width_distribute;
-    if (func == NULL) default_width_distribute(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
-    else func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -774,8 +770,7 @@ size_t height_measure_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_measure;
-    if (func == NULL) default_height_measure(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
-    else func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_height) {
@@ -807,8 +802,7 @@ size_t height_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_distribute;
-    if (func == NULL) default_height_distribute(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
-    else func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -829,8 +823,7 @@ size_t position_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->position;
-    if (func == NULL) default_position(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
-    else func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
     
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -978,9 +971,32 @@ void lui_update_cache(
 }
 
 // ===========================
-// Default Methods
+// Types helper
 
-static inline void default_width_measure(
+#define box_behavior_type (lui_type){                           \
+    .array_child        = 0,                                    \
+    .width_measure      = lui_overlay_width_measure_func,       \
+    .width_distribute   = lui_overlay_width_distribute_func,    \
+    .height_measure     = lui_overlay_height_measure_func,      \
+    .height_distribute  = lui_overlay_height_distribute_func,   \
+    .position           = lui_overlay_position_func,            \
+    .transform          = NULL                                  \
+} 
+
+// ===========================
+// Instance type
+// This type is specially handled in pass implementation
+const lui_type lui_instance_type = box_behavior_type;
+
+// ===========================
+// Invalidation type
+// This type is specially handled in pass implementation
+const lui_type lui_invalidation_type = box_behavior_type;
+
+// ===========================
+// Overlay Type
+
+void lui_overlay_width_measure_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -998,7 +1014,7 @@ static inline void default_width_measure(
     node_state->measured_width = own;
 }
 
-static inline void default_width_distribute(
+void lui_overlay_width_distribute_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -1011,7 +1027,7 @@ static inline void default_width_distribute(
     }
 }
 
-static inline void default_height_measure(
+void lui_overlay_height_measure_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -1029,7 +1045,7 @@ static inline void default_height_measure(
     node_state->measured_height = own;
 }
 
-static inline void default_height_distribute(
+void lui_overlay_height_distribute_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -1042,7 +1058,7 @@ static inline void default_height_distribute(
     }
 }
 
-static inline void default_position(
+void lui_overlay_position_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
@@ -1056,22 +1072,14 @@ static inline void default_position(
     }
 }
 
-// ===========================
-// Instance type
-// This type is specially handled in pass implementation
-const lui_type lui_instance_type = {0};
-
-// ===========================
-// Invalidation type
-// This type is specially handled in pass implementation
-const lui_type lui_invalidation_type = {0};
-
-// ===========================
-// Overlay Type
-
-// happend, all default methods work like overlay would
 const lui_type lui_overlay_type = {
-    .array_child = 1
+    .array_child        = 1,
+    .width_measure      = lui_overlay_width_measure_func,
+    .width_distribute   = lui_overlay_width_distribute_func,
+    .height_measure     = lui_overlay_height_measure_func,
+    .height_distribute  = lui_overlay_height_distribute_func,
+    .position           = lui_overlay_position_func,
+    .transform          = NULL
 };
 
 // ===========================
@@ -1084,7 +1092,7 @@ void sizebox_width_measure(
     lui_node_layout_state** children_states
 ) {
     const lui_sizebox_data* data = node_data;
-    default_width_measure(node_data, node_state, children_count, children_states);
+    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states);
     if (data->flag & lui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
     if (data->flag & lui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
     if (data->flag & lui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
@@ -1097,15 +1105,20 @@ void sizebox_height_measure(
     lui_node_layout_state** children_states
 ) {
     const lui_sizebox_data* data = node_data;
-    default_height_measure(node_data, node_state, children_count, children_states);
+    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states);
     if (data->flag & lui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
     if (data->flag & lui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
     if (data->flag & lui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
 }
 
 const lui_type lui_sizebox_type = {
-    .width_measure  = sizebox_width_measure,
-    .height_measure = sizebox_height_measure,
+    .array_child        = 0,
+    .width_measure      = sizebox_width_measure,
+    .width_distribute   = lui_overlay_width_distribute_func,
+    .height_measure     = sizebox_height_measure,
+    .height_distribute  = lui_overlay_height_distribute_func,
+    .position           = lui_overlay_position_func,
+    .transform          = NULL
 };
 
 // ===========================
@@ -1124,12 +1137,9 @@ static inline int padding_distribute_length(
         if (*c < cl.max) tf += cl.flex;
         if (tf <= 0.0f) break;
 
-        int ga = (*a < al.max && al.flex > 0.0f)
-            ? limit_length_gain(*a, al, (int)((float)remaining * al.flex / tf)) : 0;
-        int gb = (*b < bl.max && bl.flex > 0.0f)
-            ? limit_length_gain(*b, bl, (int)((float)remaining * bl.flex / tf)) : 0;
-        int gc = (*c < cl.max && cl.flex > 0.0f)
-            ? limit_length_gain(*c, cl, (int)((float)remaining * cl.flex / tf)) : 0;
+        int ga = (*a < al.max && al.flex > 0.0f) ? limit_length_gain(*a, al, (int)((float)remaining * al.flex / tf)) : 0;
+        int gb = (*b < bl.max && bl.flex > 0.0f) ? limit_length_gain(*b, bl, (int)((float)remaining * bl.flex / tf)) : 0;
+        int gc = (*c < cl.max && cl.flex > 0.0f) ? limit_length_gain(*c, cl, (int)((float)remaining * cl.flex / tf)) : 0;
 
         if (ga + gb + gc == 0) break; // all remaining too small after int cast
         *a += ga; *b += gb; *c += gc;
@@ -1243,21 +1253,14 @@ void padding_height_distribute(
     child->vert_offset  = (bottom_h - top_h) / 2;
 }
 
-void pos(
-    const void*             node_data,
-    lui_node_layout_state*  node_state,
-    size_t                  children_count,
-    lui_node_layout_state** children_states
-) {
-
-};
-
 const lui_type lui_padding_type = {
+    .array_child        = 0,
     .width_measure      = padding_width_measure,
     .width_distribute   = padding_width_distribute,
     .height_measure     = padding_height_measure,
     .height_distribute  = padding_height_distribute,
-    .position = pos
+    .position           = NULL,
+    .transform          = NULL
 };
 
 // ===========================
@@ -1380,9 +1383,10 @@ const lui_type lui_row_type = {
     .array_child        = 1,
     .width_measure      = row_width_measure,
     .width_distribute   = row_width_distribute,
-    .height_measure     = NULL,
-    .height_distribute  = NULL,
-    .position           = row_position
+    .height_measure     = lui_overlay_height_measure_func,
+    .height_distribute  = lui_overlay_height_distribute_func,
+    .position           = row_position,
+    .transform          = NULL
 };
 
 // ===========================
@@ -1503,27 +1507,28 @@ void column_position(
 
 const lui_type lui_column_type = {
     .array_child        = 1,
-    .width_measure      = NULL,
-    .width_distribute   = NULL,
+    .width_measure      = lui_overlay_width_measure_func,
+    .width_distribute   = lui_overlay_width_distribute_func,
     .height_measure     = column_height_measure,
     .height_distribute  = column_height_distribute,
-    .position           = column_position
+    .position           = column_position,
+    .transform          = NULL
 };
 
 // ===========================
 // Clipbox Type
 // This type is specially handled in pass implementation
-const lui_type lui_clipbox_type = {0};
+const lui_type lui_clipbox_type = box_behavior_type;
 
 // ===========================
 // Depth Type
 // This type is specially handled in pass implementation
-const lui_type lui_depth_type = {0};
+const lui_type lui_depth_type = box_behavior_type;
 
 // ===========================
 // Box Type
 // This type is specially handled in pass implementation
-const lui_type lui_box_type = {0};
+const lui_type lui_box_type = box_behavior_type;
 
 // ===========================
 // Rendering Common
