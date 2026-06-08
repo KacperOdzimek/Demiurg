@@ -200,6 +200,13 @@ typedef struct lui_sizebox_data {
     lui_length                  height;    
 } lui_sizebox_data;
 
+// Padds child inside self
+// Data is lui_padding_data, single child
+extern const lui_type lui_padding_type;
+typedef struct lui_padding_data {
+    lui_length left, right, top, bottom;
+} lui_padding_data;
+
 // Layouts children one on another
 // The first child is deepest, rendered first
 // No data, array children
@@ -356,10 +363,27 @@ static inline lui_color lui_hex(const char* hex) {
 static inline int min_int(int a, int b) { return a < b ? a : b; }
 static inline int max_int(int a, int b) { return a < b ? b : a; }
 
-static inline int clamp_length_in_desire(int length, lui_length limits) {
+static inline int limit_length(int length, lui_length limits) {
     if (length > limits.max) length = limits.max;
     if (length < limits.min) length = limits.min;
     return length;
+}
+
+static inline int limit_length_gain(int current, lui_length limit, int proposed) {
+    if (current + proposed < limit.min) return limit.min - current;
+    if (current + proposed > limit.max) return limit.max - current;
+    return proposed;
+}
+
+static inline lla_mat2x3 mat2x3_scale(lla_mat2x3 m, float sx, float sy) {
+    m.m[0][0] *= sx;  m.m[0][1] *= sy;
+    m.m[1][0] *= sx;  m.m[1][1] *= sy;
+    return m;
+}
+
+static inline lla_mat2x3 mat2x3_offset(lla_mat2x3 m, float ox, float oy) {
+    m.m[2][0] += ox; m.m[2][1] += oy;
+    return m;
 }
 
 // ===========================
@@ -716,7 +740,7 @@ size_t width_distribute_dfs(
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
     // ensure received width is okay
-    current->value_state.given_width = clamp_length_in_desire(
+    current->value_state.given_width = limit_length(
         current->value_state.given_width,
         current->value_state.measured_width
     );
@@ -776,7 +800,7 @@ size_t height_distribute_dfs(
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
     // ensure received height is okay
-    current->value_state.given_height = clamp_length_in_desire(
+    current->value_state.given_height = limit_length(
         current->value_state.given_height,
         current->value_state.measured_height
     );
@@ -838,16 +862,16 @@ void render_dfs(
     if (node->type == &lui_instance_type) instance = data;
 
     // get previous node dimensions
-    int previous_given_width  = previous ? previous->value_state.given_width  : cache->walk_current_resolution_x;
-    int previous_given_height = previous ? previous->value_state.given_height : cache->walk_current_resolution_y;
+    int transform_corresponding_width  = previous ? previous->value_state.given_width  : cache->walk_current_resolution_x;
+    int transform_corresponding_height = previous ? previous->value_state.given_height : cache->walk_current_resolution_y;
 
     // change transform based on node's position and scale
-    float off_x   = ((float)own->value_state.hori_offset)   / (cache->walk_current_resolution_x / 2);
-    float off_y   = ((float)own->value_state.vert_offset)   / (cache->walk_current_resolution_y / 2);
-    float scale_x = ((float)own->value_state.given_width)   / previous_given_width;
-    float scale_y = ((float)own->value_state.given_height)  / previous_given_height;
-    transform = lla_mat2x3_mul(transform, lla_mat2x3_translation(off_x, off_y));
-    transform = lla_mat2x3_mul(transform, lla_mat2x3_scaling(scale_x, scale_y));
+    float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->walk_current_resolution_x;
+    float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->walk_current_resolution_y;
+    float scale_x = ((float)own->value_state.given_width)       / transform_corresponding_width;
+    float scale_y = ((float)own->value_state.given_height)      / transform_corresponding_height;
+    transform = mat2x3_offset(transform, off_x, off_y);
+    transform = mat2x3_scale (transform, scale_x, scale_y);
 
     // do transform if method provided
     if (node->type->transform) node->type->transform(
@@ -983,7 +1007,7 @@ static inline void default_width_distribute(
     (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
-        children_states[i]->given_width = clamp_length_in_desire(node_state->given_width, children_states[i]->measured_width);
+        children_states[i]->given_width = limit_length(node_state->given_width, children_states[i]->measured_width);
     }
 }
 
@@ -1014,7 +1038,7 @@ static inline void default_height_distribute(
     (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
-        children_states[i]->given_height = clamp_length_in_desire(node_state->given_height, children_states[i]->measured_height);
+        children_states[i]->given_height = limit_length(node_state->given_height, children_states[i]->measured_height);
     }
 }
 
@@ -1085,13 +1109,159 @@ const lui_type lui_sizebox_type = {
 };
 
 // ===========================
-// Row Type
+// Padding Type
 
-static inline int limit_gain(int current, lui_length limit, int proposed) {
-    if (current + proposed < limit.min) return limit.min - current;
-    if (current + proposed > limit.max) return limit.max - current;
-    return proposed;
+static inline int padding_distribute_length(
+    int* a, lui_length al,
+    int* b, lui_length bl,
+    int* c, lui_length cl,
+    int remaining
+) {
+    for (int pass = 0; pass < 3 && remaining > 0; pass++) {
+        float tf = 0.0f;
+        if (*a < al.max) tf += al.flex;
+        if (*b < bl.max) tf += bl.flex;
+        if (*c < cl.max) tf += cl.flex;
+        if (tf <= 0.0f) break;
+
+        int ga = (*a < al.max && al.flex > 0.0f)
+            ? limit_length_gain(*a, al, (int)((float)remaining * al.flex / tf)) : 0;
+        int gb = (*b < bl.max && bl.flex > 0.0f)
+            ? limit_length_gain(*b, bl, (int)((float)remaining * bl.flex / tf)) : 0;
+        int gc = (*c < cl.max && cl.flex > 0.0f)
+            ? limit_length_gain(*c, cl, (int)((float)remaining * cl.flex / tf)) : 0;
+
+        if (ga + gb + gc == 0) break; // all remaining too small after int cast
+        *a += ga; *b += gb; *c += gc;
+        remaining -= ga + gb + gc;
+    }
+    return remaining;
 }
+
+void padding_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+    const lui_padding_data* data = node_data;
+    lui_length own = {0, 0, 0.0f};
+    
+    int child_min = 0, child_max = 0;
+    if (children_count > 0) {
+        child_min = children_states[0]->measured_width.min;
+        child_max = children_states[0]->measured_width.max;
+    }
+
+    int w_min = data->left.min + child_min + data->right.min;
+    int w_max = data->left.max + child_max + data->right.max;
+
+    node_state->measured_width = (lui_length){
+        .min  = w_min,
+        .max  = w_max,
+        .flex = (w_min != w_max) ? 1.0f : 0.0f,
+    };
+}
+
+void padding_width_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states)
+{
+    const lui_padding_data* data = node_data;
+    if (children_count == 0) return;
+    lui_node_layout_state* child = children_states[0];
+
+    // Give every element its minimum
+    int left_w  = data->left.min;
+    int right_w = data->right.min;
+    int child_w = child->measured_width.min;
+
+    // Divide remaining space, give leftover to child
+    int remaining = node_state->given_width - left_w - right_w - child_w;
+    if (remaining > 0) {
+        remaining = padding_distribute_length(
+            &left_w, data->left, &right_w, data->right, &child_w, child->measured_width, remaining
+        ); child_w += limit_length_gain(child_w, child->measured_width, remaining);
+    }
+
+    // Assign child width and position
+    child->given_width = child_w;
+    child->hori_offset = (left_w - right_w) / 2;
+}
+
+void padding_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states)
+{
+    const lui_padding_data* data = node_data;
+
+    int child_min = 0, child_max = 0;
+    if (children_count > 0) {
+        child_min = children_states[0]->measured_height.min;
+        child_max = children_states[0]->measured_height.max;
+    }
+
+    int h_min = data->top.min + child_min + data->bottom.min;
+    int h_max = data->top.max + child_max + data->bottom.max;
+
+    node_state->measured_height = (lui_length){
+        .min  = h_min,
+        .max  = h_max,
+        .flex = (h_min != h_max) ? 1.0f : 0.0f,
+    };
+}
+
+void padding_height_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states)
+{
+    const lui_padding_data* data = node_data;
+    if (children_count == 0) return;
+    lui_node_layout_state* child = children_states[0];
+
+    // Give every element its minimum
+    int top_h    = data->top.min;
+    int bottom_h = data->bottom.min;
+    int child_h  = child->measured_height.min;
+
+    // Divide remaining space, give leftover to child
+    int remaining = node_state->given_height - top_h - bottom_h - child_h;
+    if (remaining > 0) {
+        remaining = padding_distribute_length(
+            &top_h, data->top, &bottom_h, data->bottom, &child_h, child->measured_height, remaining
+        ); child_h += limit_length_gain(child_h, child->measured_height, remaining);
+    }
+
+    // Assign child width and position
+    child->given_height = child_h;
+    child->vert_offset  = (bottom_h - top_h) / 2;
+}
+
+void pos(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states
+) {
+
+};
+
+const lui_type lui_padding_type = {
+    .width_measure      = padding_width_measure,
+    .width_distribute   = padding_width_distribute,
+    .height_measure     = padding_height_measure,
+    .height_distribute  = padding_height_distribute,
+    .position = pos
+};
+
+// ===========================
+// Row Type
 
 void row_width_measure(
     const void*             node_data,
@@ -1151,10 +1321,10 @@ void row_width_distribute(
         if (spacing < data->spacing.max) {
             int gain = (int)(left_width * (data->spacing.flex / flexsum));
             if (spaces_count) gain /= (int)spaces_count;
-            gain = limit_gain(spacing, data->spacing, gain);
+            gain = limit_length_gain(spacing, data->spacing, gain);
 
             spacing     += gain; 
-            partitioned += gain;
+            partitioned += gain * spaces_count;
 
             if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
         }
@@ -1166,7 +1336,7 @@ void row_width_distribute(
             if (*assigned == m.max) continue;   // maxed
 
             int gain = (int)(left_width * (m.flex / flexsum));
-            gain = limit_gain(*assigned, m, gain);
+            gain = limit_length_gain(*assigned, m, gain);
 
             *assigned   += gain;
             partitioned += gain;
@@ -1202,7 +1372,7 @@ void row_position(
     // Position children in vertial axis
     for (size_t i = 0; i < children_count; ++i) {
         lui_node_layout_state* child = children_states[i];
-        child->vert_offset = node_state->vert_offset + (int)((node_state->given_height - child->given_height) * data->vertical_align);
+        child->vert_offset = (node_state->given_height - child->given_height) * (0.5f - data->vertical_align);
     }
 }
 
@@ -1276,10 +1446,10 @@ void column_height_distribute(
         if (spacing < data->spacing.max) {
             int gain = (int)(left_height * (data->spacing.flex / flexsum));
             if (spaces_count) gain /= (int)spaces_count;
-            gain = limit_gain(spacing, data->spacing, gain);
+            gain = limit_length_gain(spacing, data->spacing, gain);
 
             spacing     += gain;
-            partitioned += gain;
+            partitioned += gain * spaces_count;
 
             if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
         }
@@ -1291,7 +1461,7 @@ void column_height_distribute(
             if (*assigned == m.max) continue;   // maxed
 
             int gain = (int)(left_height * (m.flex / flexsum));
-            gain = limit_gain(*assigned, m, gain);
+            gain = limit_length_gain(*assigned, m, gain);
 
             *assigned   += gain;
             partitioned += gain;
@@ -1308,7 +1478,7 @@ void column_height_distribute(
 
     // Position children in vertical axis
     int cursor_y = node_state->given_height / 2;
-    for (size_t i = 0; i < children_count; ++i) {
+    for (size_t i = 0; i < children_count; i++) {
         lui_node_layout_state* child = children_states[i];
         cursor_y -= child->given_height / 2;
         child->vert_offset = cursor_y;
@@ -1327,7 +1497,7 @@ void column_position(
     // Position children in horizontal axis
     for (size_t i = 0; i < children_count; ++i) {
         lui_node_layout_state* child = children_states[i];
-        child->hori_offset = node_state->hori_offset + (int)((node_state->given_width - child->given_width) * data->horizontal_align);
+        child->hori_offset = (node_state->given_width  - child->given_width)  * (data->horizontal_align - 0.5f);
     }
 }
 

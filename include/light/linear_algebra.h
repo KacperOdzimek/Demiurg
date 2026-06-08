@@ -352,11 +352,13 @@ static inline lla_mat2x3 lla_mat2x3_mul(lla_mat2x3 a, lla_mat2x3 b) {
     r.m[2][1] = a.m[0][1]*b.m[2][0] + a.m[1][1]*b.m[2][1] + a.m[2][1];
     return r;
 }
+
 // Transform a point (w=1, includes translation)
 static inline lla_vec2 lla_mat2x3_mulv(lla_mat2x3 m, lla_vec2 v) {
     return (lla_vec2){ m.m[0][0]*v.x + m.m[1][0]*v.y + m.m[2][0],
                        m.m[0][1]*v.x + m.m[1][1]*v.y + m.m[2][1] };
 }
+
 // Transform a direction (w=0, translation ignored)
 static inline lla_vec2 lla_mat2x3_mul_dir(lla_mat2x3 m, lla_vec2 d) {
     return (lla_vec2){ m.m[0][0]*d.x + m.m[1][0]*d.y,
@@ -385,15 +387,18 @@ static inline lla_mat2x3 lla_mat2x3_identity(void) {
     r.m[0][0] = 1.f; r.m[1][1] = 1.f;
     return r;
 }
+
 static inline lla_mat2x3 lla_mat2x3_translation(float tx, float ty) {
     lla_mat2x3 r = {0};
     r.m[0][0] = 1.f; r.m[1][1] = 1.f;
     r.m[2][0] = tx;  r.m[2][1] = ty;
     return r;
 }
+
 static inline lla_mat2x3 lla_mat2x3_translation_v(lla_vec2 t) {
     return lla_mat2x3_translation(t.x, t.y);
 }
+
 // 2-D counter-clockwise rotation, angle in radians
 static inline lla_mat2x3 lla_mat2x3_rotation(float angle) {
     float c = cosf(angle), s = sinf(angle);
@@ -402,6 +407,7 @@ static inline lla_mat2x3 lla_mat2x3_rotation(float angle) {
     r.m[1][0] = -s; r.m[1][1] = c;
     return r;
 }
+
 static inline lla_mat2x3 lla_mat2x3_scaling(float sx, float sy) {
     lla_mat2x3 r = {0};
     r.m[0][0] = sx; r.m[1][1] = sy;
