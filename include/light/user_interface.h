@@ -175,9 +175,7 @@ lui_node_layout_signature lui_overlay_height_distribute_func;
 lui_node_layout_signature lui_overlay_position_func;
 
 // ===========================
-// Predefinied Types
-
-// Architectural Nodes
+// Architectural Node Types
 
 // Sets instance pointer to own data value
 // Data shall be arbitrary pointer (or offset in current instance) to instance structure
@@ -188,7 +186,8 @@ extern const lui_type lui_instance_type;
 // No data, single child
 extern const lui_type lui_invalidation_type;
 
-// Layout Nodes
+// ===========================
+// Layout Node Types
 
 // During layout, overwrites selected fields with provided values
 // Data is lui_sizebox_data, single child
@@ -243,7 +242,8 @@ typedef struct lui_column_data {
     lui_length      spacing;            // spacing between children
 } lui_column_data;
 
-// Rendering Nodes
+// ===========================
+// Rendering Node Types
 
 // Constrains rendering to own dimensions
 // No data, single child
@@ -1529,6 +1529,12 @@ const lui_type lui_depth_type = box_behavior_type;
 // Box Type
 // This type is specially handled in pass implementation
 const lui_type lui_box_type = box_behavior_type;
+
+// ===========================
+// Text type
+const lui_type lui_text_type = {
+    .array_child = 0,
+};
 
 // ===========================
 // Rendering Common
