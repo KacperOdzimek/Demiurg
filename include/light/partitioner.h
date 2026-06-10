@@ -103,9 +103,8 @@ static inline size_t get_flat_minor_bin_index(locant loc) {
 }
 
 static inline void free_used_partition(lpr_partition* partition) {
-    partition->adjustment   = 0;
-    partition->prev_free    = NULL;
-    partition->next_free    = NULL;
+    partition->prev_free = NULL;
+    partition->next_free = NULL;
 }
 
 // rounds down the size class, for inserts
@@ -220,7 +219,7 @@ static inline int physical_prepare_partition_for_use
     size_t size_with_adjustment = required_size + offset_adjustment;
 
     // can be trimmed, split
-    if (partition->size >= size_with_adjustment) {
+    if (partition->size >= size_with_adjustment + MINIMAL_ALLOC_SIZE) {
         lpr_partition* new_partition = calloc(1, sizeof(lpr_partition));
         if (!new_partition) return 0;
 
@@ -259,7 +258,7 @@ static inline void merge_free_partitions(lpr_partitioner* partitioner, lpr_parti
     // try merging previous
     if (partition->prev_physical && is_partition_free(partition->prev_physical)) {
         lpr_partition* prev = partition->prev_physical;
-        free_list_remove_free_partition(partitioner, partition);
+        free_list_remove_free_partition(partitioner, prev);
 
         partition->offset        = prev->offset;
         partition->size         += prev->size;
@@ -276,7 +275,7 @@ static inline void merge_free_partitions(lpr_partitioner* partitioner, lpr_parti
     // try merging following
     if (partition->next_physical && is_partition_free(partition->next_physical)) {
         lpr_partition* next = partition->next_physical;
-        free_list_remove_free_partition(partitioner, partition);
+        free_list_remove_free_partition(partitioner, next);
 
         partition->size         += next->size;
         partition->next_physical = next->next_physical;
@@ -311,6 +310,7 @@ static inline int find_free_partition_for_size(lpr_partitioner* partitioner, siz
     loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
 
     *loc_out = loc;
+    return 1;
 }
 
 // ===========================
