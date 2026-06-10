@@ -240,12 +240,14 @@ static inline int physical_prepare_partition_for_use
         partition->next_physical     = new_partition;
         new_partition->prev_physical = partition;
 
+        // update partition size
+        partition->size = size_with_adjustment;
+
         free_list_insert_free_partition(partitioner, new_partition);
     }
 
     // update offset
     partition->adjustment = offset_adjustment;
-    partition->size       = size_with_adjustment;
 
     mark_partition_used(partition);
     return 1;
@@ -298,6 +300,8 @@ static inline int find_free_partition_for_size(lpr_partitioner* partitioner, siz
     locant loc = binmap_up(size);
 
     size_t minor_bins_bitmap = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];
+    minor_bins_bitmap &= (~((size_t)0) << loc.minor_bin_index); // mask-out all minor bins to small
+
     if (minor_bins_bitmap == 0) {                                                       // no free minor bin inside major bin
         size_t major_bins_bitmap = partitioner->major_bins_free_bitmap;
         major_bins_bitmap &= (~((size_t)0) << (loc.major_bin_index + 1));               // mask-out all bitmap smaller than first found
@@ -306,7 +310,6 @@ static inline int find_free_partition_for_size(lpr_partitioner* partitioner, siz
         minor_bins_bitmap = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];  // update minor bins bitmap var
     }
 
-    // take first minor bin
     loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
 
     *loc_out = loc;
