@@ -110,8 +110,8 @@ static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codep
 #include <stdint.h>
 
 typedef struct glyph_entry {
-    uint32_t            codepoint;
-    lfont_glyph  glyph;
+    uint32_t    codepoint;
+    lfont_glyph glyph;
 } glyph_entry;
 
 typedef struct kerning_pair_entry {
