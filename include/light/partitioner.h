@@ -93,7 +93,7 @@ static inline char bitmap_get(size_t bitmap, size_t idx) {
     return (bitmap & ((size_t)1 << idx)) != 0;
 }
 
-static inline size_t bitmap_set(size_t* bitmap, size_t idx, char val) {
+static inline void bitmap_set(size_t* bitmap, size_t idx, char val) {
     size_t mask = (size_t)1 << idx;
     *bitmap = (val ? (*bitmap | mask) : (*bitmap & (~mask)));
 }
@@ -148,7 +148,6 @@ static inline locant binmap_up(size_t size) {
 static inline int is_partition_free(lpr_partition* partition) {
     return partition != partition->prev_free;
 }
-
 
 static inline void mark_partition_used(lpr_partition* partition) {
     partition->prev_free = partition;
@@ -213,7 +212,7 @@ static inline int physical_prepare_partition_for_use
 (lpr_partitioner* partitioner, lpr_partition* partition, size_t required_size, size_t required_alignment) {
     // adjust alignment and size
     size_t aligned_offset; if (required_alignment == 0) aligned_offset = partition->offset;
-    else aligned_offset = ((partition->offset + required_alignment - 1) / required_alignment) * required_alignment;
+    else   aligned_offset = ((partition->offset + required_alignment - 1) / required_alignment) * required_alignment;
 
     size_t offset_adjustment    = aligned_offset - partition->offset;
     size_t size_with_adjustment = required_size + offset_adjustment;
@@ -245,11 +244,12 @@ static inline int physical_prepare_partition_for_use
 
         free_list_insert_free_partition(partitioner, new_partition);
     }
+    else if (partition->size < size_with_adjustment) return 0;
 
     // update offset
     partition->adjustment = offset_adjustment;
-
     mark_partition_used(partition);
+
     return 1;
 }
 
@@ -271,6 +271,9 @@ static inline void merge_free_partitions(lpr_partitioner* partitioner, lpr_parti
             partition->prev_physical->next_physical = partition;
         }
         
+        // ensure physical_first_partition pointer is not invalidated on free
+        if (partitioner->physical_first_partition == prev) partitioner->physical_first_partition = partition;
+
         free(prev);
     }
 
