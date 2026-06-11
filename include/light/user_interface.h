@@ -967,10 +967,13 @@ size_t position_dfs(
 
 // Renders widget
 // Issues rendering of ui primitives
+// Render pass is safe in terms of hashmap pointers invalidation
+// Since it refers on the pointer only on enter - after visiting any child it is not used
 
 void render_dfs(
     lui_cache*          cache, 
-    const cache_slot*   previous, 
+    int                 previous_width,
+    int                 previous_height, 
     const lui_node*     node,
     lla_mat2x3          transform, 
     const void*         instance,
@@ -990,15 +993,11 @@ void render_dfs(
     // change instance for subtree
     if (node->type == &lui_instance_type) instance = data;
 
-    // get previous node dimensions
-    int transform_corresponding_width  = previous ? previous->value_state.given_width  : cache->walk_current_resolution_x;
-    int transform_corresponding_height = previous ? previous->value_state.given_height : cache->walk_current_resolution_y;
-
     // change transform based on node's position and scale
     float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->walk_current_resolution_x;
     float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->walk_current_resolution_y;
-    float scale_x = ((float)own->value_state.given_width)       / transform_corresponding_width;
-    float scale_y = ((float)own->value_state.given_height)      / transform_corresponding_height;
+    float scale_x = ((float)own->value_state.given_width)       / previous_width;
+    float scale_y = ((float)own->value_state.given_height)      / previous_height;
     transform = mat2x3_offset(transform, off_x, off_y);
     transform = mat2x3_scale (transform, scale_x, scale_y);
 
@@ -1037,11 +1036,17 @@ void render_dfs(
         });
     }
 
+    // back node dimensions to avoid reading own slot after visiting child
+    int own_width  = own->value_state.given_width;
+    int own_height = own->value_state.given_height;
+
     // single child
-    if (!node->type->array_child && child) render_dfs(cache, own, child, transform, instance, depth_index, clipbox_index);
+    if (!node->type->array_child && child) {
+        render_dfs(cache, own_width, own_height, child, transform, instance, depth_index, clipbox_index);
+    }
     // multiple children
     else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own, current_child, transform, instance, depth_index, clipbox_index);
+        render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
     }
 }
 
@@ -1054,7 +1059,20 @@ void lui_update_cache(
     cache->walk_current_resolution_x = resolution_x;
     cache->walk_current_resolution_y = resolution_y;
 
-    // All layout passes
+    // Pick next frame index
+    cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 3) cache->walk_current_frame_index = 3;
+
+    // Render pass
+    cache->draw_requests_count = 0;
+    render_dfs(cache, cache->walk_current_resolution_x, cache->walk_current_resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
+
+    // Sort render requests by depth
+    stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
+
+    // Relayout if needed
+    // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
+    // This is important so hashmap pointers does not get invalidated during passes
+    // This means we are one frame behind with layout, but it is not a big deal actually.
     if (1) {
         cache_slot* root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
 
@@ -1081,16 +1099,6 @@ void lui_update_cache(
         // Could potentialy be cached and used at render
         free_caches_walk_order(&walk_order);
     }
-
-    // Pick next frame index
-    cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 3) cache->walk_current_frame_index = 3;
-
-    // Render pass
-    cache->draw_requests_count = 0;
-    render_dfs(cache, NULL, root, lla_mat2x3_identity(), NULL, 0, -1);
-
-    // Sort render requests by depth
-    stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
 
     // Garbage collect dead cache entries
     // If entry was not used in render, mark it free
