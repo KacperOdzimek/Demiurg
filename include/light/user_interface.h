@@ -1,10 +1,33 @@
-#ifndef LIGHT_USER_INTERFACE_H
-#define LIGHT_USER_INTERFACE_H
+
+/*
+    Depedencies
+*/
 
 #include "/home/kacper/Projects/LightFramework/include/light/graphics.h"
 #include "/home/kacper/Projects/LightFramework/include/light/linear_algebra.h"
 #include "/home/kacper/Projects/LightFramework/include/light/font.h"
 #include "/home/kacper/Projects/LightFramework/include/light/partitioner.h"
+
+/*
+    Implementation Injections
+    Define in same file as user interface implementation
+*/
+
+#ifdef LIGHT_USER_INTERFACE_IMPL
+    typedef struct lui_length     lui_length;
+    typedef struct lui_text_data  lui_text_data;
+    typedef struct lui_box_data   lui_box_data;
+
+    lfont*       lui_injection_query_font   (lui_text_data* data);
+    lgx_texture* lui_injection_query_texture(lui_box_data* data);
+#endif // LIGHT_USER_INTERFACE_IMPL
+
+/*
+    Header
+*/
+
+#ifndef LIGHT_USER_INTERFACE_H
+#define LIGHT_USER_INTERFACE_H
 
 // ===========================
 // Forwards
@@ -344,6 +367,7 @@ void lui_free_frames(lui_frames*);
 
 void lui_upload_cache(
     lui_cache*          cache,
+    lui_shared*         shared,
     lui_frames*         frames,
     uint32_t            frame_idx,
     lgx_command_list*   command_list,
@@ -439,739 +463,6 @@ static inline lla_mat2x3 mat2x3_scale(lla_mat2x3 m, float sx, float sy) {
 static inline lla_mat2x3 mat2x3_offset(lla_mat2x3 m, float ox, float oy) {
     m.m[2][0] += ox; m.m[2][1] += oy;
     return m;
-}
-
-// ===========================
-// Node fields reads
-
-static inline const void* get_node_data(const lui_node* node, const char* instance) {
-    if (node->flags & lui_flag_instanced_data) return (void*)(instance + node->data_offset);
-    return node->data;
-}
-
-static inline const lui_node* get_node_child(const lui_node* node, const char* instance) {
-    if (node->flags & lui_flag_instanced_child) return (const lui_node*)(instance + node->child_offset);
-    return node->child;
-}
-
-// ===========================
-// Stable sort helper
-
-// currently implemeted as mergesort
-void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void*, const void*)) {
-    if (nmemb < 2) return;
-
-    char *arr = (char*)base;
-    char *tmp = malloc(nmemb * size);
-    if (!tmp) return;
-
-    for (size_t width = 1; width < nmemb; width *= 2) {
-        for (size_t i = 0; i < nmemb; i += 2 * width) {
-            size_t l = i;
-            size_t m = i + width < nmemb ? i + width : nmemb;
-            size_t r = i + 2 * width < nmemb ? i + 2 * width : nmemb;
-            size_t p = l, q = m, k = i;
-
-            while (p < m && q < r) {
-                if (compar(arr + p * size, arr + q * size) <= 0) memcpy(tmp + k++ * size, arr + p++ * size, size);
-                else memcpy(tmp + k++ * size, arr + q++ * size, size);
-            }
-
-            while (p < m) memcpy(tmp + k++ * size, arr + p++ * size, size);
-            while (q < r) memcpy(tmp + k++ * size, arr + q++ * size, size);
-        }
-
-        memcpy(arr, tmp, nmemb * size);
-    }
-
-    free(tmp);
-    return;
-}
-
-// ===========================
-// Cache Object
-
-typedef struct cache_slot cache_slot;
-typedef struct auxilary_slot auxilary_slot;
-typedef struct draw_request draw_request;
-typedef struct text_request text_request;
-typedef struct clipbox_request clipbox_request;
-
-struct lui_cache {
-    // Passes constants
-    int                 walk_current_resolution_x;
-    int                 walk_current_resolution_y;
-    unsigned char       walk_current_frame_index;
-
-    // Nodes cache hashmap
-    size_t              cache_capacity;
-    size_t              cache_fill;
-    cache_slot*         cache_slots;
-
-    // Nodes auxilary state hashmap
-    size_t              auxilary_capacity;
-    size_t              auxilary_fill;
-    auxilary_slot*      auxilary_slots;
-    
-    // Draw requests dynamic array
-    size_t              draw_requests_capacity;
-    size_t              draw_requests_count;
-    draw_request*       draw_requests;
-
-    // Text requests dynamic array
-    size_t              text_requests_capacity;
-    size_t              text_requests_count;
-    text_request*       text_requests;
-
-    // Clipbox requests dynamic array
-    size_t              clipbox_requests_capacity;
-    size_t              clipbox_requests_count;
-    clipbox_request*    clipbox_requests;
-};
-
-lui_cache* lui_create_cache() {
-    lui_cache* cache = calloc(1, sizeof(lui_cache));
-    return cache;
-}
-
-static void auxilary_hashmap_garbage_collect(lui_cache* cache);
-static void free_cached_unuploaded_textes(lui_cache* cache);
-void lui_free_cache(lui_cache* cache) {
-    if (!cache) return;
-
-    // Free all auxilary slots by using impossible value
-    cache->walk_current_frame_index = 1;
-    auxilary_hashmap_garbage_collect(cache);
-
-    // Free all cached textes
-    free_cached_unuploaded_textes(cache);
-
-    free(cache->cache_slots);
-    free(cache->auxilary_slots);
-    free(cache->draw_requests);
-    free(cache->text_requests);
-    free(cache->clipbox_requests);
-    free(cache);
-}
-
-// ===========================
-// Cache Hashmaps
-
-typedef struct node_stable_index {
-    const lui_node* node;
-    const void*     instance;
-} node_stable_index;
-
-typedef struct cache_slot {
-    node_stable_index       key;
-    size_t                  value_child_count;
-    lui_node_layout_state   value_state;
-    unsigned char           last_frame_used_in_render;  
-} cache_slot;
-
-typedef struct auxilary_slot {
-    node_stable_index       key;
-    void*                   state_ptr;
-    unsigned char           last_frame_used_in_render;  
-} auxilary_slot;
-
-static uint64_t hash_ptr(const void* p) {
-    uint64_t x = (uint64_t)(uintptr_t)p;
-    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
-    x ^= x >> 27; x *= 0x94d049bb133111ebULL;
-    return (x ^ (x >> 31));
-}
-
-static size_t hash_key(node_stable_index key) {
-    uint64_t h1 = hash_ptr(key.node);
-    uint64_t h2 = hash_ptr(key.instance);
-    return (size_t)(h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)));
-}
-
-// Definies three functions:
-// void       PREFIX##_hashmap_grow             (lui_cache* cache);
-// SLOT_TYPE* PREFIX##_hashmap_get              (lui_cache* cache, node_stable_index key, int insert_if_none)
-// void       PREFIX##_hashmap_garbage_collect  (lui_cache* cache) 
-// Define HASHMAP_SLOT_INITIALIZER to define default slot value
-// Define HASHMAP_SLOT_DESTRUCTOR(slot ptr) to set garbage collector slot free method
-#define DEFINE_HASHMAP_FUNCS(PREFIX, SLOT_TYPE, SLOTS_FIELD, CAP_FIELD, FILL_FIELD) \
-\
-static SLOT_TYPE* PREFIX##_hashmap_get                                          \
-(lui_cache* cache, node_stable_index key, int insert_if_none);                  \
-\
-static void PREFIX##_hashmap_grow(lui_cache* cache) {                           \
-    size_t old_cap = cache->CAP_FIELD;                                          \
-    SLOT_TYPE* old_slots = cache->SLOTS_FIELD;                                  \
-\
-    size_t new_cap = old_cap ? old_cap * 2 : 64;                                \
-\
-    cache->SLOTS_FIELD = calloc(new_cap, sizeof(*cache->SLOTS_FIELD));          \
-    cache->CAP_FIELD = new_cap;                                                 \
-    cache->FILL_FIELD = 0;                                                      \
-\
-    for (size_t i = 0; i < old_cap; ++i) {                                      \
-        if (!old_slots[i].last_frame_used_in_render) continue;                  \
-        SLOT_TYPE* dst = PREFIX##_hashmap_get(cache, old_slots[i].key, 1);      \
-        *dst = old_slots[i];                                                    \
-    }                                                                           \
-\
-    free(old_slots);                                                            \
-}                                                                               \
-\
-static SLOT_TYPE* PREFIX##_hashmap_get(                                         \
-    lui_cache* cache, node_stable_index key, int insert_if_none) {              \
-    if ((cache->FILL_FIELD + 1) * 10 >= cache->CAP_FIELD * 7) {                 \
-        PREFIX##_hashmap_grow(cache);                                           \
-    }                                                                           \
-\
-    size_t mask = cache->CAP_FIELD - 1;                                         \
-    size_t idx  = hash_key(key) & mask;                                         \
-\
-    for (;;) {                                                                  \
-        SLOT_TYPE* slot = &cache->SLOTS_FIELD[idx];                             \
-\
-        if (!slot->last_frame_used_in_render) {                                 \
-            if (insert_if_none) {                                               \
-                *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                    \
-                ++cache->FILL_FIELD;                                            \
-                return slot;                                                    \
-            }                                                                   \
-            else return NULL;                                                   \
-        }                                                                       \
-\
-        if (slot->key.node == key.node && slot->key.instance == key.instance) { \
-            return slot;                                                        \
-        }                                                                       \
-\
-        idx = (idx + 1) & mask;                                                 \
-    }                                                                           \
-}                                                                               \
-\
-static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                \
-    for (size_t i = 0; i < cache->CAP_FIELD; i++) {                             \
-        SLOT_TYPE*     slot = &cache->SLOTS_FIELD[i];                           \
-        unsigned char* time = &slot->last_frame_used_in_render;                 \
-        if (*time && *time != cache->walk_current_frame_index) {                \
-            HASHMAP_SLOT_DESTRUCTOR(slot);                                      \
-            cache->cache_fill--; *time = 0;                                     \
-        }                                                                       \
-    }                                                                           \
-}
-
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .last_frame_used_in_render = 2}
-#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)
-DEFINE_HASHMAP_FUNCS(
-    cache, cache_slot, cache_slots, cache_capacity, cache_fill
-);
-
-#undef HASHMAP_SLOT_INITIALIZER
-#undef HASHMAP_SLOT_DESTRUCTOR
-
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_ptr = NULL, .last_frame_used_in_render = 2}
-#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)                                   \
-    if (slot_ptr->key.node->type->auxilary_destructor) {                    \
-        slot_ptr->key.node->type->auxilary_destructor(slot_ptr->state_ptr); \
-    } free(slot_ptr->state_ptr); slot_ptr->state_ptr = NULL;
-DEFINE_HASHMAP_FUNCS(
-    auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
-);
-
-// Gets slot, always inserts, as cache must always exist for node
-static inline cache_slot* cache_get_utill(lui_cache* cache, node_stable_index index) {
-    return cache_hashmap_get(cache, index, 1);
-}
-
-// Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
-static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_index index) {
-    if (!index.node->type->auxilary_bytes) return NULL; // none desired
-    auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
-    if (!slot->state_ptr) slot->state_ptr = calloc(1, index.node->type->auxilary_bytes);
-    return slot;
-}
-
-// ===========================
-// Cache dynamic arrays
-
-struct draw_request {
-    lla_mat2x3          transform;
-    int                 texture_index;
-    lgx_uv_2d           texture_atlas;
-    int                 clip_index;
-    short               depth_index;
-    unsigned char       r, g, b, a;
-    int                 shader;
-    int                 glyph_first;
-    int                 glyph_count;
-};
-
-struct text_request {
-    size_t              glyphs_count;
-    struct gpu_glyph*   glyphs;
-};
-
-struct clipbox_request {
-    lla_mat2x3  transform;
-};
-
-// Definies one function:
-// void PREFIX##_cache_push (lui_cache* cache, ELEMENT_TYPE element);
-#define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
-static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE element) {                        \
-    if (cache->CNT_FIELD + 1 > cache->CAP_FIELD) {                                              \
-        size_t          new_cap = cache->CAP_FIELD ? cache->CAP_FIELD * 2 : 64;                 \
-        ELEMENT_TYPE*   new_arr = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
-        if (!new_arr)   return - 1;                                                             \
-\
-        cache->ARRAY_FIELD  = new_arr;                                                          \
-        cache->CAP_FIELD    = new_cap;                                                          \
-    }                                                                                           \
-\
-    cache->ARRAY_FIELD[cache->CNT_FIELD] = element;                                             \
-    return (int)cache->CNT_FIELD++;                                                             \
-}
-
-DEFINE_DYNAMIC_ARRAY_FUNCS(
-    draw_request, draw_request, draw_requests, draw_requests_capacity, draw_requests_count
-);
-
-DEFINE_DYNAMIC_ARRAY_FUNCS(
-    text_request, text_request, text_requests, text_requests_capacity, text_requests_count
-);
-
-DEFINE_DYNAMIC_ARRAY_FUNCS(
-    clipbox_request, clipbox_request, clipbox_requests, clipbox_requests_capacity, clipbox_requests_count
-);
-
-static inline void free_cached_unuploaded_textes(lui_cache* cache) {
-    for (size_t i = 0; i < cache->text_requests_count; i++) {
-        free(cache->text_requests[i].glyphs);
-    }
-}
-
-// ===========================
-// Cache Update
-
-// Cache Walk Pass
-// Called on remeasure
-// Computes: 
-//  - walk order (the order caches are visited, to avoid hashmaping multiple times)
-//  - nodes children count (simplify implementations)
-
-typedef struct caches_walk_order {
-    size_t                  capacity;   // in cache_slot pointers
-    size_t                  position;   // in cache_slot pointers
-    cache_slot**            slots;      // sized capacity, node cache slots in enter order
-    lui_node_layout_state** states;     // sized capacity, node layout states in children oreder
-    void**                  auxilary;   // sized capacity, node auxilary slots in enter order
-} caches_walk_order;
-
-// Returns non-zero at success
-static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot, void* auxilary) {
-    if (walk_order->position + 1 >= walk_order->capacity) {
-        size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
-    
-        cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
-        lui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(lui_node_layout_state*));
-        void**                  new_aux = realloc(walk_order->auxilary, new_cap * sizeof(void*));
-
-        if (!new_slt || !new_sts || !new_aux) return 0; // failed to realloc -> failed to ensure space
-
-        walk_order->capacity = new_cap;
-        walk_order->slots    = new_slt;
-        walk_order->states   = new_sts;
-        walk_order->auxilary = new_aux;
-    }
-
-    walk_order->slots[walk_order->position]     = slot;
-    walk_order->states[walk_order->position]    = &slot->value_state;
-    walk_order->auxilary[walk_order->position]  = auxilary;
-    walk_order->position++;
-
-    return 1; // success
-}
-
-// Pushes all child nodes caches of node to caches_walk_order
-// Recurse into children left to right
-// Returns non-zero at success
-int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* walk_order, const void* instance) {
-    const lui_node* node  = current->key.node;
-    const lui_node* child = get_node_child(current->key.node, current->key.instance);
-    size_t          count = 0;
-    int             scc   = 1;
-
-    // change instance for subtree
-    if (node->type == &lui_instance_type) {
-        instance = get_node_data(current->key.node, instance);
-    }
-
-    if (!node->type->array_child && child) {
-        cache_slot*     child_slot = cache_get_utill(cache, (node_stable_index){child, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(cache, (node_stable_index){child, instance});
-        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
-    }
-    else if (child) for (const lui_node* cc = child; cc->type != NULL; cc++) {
-        cache_slot*     child_slot = cache_get_utill(cache, (node_stable_index){child, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(cache, (node_stable_index){child, instance});
-        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
-    }
-
-    // recurse
-    size_t begin_pos = walk_order->position - count;
-    for (size_t i = 0; i < count; i++) {
-        scc &= caches_walk_dfs(cache, walk_order->slots[begin_pos + i], walk_order, instance);
-    }
-
-    current->value_child_count = count;
-    return scc;
-}
-
-void free_caches_walk_order(caches_walk_order* order) {
-    free(order->slots);
-    free(order->states);
-    free(order->auxilary);
-}
-
-// Auxilary pass
-// Top-down pass, allowing for own data rebuild
-// Builds text
-
-size_t auxilary_dfs(
-    lui_cache*          cache,
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    void*               auxilary,
-    size_t              first_child
-) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
-
-    // special case for text - update GPU glyphs buffer
-    if (current->key.node->type == &lui_text_type) {
-        
-    }
-
-    // do call
-    lui_node_auxilary_func func = current->key.node->type->auxilary;
-    if (func != NULL) func(data, auxilary);
-
-    // recurse
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = auxilary_dfs(cache, walk_order, children[i], auxilaries[i], last_descendant);
-    }
-
-    return last_descendant;
-}
-
-// Layout passes
-// Travels tree, call functions as specified in type comments
-// to calcualate what specfied in type comments
-
-size_t width_measure_dfs(
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    void*               auxilary,
-    size_t              first_child
-) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
-
-    // recurse
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = width_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
-    }
-
-    // call own measure
-    lui_node_layout_func func = current->key.node->type->width_measure;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child], auxilary);
-
-    // apply flags
-    if (current->key.node->flags & lui_flag_ignore_min_width) {
-        current->value_state.measured_width.min = 0;
-        current->value_state.measured_width.flex = 1.0f;
-    }
-    if (current->key.node->flags & lui_flag_ignore_max_width) {
-        current->value_state.measured_width.max  = lui_inf_length;
-        current->value_state.measured_width.flex = 1.0f;
-    }
-
-    return last_descendant;
-}
-
-size_t width_distribute_dfs(
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    void*               auxilary,
-    size_t              first_child
-) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
-
-    // ensure received width is okay
-    current->value_state.given_width = limit_length(
-        current->value_state.given_width,
-        current->value_state.measured_width
-    );
-
-    // do call
-    lui_node_layout_func func = current->key.node->type->width_distribute;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
-
-    // recurse
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = width_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
-    }
-
-    return last_descendant;
-}
-
-size_t height_measure_dfs(
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    void*               auxilary,
-    size_t              first_child
-) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
-
-    // recurse
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = height_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
-    }
-
-    // do call
-    lui_node_layout_func func = current->key.node->type->height_measure;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
-
-    // apply flags
-    if (current->key.node->flags & lui_flag_ignore_min_height) {
-        current->value_state.measured_height.min = 0;
-        current->value_state.measured_height.flex = 1.0f;
-    }
-    if (current->key.node->flags & lui_flag_ignore_max_height) {
-        current->value_state.measured_height.max  = lui_inf_length;
-        current->value_state.measured_height.flex = 1.0f;
-    }
-
-    return last_descendant;
-}
-
-size_t height_distribute_dfs(
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    void*               auxilary,
-    size_t              first_child
-) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
-
-    // ensure received height is okay
-    current->value_state.given_height = limit_length(
-        current->value_state.given_height,
-        current->value_state.measured_height
-    );
-
-    // do call
-    lui_node_layout_func func = current->key.node->type->height_distribute;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
-
-    // recurse
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = height_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
-    }
-
-    return last_descendant;
-}
-
-size_t position_dfs(
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    void*               auxilary,
-    size_t              first_child
-) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
-
-    // do call
-    lui_node_layout_func func = current->key.node->type->position;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
-    
-    // recurse
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = position_dfs(walk_order, children[i], auxilaries[i], last_descendant);
-    }
-
-    return last_descendant;
-}
-
-// Renders widget
-// Issues rendering of ui primitives
-// Render pass is safe in terms of hashmap pointers invalidation
-// Since it refers on the pointer only on enter - after visiting any child it is not used
-
-void render_dfs(
-    lui_cache*          cache, 
-    int                 previous_width,
-    int                 previous_height, 
-    const lui_node*     node,
-    lla_mat2x3          transform, 
-    const void*         instance,
-    short               depth_index,
-    int                 clipbox_index
-) {
-    // get node data
-    const lui_node* child = get_node_child(node, instance);
-    const void*     data  = get_node_data (node, instance);
-    cache_slot*     own   = cache_get_utill(cache, (node_stable_index){node, instance});
-    auxilary_slot*  aux   = auxilary_get_utill(cache, (node_stable_index){node, instance});
-
-    // mark used, to avoid garbage collect
-    own->last_frame_used_in_render = cache->walk_current_frame_index;
-    if (aux) aux->last_frame_used_in_render = cache->walk_current_frame_index;
-
-    // change instance for subtree
-    if (node->type == &lui_instance_type) instance = data;
-
-    // change transform based on node's position and scale
-    float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->walk_current_resolution_x;
-    float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->walk_current_resolution_y;
-    float scale_x = ((float)own->value_state.given_width)       / previous_width;
-    float scale_y = ((float)own->value_state.given_height)      / previous_height;
-    transform = mat2x3_offset(transform, off_x, off_y);
-    transform = mat2x3_scale (transform, scale_x, scale_y);
-
-    // do transform if method provided
-    if (node->type->transform) node->type->transform(
-        data, &transform, 
-        cache->walk_current_resolution_x, 
-        cache->walk_current_resolution_y,
-        aux
-    );
-    
-    // special nodes (box, text, depth,clipbox)
-    if (node->type == &lui_box_type){
-        const lui_box_data* bdata = data;
-        draw_request_cache_push(cache, (draw_request){
-            .transform      = transform,
-            .texture_index  = 0,                // todo
-            .texture_atlas  = (lgx_uv_2d){0},   // todo
-            .clip_index     = clipbox_index,
-            .depth_index    = depth_index,
-            .r              = bdata->tint.r,
-            .g              = bdata->tint.g,
-            .b              = bdata->tint.b,
-            .a              = bdata->tint.a,
-            .shader         = bdata->shader,
-            .glyph_first    = -1,
-            .glyph_count    = 1
-        });
-    }
-    else if (node->type == &lui_depth_type) {
-        const lui_depth_data* ddata = data;
-        depth_index += ddata->depth_change;
-    }
-    else if (node->type == &lui_clipbox_type) {
-        clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){
-            .transform = transform
-        });
-    }
-
-    // back node dimensions to avoid reading own slot after visiting child
-    int own_width  = own->value_state.given_width;
-    int own_height = own->value_state.given_height;
-
-    // single child
-    if (!node->type->array_child && child) {
-        render_dfs(cache, own_width, own_height, child, transform, instance, depth_index, clipbox_index);
-    }
-    // multiple children
-    else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
-    }
-}
-
-// Helper for draw requests depth sorting
-static inline int helper_draw_requests_greater_depth(const void* av, const void* bv) {
-    const draw_request* a = (const draw_request*)av; 
-    const draw_request* b = (const draw_request*)bv;
-    if (a->depth_index > b->depth_index) return 1;
-    return 0;
-}
-
-// Main update function
-// Calls passes
-
-void lui_update_cache(
-    lui_cache*      cache,
-    const lui_node* root,
-    int             resolution_x,
-    int             resolution_y
-) {
-    cache->walk_current_resolution_x = resolution_x;
-    cache->walk_current_resolution_y = resolution_y;
-
-    // Pick next frame index
-    cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 3) cache->walk_current_frame_index = 3;
-
-    // Render pass
-    cache->draw_requests_count = 0;
-    render_dfs(cache, cache->walk_current_resolution_x, cache->walk_current_resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
-
-    // Sort render requests by depth
-    stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
-
-    // Relayout if needed
-    // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
-    // This is important so hashmap pointers does not get invalidated during passes
-    // This means we are one frame behind with layout, but it is not a big deal actually.
-    if (1) {
-        cache_slot*     root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
-        auxilary_slot*  root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
-
-        // Give root entire screen
-        // Will auto bound to desired at distribute
-        root_cache->value_state.given_width  = resolution_x;
-        root_cache->value_state.given_height = resolution_y;
-
-        // Find walk order
-        caches_walk_order walk_order = {0};
-        if (!caches_walk_dfs(cache, root_cache, &walk_order, NULL)) {
-            free_caches_walk_order(&walk_order);
-            return;
-        }
-        
-        // Perform layout passes
-        auxilary_dfs(cache, &walk_order, root_cache, root_auxlr, 0);
-
-        width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
-        width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-        height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
-        height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-
-        position_dfs(&walk_order, root_cache, root_auxlr, 0);
-
-        // Could potentialy be cached and used at render
-        free_caches_walk_order(&walk_order);
-    }
-
-    // Garbage collect dead cache entries
-    // If entry was not used in render, mark it free
-    // Do every 16 frames not to spend to much time on it
-    if (cache->walk_current_frame_index % 16 == 0) {
-        cache_hashmap_garbage_collect(cache);
-        auxilary_hashmap_garbage_collect(cache);
-    }
 }
 
 // ===========================
@@ -1772,14 +1063,771 @@ const lui_type lui_box_type = box_behavior_type;
 // This type is specially handled in pass implementation
 
 typedef struct text_type_auxilary_state {
-    int text_width;
-    int text_height;
+    lpr_partition*  owned_glyph_buffer_partition;
+    int             text_width;
+    int             text_height;
 } text_type_auxilary_state;
 
 const lui_type lui_text_type = {
     .array_child    = 0,
     .auxilary_bytes = sizeof(text_type_auxilary_state)
 };
+
+// ===========================
+// Node fields reads
+
+static inline const void* get_node_data(const lui_node* node, const char* instance) {
+    if (node->flags & lui_flag_instanced_data) return (void*)(instance + node->data_offset);
+    return node->data;
+}
+
+static inline const lui_node* get_node_child(const lui_node* node, const char* instance) {
+    if (node->flags & lui_flag_instanced_child) return (const lui_node*)(instance + node->child_offset);
+    return node->child;
+}
+
+// ===========================
+// Stable sort helper
+
+// currently implemeted as mergesort
+void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void*, const void*)) {
+    if (nmemb < 2) return;
+
+    char *arr = (char*)base;
+    char *tmp = malloc(nmemb * size);
+    if (!tmp) return;
+
+    for (size_t width = 1; width < nmemb; width *= 2) {
+        for (size_t i = 0; i < nmemb; i += 2 * width) {
+            size_t l = i;
+            size_t m = i + width < nmemb ? i + width : nmemb;
+            size_t r = i + 2 * width < nmemb ? i + 2 * width : nmemb;
+            size_t p = l, q = m, k = i;
+
+            while (p < m && q < r) {
+                if (compar(arr + p * size, arr + q * size) <= 0) memcpy(tmp + k++ * size, arr + p++ * size, size);
+                else memcpy(tmp + k++ * size, arr + q++ * size, size);
+            }
+
+            while (p < m) memcpy(tmp + k++ * size, arr + p++ * size, size);
+            while (q < r) memcpy(tmp + k++ * size, arr + q++ * size, size);
+        }
+
+        memcpy(arr, tmp, nmemb * size);
+    }
+
+    free(tmp);
+    return;
+}
+
+// ===========================
+// Cache Object
+
+typedef struct cache_slot cache_slot;
+typedef struct auxilary_slot auxilary_slot;
+typedef struct draw_request draw_request;
+typedef struct text_request text_request;
+typedef struct clipbox_request clipbox_request;
+
+struct lui_cache {
+    // Passes constants
+    int                 walk_current_resolution_x;
+    int                 walk_current_resolution_y;
+    unsigned char       walk_current_frame_index;
+
+    // Nodes cache hashmap
+    size_t              cache_capacity;
+    size_t              cache_fill;
+    cache_slot*         cache_slots;
+
+    // Nodes auxilary state hashmap
+    size_t              auxilary_capacity;
+    size_t              auxilary_fill;
+    auxilary_slot*      auxilary_slots;
+    
+    // Draw requests dynamic array
+    size_t              draw_requests_capacity;
+    size_t              draw_requests_count;
+    draw_request*       draw_requests;
+
+    // Text requests dynamic array
+    size_t              text_requests_capacity;
+    size_t              text_requests_count;
+    text_request*       text_requests;
+
+    // Clipbox requests dynamic array
+    size_t              clipbox_requests_capacity;
+    size_t              clipbox_requests_count;
+    clipbox_request*    clipbox_requests;
+};
+
+lui_cache* lui_create_cache() {
+    lui_cache* cache = calloc(1, sizeof(lui_cache));
+    return cache;
+}
+
+static void auxilary_hashmap_garbage_collect(lui_cache* cache);
+static void free_cached_text_requests(lui_cache* cache);
+void lui_free_cache(lui_cache* cache) {
+    if (!cache) return;
+
+    // Free all auxilary slots by using impossible value
+    cache->walk_current_frame_index = 1;
+    auxilary_hashmap_garbage_collect(cache);
+
+    // Free all cached textes
+    free_cached_text_requests(cache);
+
+    free(cache->cache_slots);
+    free(cache->auxilary_slots);
+    free(cache->draw_requests);
+    free(cache->text_requests);
+    free(cache->clipbox_requests);
+    free(cache);
+}
+
+// ===========================
+// Cache Hashmaps
+
+typedef struct node_stable_index {
+    const lui_node* node;
+    const void*     instance;
+} node_stable_index;
+
+typedef struct cache_slot {
+    node_stable_index       key;
+    size_t                  value_child_count;
+    lui_node_layout_state   value_state;
+    unsigned char           last_frame_used_in_render;  
+} cache_slot;
+
+typedef struct auxilary_slot {
+    node_stable_index       key;
+    void*                   state_ptr;
+    unsigned char           last_frame_used_in_render;  
+} auxilary_slot;
+
+static uint64_t hash_ptr(const void* p) {
+    uint64_t x = (uint64_t)(uintptr_t)p;
+    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27; x *= 0x94d049bb133111ebULL;
+    return (x ^ (x >> 31));
+}
+
+static size_t hash_key(node_stable_index key) {
+    uint64_t h1 = hash_ptr(key.node);
+    uint64_t h2 = hash_ptr(key.instance);
+    return (size_t)(h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)));
+}
+
+// Definies three functions:
+// void       PREFIX##_hashmap_grow             (lui_cache* cache);
+// SLOT_TYPE* PREFIX##_hashmap_get              (lui_cache* cache, node_stable_index key, int insert_if_none)
+// void       PREFIX##_hashmap_garbage_collect  (lui_cache* cache) 
+// Define HASHMAP_SLOT_INITIALIZER to define default slot value
+// Define HASHMAP_SLOT_DESTRUCTOR(slot ptr) to set garbage collector slot free method
+#define DEFINE_HASHMAP_FUNCS(PREFIX, SLOT_TYPE, SLOTS_FIELD, CAP_FIELD, FILL_FIELD) \
+\
+static SLOT_TYPE* PREFIX##_hashmap_get                                          \
+(lui_cache* cache, node_stable_index key, int insert_if_none);                  \
+\
+static void PREFIX##_hashmap_grow(lui_cache* cache) {                           \
+    size_t old_cap = cache->CAP_FIELD;                                          \
+    SLOT_TYPE* old_slots = cache->SLOTS_FIELD;                                  \
+\
+    size_t new_cap = old_cap ? old_cap * 2 : 64;                                \
+\
+    cache->SLOTS_FIELD = calloc(new_cap, sizeof(*cache->SLOTS_FIELD));          \
+    cache->CAP_FIELD = new_cap;                                                 \
+    cache->FILL_FIELD = 0;                                                      \
+\
+    for (size_t i = 0; i < old_cap; ++i) {                                      \
+        if (!old_slots[i].last_frame_used_in_render) continue;                  \
+        SLOT_TYPE* dst = PREFIX##_hashmap_get(cache, old_slots[i].key, 1);      \
+        *dst = old_slots[i];                                                    \
+    }                                                                           \
+\
+    free(old_slots);                                                            \
+}                                                                               \
+\
+static SLOT_TYPE* PREFIX##_hashmap_get(                                         \
+    lui_cache* cache, node_stable_index key, int insert_if_none) {              \
+    if ((cache->FILL_FIELD + 1) * 10 >= cache->CAP_FIELD * 7) {                 \
+        PREFIX##_hashmap_grow(cache);                                           \
+    }                                                                           \
+\
+    size_t mask = cache->CAP_FIELD - 1;                                         \
+    size_t idx  = hash_key(key) & mask;                                         \
+\
+    for (;;) {                                                                  \
+        SLOT_TYPE* slot = &cache->SLOTS_FIELD[idx];                             \
+\
+        if (!slot->last_frame_used_in_render) {                                 \
+            if (insert_if_none) {                                               \
+                *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                    \
+                ++cache->FILL_FIELD;                                            \
+                return slot;                                                    \
+            }                                                                   \
+            else return NULL;                                                   \
+        }                                                                       \
+\
+        if (slot->key.node == key.node && slot->key.instance == key.instance) { \
+            return slot;                                                        \
+        }                                                                       \
+\
+        idx = (idx + 1) & mask;                                                 \
+    }                                                                           \
+}                                                                               \
+\
+static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                \
+    for (size_t i = 0; i < cache->CAP_FIELD; i++) {                             \
+        SLOT_TYPE*     slot = &cache->SLOTS_FIELD[i];                           \
+        unsigned char* time = &slot->last_frame_used_in_render;                 \
+        if (*time && *time != cache->walk_current_frame_index) {                \
+            HASHMAP_SLOT_DESTRUCTOR(slot);                                      \
+            cache->cache_fill--; *time = 0;                                     \
+        }                                                                       \
+    }                                                                           \
+}
+
+#define HASHMAP_SLOT_INITIALIZER {.key = key, .last_frame_used_in_render = 2}
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)
+DEFINE_HASHMAP_FUNCS(
+    cache, cache_slot, cache_slots, cache_capacity, cache_fill
+);
+
+#undef HASHMAP_SLOT_INITIALIZER
+#undef HASHMAP_SLOT_DESTRUCTOR
+
+#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_ptr = NULL, .last_frame_used_in_render = 2}
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)                                   \
+    if (slot_ptr->key.node->type->auxilary_destructor) {                    \
+        slot_ptr->key.node->type->auxilary_destructor(slot_ptr->state_ptr); \
+    } free(slot_ptr->state_ptr); slot_ptr->state_ptr = NULL;
+DEFINE_HASHMAP_FUNCS(
+    auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
+);
+
+// Gets slot, always inserts, as cache must always exist for node
+static inline cache_slot* cache_get_utill(lui_cache* cache, node_stable_index index) {
+    return cache_hashmap_get(cache, index, 1);
+}
+
+// Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
+static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_index index) {
+    if (!index.node->type->auxilary_bytes) return NULL; // none desired
+    auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
+    if (!slot->state_ptr) slot->state_ptr = calloc(1, index.node->type->auxilary_bytes);
+    return slot;
+}
+
+// ===========================
+// Cache dynamic arrays
+
+struct draw_request {
+    lla_mat2x3          transform;
+    int                 texture_index;
+    lgx_uv_2d           texture_atlas;
+    int                 clip_index;
+    short               depth_index;
+    unsigned char       r, g, b, a;
+    int                 shader;
+    node_stable_index   text_node;
+};
+
+struct text_request {
+    node_stable_index   owning_node;
+    size_t              glyphs_count;
+    struct gpu_glyph*   glyphs;
+};
+
+struct clipbox_request {
+    lla_mat2x3  transform;
+};
+
+// Definies one function:
+// void PREFIX##_cache_push (lui_cache* cache, ELEMENT_TYPE element);
+#define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
+static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE element) {                        \
+    if (cache->CNT_FIELD + 1 > cache->CAP_FIELD) {                                              \
+        size_t          new_cap = cache->CAP_FIELD ? cache->CAP_FIELD * 2 : 64;                 \
+        ELEMENT_TYPE*   new_arr = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
+        if (!new_arr)   return - 1;                                                             \
+\
+        cache->ARRAY_FIELD  = new_arr;                                                          \
+        cache->CAP_FIELD    = new_cap;                                                          \
+    }                                                                                           \
+\
+    cache->ARRAY_FIELD[cache->CNT_FIELD] = element;                                             \
+    return (int)cache->CNT_FIELD++;                                                             \
+}
+
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    draw_request, draw_request, draw_requests, draw_requests_capacity, draw_requests_count
+);
+
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    text_request, text_request, text_requests, text_requests_capacity, text_requests_count
+);
+
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    clipbox_request, clipbox_request, clipbox_requests, clipbox_requests_capacity, clipbox_requests_count
+);
+
+static inline void free_cached_text_requests(lui_cache* cache) {
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        free(cache->text_requests[i].glyphs);
+    }
+}
+
+// ===========================
+// Cache Update
+
+// Cache Walk Pass
+// Called on remeasure
+// Computes: 
+//  - walk order (the order caches are visited, to avoid hashmaping multiple times)
+//  - nodes children count (simplify implementations)
+
+typedef struct caches_walk_order {
+    size_t                  capacity;   // in cache_slot pointers
+    size_t                  position;   // in cache_slot pointers
+    cache_slot**            slots;      // sized capacity, node cache slots in enter order
+    lui_node_layout_state** states;     // sized capacity, node layout states in children oreder
+    void**                  auxilary;   // sized capacity, node auxilary slots in enter order
+} caches_walk_order;
+
+// Returns non-zero at success
+static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot, void* auxilary) {
+    if (walk_order->position + 1 >= walk_order->capacity) {
+        size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
+    
+        cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
+        lui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(lui_node_layout_state*));
+        void**                  new_aux = realloc(walk_order->auxilary, new_cap * sizeof(void*));
+
+        if (!new_slt || !new_sts || !new_aux) return 0; // failed to realloc -> failed to ensure space
+
+        walk_order->capacity = new_cap;
+        walk_order->slots    = new_slt;
+        walk_order->states   = new_sts;
+        walk_order->auxilary = new_aux;
+    }
+
+    walk_order->slots[walk_order->position]     = slot;
+    walk_order->states[walk_order->position]    = &slot->value_state;
+    walk_order->auxilary[walk_order->position]  = auxilary;
+    walk_order->position++;
+
+    return 1; // success
+}
+
+// Pushes all child nodes caches of node to caches_walk_order
+// Recurse into children left to right
+// Returns non-zero at success
+int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* walk_order, const void* instance) {
+    const lui_node* node  = current->key.node;
+    const lui_node* child = get_node_child(current->key.node, current->key.instance);
+    size_t          count = 0;
+    int             scc   = 1;
+
+    // change instance for subtree
+    if (node->type == &lui_instance_type) {
+        instance = get_node_data(current->key.node, instance);
+    }
+
+    if (!node->type->array_child && child) {
+        cache_slot*     child_slot = cache_get_utill(cache, (node_stable_index){child, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(cache, (node_stable_index){child, instance});
+        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+    }
+    else if (child) for (const lui_node* cc = child; cc->type != NULL; cc++) {
+        cache_slot*     child_slot = cache_get_utill(cache, (node_stable_index){child, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(cache, (node_stable_index){child, instance});
+        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+    }
+
+    // recurse
+    size_t begin_pos = walk_order->position - count;
+    for (size_t i = 0; i < count; i++) {
+        scc &= caches_walk_dfs(cache, walk_order->slots[begin_pos + i], walk_order, instance);
+    }
+
+    current->value_child_count = count;
+    return scc;
+}
+
+void free_caches_walk_order(caches_walk_order* order) {
+    free(order->slots);
+    free(order->states);
+    free(order->auxilary);
+}
+
+// Auxilary pass
+// Top-down pass, allowing for own data rebuild
+// Builds text
+
+void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
+size_t auxilary_dfs(
+    lui_cache*          cache,
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // special case for text - update GPU glyphs buffer
+    if (current->key.node->type == &lui_text_type) {
+        create_text_request(cache, current, (text_type_auxilary_state*)auxilary);
+    }
+
+    // do call
+    lui_node_auxilary_func func = current->key.node->type->auxilary;
+    if (func != NULL) func(data, auxilary);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) {
+        last_descendant = auxilary_dfs(cache, walk_order, children[i], auxilaries[i], last_descendant);
+    }
+
+    return last_descendant;
+}
+
+// Layout passes
+// Travels tree, call functions as specified in type comments
+// to calcualate what specfied in type comments
+
+size_t width_measure_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) {
+        last_descendant = width_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+    }
+
+    // call own measure
+    lui_node_layout_func func = current->key.node->type->width_measure;
+    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child], auxilary);
+
+    // apply flags
+    if (current->key.node->flags & lui_flag_ignore_min_width) {
+        current->value_state.measured_width.min = 0;
+        current->value_state.measured_width.flex = 1.0f;
+    }
+    if (current->key.node->flags & lui_flag_ignore_max_width) {
+        current->value_state.measured_width.max  = lui_inf_length;
+        current->value_state.measured_width.flex = 1.0f;
+    }
+
+    return last_descendant;
+}
+
+size_t width_distribute_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // ensure received width is okay
+    current->value_state.given_width = limit_length(
+        current->value_state.given_width,
+        current->value_state.measured_width
+    );
+
+    // do call
+    lui_node_layout_func func = current->key.node->type->width_distribute;
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) {
+        last_descendant = width_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+    }
+
+    return last_descendant;
+}
+
+size_t height_measure_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) {
+        last_descendant = height_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+    }
+
+    // do call
+    lui_node_layout_func func = current->key.node->type->height_measure;
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+
+    // apply flags
+    if (current->key.node->flags & lui_flag_ignore_min_height) {
+        current->value_state.measured_height.min = 0;
+        current->value_state.measured_height.flex = 1.0f;
+    }
+    if (current->key.node->flags & lui_flag_ignore_max_height) {
+        current->value_state.measured_height.max  = lui_inf_length;
+        current->value_state.measured_height.flex = 1.0f;
+    }
+
+    return last_descendant;
+}
+
+size_t height_distribute_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // ensure received height is okay
+    current->value_state.given_height = limit_length(
+        current->value_state.given_height,
+        current->value_state.measured_height
+    );
+
+    // do call
+    lui_node_layout_func func = current->key.node->type->height_distribute;
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) {
+        last_descendant = height_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+    }
+
+    return last_descendant;
+}
+
+size_t position_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
+) {
+    cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
+    size_t       last_descendant = first_child + current->value_child_count;
+    const void*  data            = get_node_data(current->key.node, current->key.instance);
+
+    // do call
+    lui_node_layout_func func = current->key.node->type->position;
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+    
+    // recurse
+    for (size_t i = 0; i < current->value_child_count; i++) {
+        last_descendant = position_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+    }
+
+    return last_descendant;
+}
+
+// Renders widget
+// Issues rendering of ui primitives
+// Render pass is safe in terms of hashmap pointers invalidation
+// Since it refers on the pointer only on enter - after visiting any child it is not used
+
+void render_dfs(
+    lui_cache*          cache, 
+    int                 previous_width,
+    int                 previous_height, 
+    const lui_node*     node,
+    lla_mat2x3          transform, 
+    const void*         instance,
+    short               depth_index,
+    int                 clipbox_index
+) {
+    node_stable_index index = {node, instance};
+
+    // get node data
+    const lui_node* child = get_node_child(node, instance);
+    const void*     data  = get_node_data (node, instance);
+    cache_slot*     own   = cache_get_utill(cache, index);
+    auxilary_slot*  aux   = auxilary_get_utill(cache, index);
+
+    // mark used, to avoid garbage collect
+    own->last_frame_used_in_render = cache->walk_current_frame_index;
+    if (aux) aux->last_frame_used_in_render = cache->walk_current_frame_index;
+
+    // change instance for subtree
+    if (node->type == &lui_instance_type) instance = data;
+
+    // change transform based on node's position and scale
+    float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->walk_current_resolution_x;
+    float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->walk_current_resolution_y;
+    float scale_x = ((float)own->value_state.given_width)       / previous_width;
+    float scale_y = ((float)own->value_state.given_height)      / previous_height;
+    transform = mat2x3_offset(transform, off_x, off_y);
+    transform = mat2x3_scale (transform, scale_x, scale_y);
+
+    // do transform if method provided
+    if (node->type->transform) node->type->transform(
+        data, &transform, 
+        cache->walk_current_resolution_x, 
+        cache->walk_current_resolution_y,
+        aux
+    );
+    
+    // special nodes (box, text, depth,clipbox)
+    if (node->type == &lui_box_type){
+        const lui_box_data* bdata = data;
+        draw_request_cache_push(cache, (draw_request){
+            .transform      = transform,
+            .texture_index  = 0,                // todo
+            .texture_atlas  = (lgx_uv_2d){0},   // todo
+            .clip_index     = clipbox_index,
+            .depth_index    = depth_index,
+            .r              = bdata->tint.r,
+            .g              = bdata->tint.g,
+            .b              = bdata->tint.b,
+            .a              = bdata->tint.a,
+            .shader         = bdata->shader,
+            .text_node      = (node_stable_index){NULL, NULL}
+        });
+    }
+    else if (node->type == &lui_text_type) {
+        const lui_text_data*            tdata = data;
+        const text_type_auxilary_state* taux  = auxilary_get_utill(cache, index)->state_ptr;
+
+        draw_request_cache_push(cache, (draw_request){
+            .transform      = transform,
+            .texture_index  = 0,                // todo
+            .texture_atlas  = (lgx_uv_2d){0},   // todo
+            .clip_index     = clipbox_index,
+            .depth_index    = depth_index,
+            .r              = tdata->tint.r,
+            .g              = tdata->tint.g,
+            .b              = tdata->tint.b,
+            .a              = tdata->tint.a,
+            .shader         = tdata->shader,
+            .text_node      = index
+        });
+    }
+    else if (node->type == &lui_depth_type) {
+        const lui_depth_data* ddata = data;
+        depth_index += ddata->depth_change;
+    }
+    else if (node->type == &lui_clipbox_type) {
+        clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){
+            .transform = transform
+        });
+    }
+
+    // back node dimensions to avoid reading own slot after visiting child
+    int own_width  = own->value_state.given_width;
+    int own_height = own->value_state.given_height;
+
+    // single child
+    if (!node->type->array_child && child) {
+        render_dfs(cache, own_width, own_height, child, transform, instance, depth_index, clipbox_index);
+    }
+    // multiple children
+    else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
+        render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
+    }
+}
+
+// Helper for draw requests depth sorting
+static inline int helper_draw_requests_greater_depth(const void* av, const void* bv) {
+    const draw_request* a = (const draw_request*)av; 
+    const draw_request* b = (const draw_request*)bv;
+    if (a->depth_index > b->depth_index) return 1;
+    return 0;
+}
+
+// Main update function
+// Calls passes
+
+void lui_update_cache(
+    lui_cache*      cache,
+    const lui_node* root,
+    int             resolution_x,
+    int             resolution_y
+) {
+    // Init state
+    cache->walk_current_resolution_x = resolution_x;
+    cache->walk_current_resolution_y = resolution_y;
+    cache->draw_requests_count = 0;
+    cache->text_requests_count = 0;
+    cache->clipbox_requests_count = 0;
+
+    // Pick next frame index
+    cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 3) cache->walk_current_frame_index = 3;
+
+    // Render pass
+    render_dfs(cache, cache->walk_current_resolution_x, cache->walk_current_resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
+
+    // Sort render requests by depth
+    stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
+
+    // Relayout if needed
+    // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
+    // This is important so hashmap pointers does not get invalidated during passes
+    // This means we are one frame behind with layout, but it is not a big deal actually.
+    if (1) {
+        cache_slot*     root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
+        auxilary_slot*  root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
+
+        // Give root entire screen
+        // Will auto bound to desired at distribute
+        root_cache->value_state.given_width  = resolution_x;
+        root_cache->value_state.given_height = resolution_y;
+
+        // Find walk order
+        caches_walk_order walk_order = {0};
+        if (!caches_walk_dfs(cache, root_cache, &walk_order, NULL)) {
+            free_caches_walk_order(&walk_order);
+            return;
+        }
+        
+        // Perform layout passes
+        auxilary_dfs(cache, &walk_order, root_cache, root_auxlr, 0);
+
+        width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
+        width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
+        height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
+        height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
+
+        position_dfs(&walk_order, root_cache, root_auxlr, 0);
+
+        // Could potentialy be cached and used at render
+        free_caches_walk_order(&walk_order);
+    }
+
+    // Garbage collect dead cache entries
+    // If entry was not used in render, mark it free
+    // Do every 16 frames not to spend to much time on it
+    if (cache->walk_current_frame_index % 16 == 0) {
+        cache_hashmap_garbage_collect(cache);
+        auxilary_hashmap_garbage_collect(cache);
+    }
+}
 
 // ===========================
 // Rendering Common
@@ -2219,6 +2267,7 @@ void lui_free_frames(lui_frames* frames) {
 
 void lui_upload_cache(
     lui_cache*          cache,
+    lui_shared*         shared,
     lui_frames*         frames,
     uint32_t            frame_idx,
     lgx_command_list*   command_list,
@@ -2229,7 +2278,58 @@ void lui_upload_cache(
     lgx_cpu_signal*     upload_finished_cpu,
     lgx_gpu_signal*     upload_finished_gpu
 ) {
-    lgx_hardware*   hardware = frames->owning_shared->owning_hardware;
+    lgx_hardware* hardware = frames->owning_shared->owning_hardware;
+
+    // Allocate upload regions descriptors array
+
+    size_t upload_regions_count    = cache->text_requests_count + 3;
+    size_t upload_regions_position = 0;
+    lgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(lgx_buffer_multi_upload_region));
+
+    // Prepare partitions for text draws
+
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        text_request              req  = cache->text_requests[i];
+        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+
+        // always free owned partition to reduce fragmentation
+        // new block will be possibly better aligned
+        // allocs are fast
+        if (aux->owned_glyph_buffer_partition) {
+            lpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
+        }
+
+        lpr_partition* prt = lpr_partitioner_alloc_partition(
+            shared->glyph_buffer_partitioner,
+            req.glyphs_count * sizeof(gpu_glyph)
+        );
+
+        // failed to find space for our text - we need to create bigger buffer
+        // and defrag also
+        if (!prt) {
+            // todo
+        }
+
+        aux->owned_glyph_buffer_partition = prt;
+    }
+
+    // Generate draw regions for texts
+
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        text_request              req  = cache->text_requests[i];
+        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+        lpr_partition*            prt = aux->owned_glyph_buffer_partition;
+        if (!prt) continue;
+
+        upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+            .buffer         = shared->glyph_buffer,
+            .buffer_offset  = lpr_partition_query_offset(prt),
+            .source_data    = req.glyphs,
+            .source_bytes   = req.glyphs_count * sizeof(gpu_draw_item)
+        };
+    }
+
+    // Prepare draw items, draw instances, draw clipboxes
 
     uint32_t        items_count; 
     uint64_t        items_bytes;
@@ -2260,7 +2360,14 @@ void lui_upload_cache(
             .shader         = req.shader
         };
 
-        instances_count += req.glyph_count;
+        if (req.text_node.node) {
+            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
+            text_type_auxilary_state* aux  = slot->state_ptr;
+            lpr_partition*            part = aux->owned_glyph_buffer_partition;
+            if (!part) continue;
+            instances_count += lpr_partition_query_size(part) / sizeof(gpu_glyph);
+        }
+        else instances_count += 1;  // single box
     }
 
     // Generate GPU Instances
@@ -2269,10 +2376,25 @@ void lui_upload_cache(
     uint32_t instance_idx = 0;
     for (int i = 0; i < cache->draw_requests_count; i++) {
         draw_request req = cache->draw_requests[i];
-        for (int g = 0; g < req.glyph_count; g++) {
+        if (req.text_node.node) {
+            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
+            text_type_auxilary_state* aux  = slot->state_ptr;
+            lpr_partition*            part = aux->owned_glyph_buffer_partition;
+            if (!part) continue;
+            
+            size_t first  = lpr_partition_query_offset(part) / sizeof(gpu_glyph);
+            size_t glyphs = lpr_partition_query_size(part) / sizeof(gpu_glyph);
+            for (size_t g = 0; g < glyphs; g++) {
+                instances[instance_idx++] = (gpu_instance){
+                    .item   = i,
+                    .glyph  = first + g
+                };
+            }
+        }
+        else {
             instances[instance_idx++] = (gpu_instance){
                 .item   = i,
-                .glyph  = g + req.glyph_first
+                .glyph  = -1
             };
         }
     }
@@ -2317,30 +2439,30 @@ void lui_upload_cache(
     if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frames->owning_shared, frame);
 
     // Upload
-    lgx_buffer_multi_upload_region regions[] = {
-        {
-            .buffer         = frame->draw_items_buffer,
-            .buffer_offset  = 0,
-            .source_data    = items,
-            .source_bytes   = items_count * sizeof(gpu_draw_item)
-        },
-        {
-            .buffer         = frame->clipboxes_buffer,
-            .buffer_offset  = 0,
-            .source_data    = clipboxes,
-            .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
-        },
-        {
-            .buffer         = frame->instances_buffer,
-            .buffer_offset  = 0,
-            .source_data    = instances,
-            .source_bytes   = instances_count * sizeof(gpu_instance)
-        }
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->draw_items_buffer,
+        .buffer_offset  = 0,
+        .source_data    = items,
+        .source_bytes   = items_count * sizeof(gpu_draw_item)
+    };
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->clipboxes_buffer,
+        .buffer_offset  = 0,
+        .source_data    = clipboxes,
+        .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
+    };
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->instances_buffer,
+        .buffer_offset  = 0,
+        .source_data    = instances,
+        .source_bytes   = instances_count * sizeof(gpu_instance)
     };
 
     lgx_buffer_multi_upload(
-        regions,
-        sizeof(regions) / sizeof(lgx_buffer_multi_upload_region),
+        upload_regions,
+        upload_regions_position,
         command_list, 
         queue_for_uploads,
         staging_memory,
@@ -2353,8 +2475,11 @@ void lui_upload_cache(
     // Mark to render
     frame->instances_to_render = instances_count;
 
+    // Free text requests
+    free_cached_text_requests(cache);
+
     // Free allocated memory
-    free(items); free(clipboxes); free(instances);
+    free(items); free(clipboxes); free(instances); free(upload_regions);
 }
 
 void lui_gcmd_render(
@@ -2373,6 +2498,21 @@ void lui_gcmd_render(
         lgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frames->owning_shared->vertex_buffer, 0, 0);
         lgx_gcmd_draw_vertices(target, 4, 0, frame->instances_to_render, 0);
     }
+}
+
+// ===========================
+// Text layout generation
+
+/*
+    size_t              glyphs_count;
+    struct gpu_glyph*   glyphs;
+*/
+
+void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
+    text_request req = {0};
+    req.owning_node = slot->key;
+
+    text_request_cache_push(cache, req);
 }
 
 #endif // LIGHT_USER_INTERFACE_IMPL
