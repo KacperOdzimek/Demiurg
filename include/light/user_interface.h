@@ -701,18 +701,20 @@ struct clipbox_request {
     lla_mat2x3  transform;
 };
 
+// Definies one function:
+// void PREFIX##_cache_push (lui_cache* cache, ELEMENT_TYPE element);
 #define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
-static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE req) {                            \
+static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE element) {                        \
     if (cache->CNT_FIELD + 1 > cache->CAP_FIELD) {                                              \
         size_t          new_cap = cache->CAP_FIELD ? cache->CAP_FIELD * 2 : 64;                 \
-        ELEMENT_TYPE*   new_req = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
-        if (!new_req)   return - 1;                                                             \
+        ELEMENT_TYPE*   new_arr = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
+        if (!new_arr)   return - 1;                                                             \
 \
-        cache->ARRAY_FIELD  = new_req;                                                          \
+        cache->ARRAY_FIELD  = new_arr;                                                          \
         cache->CAP_FIELD    = new_cap;                                                          \
     }                                                                                           \
 \
-    cache->ARRAY_FIELD[cache->CNT_FIELD] = req;                                                 \
+    cache->ARRAY_FIELD[cache->CNT_FIELD] = element;                                             \
     return (int)cache->CNT_FIELD++;                                                             \
 }
 
