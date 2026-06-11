@@ -485,6 +485,7 @@ void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void
 typedef struct cache_slot cache_slot;
 typedef struct auxilary_slot auxilary_slot;
 typedef struct draw_request draw_request;
+typedef struct text_request text_request;
 typedef struct clipbox_request clipbox_request;
 
 struct lui_cache {
@@ -504,12 +505,17 @@ struct lui_cache {
     auxilary_slot*      auxilary_slots;
     
     // Draw requests dynamic array
-    size_t              draw_request_capacity;
+    size_t              draw_requests_capacity;
     size_t              draw_requests_count;
     draw_request*       draw_requests;
 
+    // Text requests dynamic array
+    size_t              text_requests_capacity;
+    size_t              text_requests_count;
+    text_request*       text_requests;
+
     // Clipbox requests dynamic array
-    size_t              clipbox_request_capacity;
+    size_t              clipbox_requests_capacity;
     size_t              clipbox_requests_count;
     clipbox_request*    clipbox_requests;
 };
@@ -519,20 +525,28 @@ lui_cache* lui_create_cache() {
     return cache;
 }
 
-static void auxilary_hashmap_garbage_collect(lui_cache* cache) ;
+static void auxilary_hashmap_garbage_collect(lui_cache* cache);
+static void free_cached_unuploaded_textes(lui_cache* cache);
 void lui_free_cache(lui_cache* cache) {
     if (!cache) return;
-    free(cache->draw_requests);
-    free(cache->clipbox_requests);
-    free(cache->cache_slots);
 
     // Free all auxilary slots by using impossible value
     cache->walk_current_frame_index = 1;
-    auxilary_hashmap_garbage_collect(cache);    
+    auxilary_hashmap_garbage_collect(cache);
 
+    // Free all cached textes
+    free_cached_unuploaded_textes(cache);
+
+    free(cache->cache_slots);
     free(cache->auxilary_slots);
+    free(cache->draw_requests);
+    free(cache->text_requests);
+    free(cache->clipbox_requests);
     free(cache);
 }
+
+// ===========================
+// Cache Hashmaps
 
 typedef struct node_stable_index {
     const lui_node* node;
@@ -663,56 +677,61 @@ static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_in
     return slot;
 }
 
+// ===========================
+// Cache dynamic arrays
+
 struct draw_request {
-    lla_mat2x3      transform;
-    int             texture_index;
-    lgx_uv_2d       texture_atlas;
-    int             clip_index;
-    short           depth_index;
-    unsigned char   r, g, b, a;
-    int             shader;
-    int             glyph_first;
-    int             glyph_count;
+    lla_mat2x3          transform;
+    int                 texture_index;
+    lgx_uv_2d           texture_atlas;
+    int                 clip_index;
+    short               depth_index;
+    unsigned char       r, g, b, a;
+    int                 shader;
+    int                 glyph_first;
+    int                 glyph_count;
 };
 
-static inline int helper_draw_requests_greater_depth(const void* av, const void* bv) {
-    const draw_request* a = (const draw_request*)av; 
-    const draw_request* b = (const draw_request*)bv;
-    if (a->depth_index > b->depth_index) return 1;
-    return 0;
-}
-
-// Auto fills clip_index and depth_index
-static void cache_push_draw_request(lui_cache* cache, draw_request req) {
-    if (cache->draw_requests_count + 1 > cache->draw_request_capacity) {
-        size_t          new_cap = cache->draw_request_capacity ? cache->draw_request_capacity * 2 : 64;
-        draw_request*   new_req = realloc(cache->draw_requests, new_cap * sizeof(draw_request));
-        if (!new_req)   return; // failed to resize
-
-        cache->draw_requests         = new_req;
-        cache->draw_request_capacity = new_cap;
-    }
-
-    cache->draw_requests[cache->draw_requests_count++] = req;
-}
+struct text_request {
+    size_t              glyphs_count;
+    struct gpu_glyph*   glyphs;
+};
 
 struct clipbox_request {
     lla_mat2x3  transform;
 };
 
-// Returns clipbox index
-static int cache_clipbox_request(lui_cache* cache, clipbox_request req) {
-    if (cache->clipbox_requests_count + 1 > cache->clipbox_request_capacity) {
-        size_t              new_cap = cache->clipbox_request_capacity ? cache->clipbox_request_capacity * 2 : 64;
-        clipbox_request*    new_req = realloc(cache->clipbox_requests, new_cap * sizeof(clipbox_request));
-        if (!new_req)       return -1; // failed to resize
+#define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
+static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE req) {                            \
+    if (cache->CNT_FIELD + 1 > cache->CAP_FIELD) {                                              \
+        size_t          new_cap = cache->CAP_FIELD ? cache->CAP_FIELD * 2 : 64;                 \
+        ELEMENT_TYPE*   new_req = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
+        if (!new_req)   return - 1;                                                             \
+\
+        cache->ARRAY_FIELD  = new_req;                                                          \
+        cache->CAP_FIELD    = new_cap;                                                          \
+    }                                                                                           \
+\
+    cache->ARRAY_FIELD[cache->CNT_FIELD] = req;                                                 \
+    return (int)cache->CNT_FIELD++;                                                             \
+}
 
-        cache->clipbox_requests         = new_req;
-        cache->clipbox_request_capacity = new_cap;
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    draw_request, draw_request, draw_requests, draw_requests_capacity, draw_requests_count
+);
+
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    text_request, text_request, text_requests, text_requests_capacity, text_requests_count
+);
+
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    clipbox_request, clipbox_request, clipbox_requests, clipbox_requests_capacity, clipbox_requests_count
+);
+
+static inline void free_cached_unuploaded_textes(lui_cache* cache) {
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        free(cache->text_requests[i].glyphs);
     }
-
-    cache->clipbox_requests[cache->clipbox_requests_count] = req;
-    return cache->clipbox_requests_count++;
 }
 
 // ===========================
@@ -800,8 +819,10 @@ void free_caches_walk_order(caches_walk_order* order) {
 
 // Auxilary pass
 // Top-down pass, allowing for own data rebuild
+// Builds text
 
 size_t auxilary_dfs(
+    lui_cache*          cache,
     caches_walk_order*  walk_order,
     cache_slot*         current,
     void*               auxilary,
@@ -823,7 +844,7 @@ size_t auxilary_dfs(
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = auxilary_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+        last_descendant = auxilary_dfs(cache, walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     return last_descendant;
@@ -1027,7 +1048,7 @@ void render_dfs(
     // special nodes (box, text, depth,clipbox)
     if (node->type == &lui_box_type){
         const lui_box_data* bdata = data;
-        cache_push_draw_request(cache, (draw_request){
+        draw_request_cache_push(cache, (draw_request){
             .transform      = transform,
             .texture_index  = 0,                // todo
             .texture_atlas  = (lgx_uv_2d){0},   // todo
@@ -1047,7 +1068,7 @@ void render_dfs(
         depth_index += ddata->depth_change;
     }
     else if (node->type == &lui_clipbox_type) {
-        clipbox_index = cache_clipbox_request(cache, (clipbox_request){
+        clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){
             .transform = transform
         });
     }
@@ -1065,6 +1086,17 @@ void render_dfs(
         render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
     }
 }
+
+// Helper for draw requests depth sorting
+static inline int helper_draw_requests_greater_depth(const void* av, const void* bv) {
+    const draw_request* a = (const draw_request*)av; 
+    const draw_request* b = (const draw_request*)bv;
+    if (a->depth_index > b->depth_index) return 1;
+    return 0;
+}
+
+// Main update function
+// Calls passes
 
 void lui_update_cache(
     lui_cache*      cache,
@@ -1106,12 +1138,14 @@ void lui_update_cache(
         }
         
         // Perform layout passes
-        auxilary_dfs         (&walk_order, root_cache, root_auxlr, 0);
-        width_measure_dfs    (&walk_order, root_cache, root_auxlr, 0);
-        width_distribute_dfs (&walk_order, root_cache, root_auxlr, 0);
-        height_measure_dfs   (&walk_order, root_cache, root_auxlr, 0);
+        auxilary_dfs(cache, &walk_order, root_cache, root_auxlr, 0);
+
+        width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
+        width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
+        height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
         height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-        position_dfs         (&walk_order, root_cache, root_auxlr, 0);
+
+        position_dfs(&walk_order, root_cache, root_auxlr, 0);
 
         // Could potentialy be cached and used at render
         free_caches_walk_order(&walk_order);
