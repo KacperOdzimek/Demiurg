@@ -1,3 +1,23 @@
+/*
+----------------------------------------------------------------
+Contents
+This file provides partitioner object, allowing performant memory partitioning, with TLSF algorithm.
+
+----------------------------------------------------------------
+Code info:
+- lpr prefix
+- LIGHT_PARTITIONER_IMPL macro to build
+
+----------------------------------------------------------------
+Usage
+- Create partitioner object per partitioned memory.
+    Partitioner does only need to know memory size and desired partitions alignment,
+    so it can be used to partition even GPU memory like graphics.h buffers.
+- Create partitions with lpr_partitioner_alloc_partition
+- Free partitions with lpr_partitioner_free_partition
+- Partitions are partitioner owned - erasing partitioner frees all partitions.
+*/
+
 #ifndef LIGHT_PARTITIONER_H
 #define LIGHT_PARTITIONER_H
 
@@ -71,7 +91,6 @@ struct lpr_partitioner {
 typedef struct locant {
     size_t  major_bin_index;
     size_t  minor_bin_index;
-    size_t  rounded_size;   // try to remove
 } locant;
 
 // ===========================
@@ -125,8 +144,7 @@ static inline locant binmap_down(const lpr_partitioner* partitioner, size_t size
 
     return (locant){
         .major_bin_index = adjusted_major_bin_idx,
-        .minor_bin_index = adjusted_minor_bin_idx,
-        .rounded_size    = size
+        .minor_bin_index = adjusted_minor_bin_idx
     };
 }
 
@@ -148,8 +166,7 @@ static inline locant binmap_up(const lpr_partitioner* partitioner, size_t size) 
 
     return (locant){
         .major_bin_index = adjusted_major_bin_idx,
-        .minor_bin_index = adjusted_minor_bin_idx,
-        .rounded_size = rounded_size
+        .minor_bin_index = adjusted_minor_bin_idx
     };
 }
 
@@ -217,7 +234,8 @@ static inline void free_list_remove_free_partition_given_locant(lpr_partitioner*
         if (*minor_bins_free_bitmap == 0) bitmap_set(&partitioner->major_bins_free_bitmap, loc.major_bin_index, 0);
     }
 
-    partitioner->minor_bins_free_partitions[flat_idx] = next;
+    if (prev) prev->next_free = next;
+    else      partitioner->minor_bins_free_partitions[flat_idx] = next;
 }
 
 // removes partition from free list
@@ -405,6 +423,8 @@ void lpr_free_partitioner(lpr_partitioner* partitioner) {
         free(part); part = next;
     }
 
+    free(partitioner->minor_bins_free_bitmaps);
+    free(partitioner->minor_bins_free_partitions);
     free(partitioner);
 }
 
