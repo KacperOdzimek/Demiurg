@@ -145,6 +145,9 @@ static inline locant binmap_up(size_t size) {
     };
 }
 
+// ===========================
+// Partition Operations
+
 static inline int is_partition_free(lpr_partition* partition) {
     return partition != partition->prev_free;
 }
@@ -152,6 +155,9 @@ static inline int is_partition_free(lpr_partition* partition) {
 static inline void mark_partition_used(lpr_partition* partition) {
     partition->prev_free = partition;
 }
+
+// ===========================
+// Partitioner Operations
 
 // ensures partitioner->physical_first_partition is actually first partition
 // must be called on partition after every offset change
@@ -244,7 +250,8 @@ static inline int physical_prepare_partition_for_use
 
         free_list_insert_free_partition(partitioner, new_partition);
     }
-    else if (partition->size < size_with_adjustment) return 0;
+    else if (partition->size < size_with_adjustment) 
+        return 0;
 
     // update offset
     partition->adjustment = offset_adjustment;
