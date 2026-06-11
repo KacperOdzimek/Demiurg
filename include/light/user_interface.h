@@ -70,6 +70,11 @@ typedef void (lui_node_auxilary_func_signature)(
 );
 typedef lui_node_auxilary_func_signature* lui_node_auxilary_func;
 
+typedef void (lui_node_auxilary_destructor_func_signature)(
+    void*                   auxilary            // node auxilary buffer - do not free it
+);
+typedef lui_node_auxilary_destructor_func_signature* lui_node_auxilary_destructor_func;
+
 typedef void(lui_node_layout_func_signature)(
     const void*             node_data,          // node data
     lui_node_layout_state*  node_state,         // node own state
@@ -99,6 +104,10 @@ typedef struct lui_type {
     // This state will be shared across all node passes, and given to user in callback functions. 
     // If state_bytes == 0, the pointer will be NULL.
     size_t  auxilary_bytes;
+
+    // This function will be called when auxilary storage is freed
+    // You can use it to free some auxilary-owned memory
+    lui_node_auxilary_destructor_func auxilary_destructor;
 
     // Auxilary Stage
 
@@ -659,7 +668,10 @@ DEFINE_HASHMAP_FUNCS(
 #undef HASHMAP_SLOT_DESTRUCTOR
 
 #define HASHMAP_SLOT_INITIALIZER {.key = key, .state_ptr = NULL, .last_frame_used_in_render = 2}
-#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) free(slot_ptr->state_ptr); slot_ptr->state_ptr = NULL;
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)                                   \
+    if (slot_ptr->key.node->type->auxilary_destructor) {                    \
+        slot_ptr->key.node->type->auxilary_destructor(slot_ptr->state_ptr); \
+    } free(slot_ptr->state_ptr); slot_ptr->state_ptr = NULL;
 DEFINE_HASHMAP_FUNCS(
     auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
 );
