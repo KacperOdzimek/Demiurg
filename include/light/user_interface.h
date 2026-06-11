@@ -64,22 +64,22 @@ typedef struct lui_node_layout_state {
     int                     vert_offset;        // node center vertical offset from parent center
 } lui_node_layout_state;
 
-typedef void(lui_node_layout_signature)(
+typedef void(lui_node_layout_func_signature)(
     const void*             node_data,          // node data
     lui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
     lui_node_layout_state** children_states     // node children states
 );
-typedef lui_node_layout_signature* lui_node_layout_func;
+typedef lui_node_layout_func_signature* lui_node_layout_func;
 
-typedef void(lui_node_render_signature)(
+typedef void(lui_node_render_func_signature)(
     lui_cache*              cache,              // cache to cache render requests
     const void*             node_data,          // node data
     lla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
     int                     resolution_y        // screen resolution y
 );
-typedef lui_node_render_signature* lui_node_render_func;
+typedef lui_node_render_func_signature* lui_node_render_func;
 
 typedef struct lui_type {
     // Structure Stage
@@ -161,19 +161,19 @@ typedef struct lui_node {
 // Those implement basic box/overlay behavior, used by most nodes
 
 // width = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
-lui_node_layout_signature lui_overlay_width_measure_func;
+lui_node_layout_func_signature lui_overlay_width_measure_func;
 
 // children width = parent width, with applied maxes
-lui_node_layout_signature lui_overlay_width_distribute_func;
+lui_node_layout_func_signature lui_overlay_width_distribute_func;
 
 // height = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
-lui_node_layout_signature lui_overlay_height_measure_func;
+lui_node_layout_func_signature lui_overlay_height_measure_func;
 
 // children height = parent height, with applied maxes
-lui_node_layout_signature lui_overlay_height_distribute_func;
+lui_node_layout_func_signature lui_overlay_height_distribute_func;
 
 // centers children inside parent
-lui_node_layout_signature lui_overlay_position_func;
+lui_node_layout_func_signature lui_overlay_position_func;
 
 // ===========================
 // Architectural Node Types
