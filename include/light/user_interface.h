@@ -55,11 +55,6 @@ static inline lui_color lui_hex(const char* hex);
 // ===========================
 // Node Typedefs
 
-typedef void (lui_node_auxilary_func_signature)(
-    const void*             node_data
-);
-typedef lui_node_auxilary_func_signature* lui_node_auxilary_func;
-
 typedef struct lui_node_layout_state {
     lui_length              measured_width;     // desired width  of this node
     lui_length              measured_height;    // desired height of this node
@@ -69,11 +64,18 @@ typedef struct lui_node_layout_state {
     int                     vert_offset;        // node center vertical offset from parent center
 } lui_node_layout_state;
 
+typedef void (lui_node_auxilary_func_signature)(
+    const void*             node_data,          // node data
+    void*                   auxilary            // node auxilary buffer if requested by type
+);
+typedef lui_node_auxilary_func_signature* lui_node_auxilary_func;
+
 typedef void(lui_node_layout_func_signature)(
     const void*             node_data,          // node data
     lui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
-    lui_node_layout_state** children_states     // node children states
+    lui_node_layout_state** children_states,    // node children states
+    void*                   auxilary            // node auxilary buffer if requested by type
 );
 typedef lui_node_layout_func_signature* lui_node_layout_func;
 
@@ -81,7 +83,8 @@ typedef void(lui_node_render_func_signature)(
     const void*             node_data,          // node data
     lla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
-    int                     resolution_y        // screen resolution y
+    int                     resolution_y,       // screen resolution y
+    void*                   auxilary            // node auxilary buffer if requested by type
 );
 typedef lui_node_render_func_signature* lui_node_render_func;
 
@@ -799,11 +802,13 @@ void free_caches_walk_order(caches_walk_order* order) {
 // Top-down pass, allowing for own data rebuild
 
 size_t auxilary_dfs(
-    caches_walk_order* walk_order,
-    cache_slot*        current,
-    size_t             first_child
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
 ) {
     cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
@@ -814,11 +819,11 @@ size_t auxilary_dfs(
 
     // do call
     lui_node_auxilary_func func = current->key.node->type->auxilary;
-    if (func != NULL) func(data);
+    if (func != NULL) func(data, auxilary);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = auxilary_dfs(walk_order, children[i], last_descendant);
+        last_descendant = auxilary_dfs(walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     return last_descendant;
@@ -829,22 +834,24 @@ size_t auxilary_dfs(
 // to calcualate what specfied in type comments
 
 size_t width_measure_dfs(
-    caches_walk_order* walk_order,
-    cache_slot*        current,
-    size_t             first_child
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
 ) {
     cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = width_measure_dfs(walk_order, children[i], last_descendant);
+        last_descendant = width_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     // call own measure
     lui_node_layout_func func = current->key.node->type->width_measure;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child], auxilary);
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_width) {
@@ -860,11 +867,13 @@ size_t width_measure_dfs(
 }
 
 size_t width_distribute_dfs(
-    caches_walk_order* walk_order,
-    cache_slot*        current,
-    size_t             first_child
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
 ) {
     cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
@@ -876,33 +885,35 @@ size_t width_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->width_distribute;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = width_distribute_dfs(walk_order, children[i], last_descendant);
+        last_descendant = width_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     return last_descendant;
 }
 
 size_t height_measure_dfs(
-    caches_walk_order* walk_order,
-    cache_slot*        current,
-    size_t             first_child
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
 ) {
     cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = height_measure_dfs(walk_order, children[i], last_descendant);
+        last_descendant = height_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_measure;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_height) {
@@ -918,11 +929,13 @@ size_t height_measure_dfs(
 }
 
 size_t height_distribute_dfs(
-    caches_walk_order* walk_order,
-    cache_slot*        current,
-    size_t             first_child
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
 ) {
     cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
@@ -934,32 +947,34 @@ size_t height_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_distribute;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = height_distribute_dfs(walk_order, children[i], last_descendant);
+        last_descendant = height_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     return last_descendant;
 }
 
 size_t position_dfs(
-    caches_walk_order* walk_order,
-    cache_slot*        current,
-    size_t             first_child
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    void*               auxilary,
+    size_t              first_child
 ) {
     cache_slot** children        = &walk_order->slots[first_child];
+    void**       auxilaries      = &walk_order->auxilary[first_child];
     size_t       last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
     // do call
     lui_node_layout_func func = current->key.node->type->position;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child]);
+    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
     
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = position_dfs(walk_order, children[i], last_descendant);
+        last_descendant = position_dfs(walk_order, children[i], auxilaries[i], last_descendant);
     }
 
     return last_descendant;
@@ -1005,7 +1020,8 @@ void render_dfs(
     if (node->type->transform) node->type->transform(
         data, &transform, 
         cache->walk_current_resolution_x, 
-        cache->walk_current_resolution_y
+        cache->walk_current_resolution_y,
+        aux
     );
     
     // special nodes (box, text, depth,clipbox)
@@ -1074,7 +1090,8 @@ void lui_update_cache(
     // This is important so hashmap pointers does not get invalidated during passes
     // This means we are one frame behind with layout, but it is not a big deal actually.
     if (1) {
-        cache_slot* root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
+        cache_slot*     root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
+        auxilary_slot*  root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
 
         // Give root entire screen
         // Will auto bound to desired at distribute
@@ -1089,12 +1106,12 @@ void lui_update_cache(
         }
         
         // Perform layout passes
-        auxilary_dfs         (&walk_order, root_cache, 0);
-        width_measure_dfs    (&walk_order, root_cache, 0);
-        width_distribute_dfs (&walk_order, root_cache, 0);
-        height_measure_dfs   (&walk_order, root_cache, 0);
-        height_distribute_dfs(&walk_order, root_cache, 0);
-        position_dfs         (&walk_order, root_cache, 0);
+        auxilary_dfs         (&walk_order, root_cache, root_auxlr, 0);
+        width_measure_dfs    (&walk_order, root_cache, root_auxlr, 0);
+        width_distribute_dfs (&walk_order, root_cache, root_auxlr, 0);
+        height_measure_dfs   (&walk_order, root_cache, root_auxlr, 0);
+        height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
+        position_dfs         (&walk_order, root_cache, root_auxlr, 0);
 
         // Could potentialy be cached and used at render
         free_caches_walk_order(&walk_order);
@@ -1141,9 +1158,10 @@ void lui_overlay_width_measure_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    (void)node_data; lui_length own = {0, 0, 0.0f};
+    (void)node_data; (void)auxilary; lui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
         lui_length child = children_states[i]->measured_width;
@@ -1159,9 +1177,10 @@ void lui_overlay_width_distribute_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    (void)node_data;
+    (void)node_data; (void)auxilary;
 
     for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_width = limit_length(node_state->given_width, children_states[i]->measured_width);
@@ -1172,9 +1191,10 @@ void lui_overlay_height_measure_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    (void)node_data; lui_length own = {0, 0, 0.0f};
+    (void)node_data; (void)auxilary; lui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
         lui_length child = children_states[i]->measured_height;
@@ -1190,9 +1210,10 @@ void lui_overlay_height_distribute_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    (void)node_data;
+    (void)node_data; (void)auxilary;
 
     for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_height = limit_length(node_state->given_height, children_states[i]->measured_height);
@@ -1203,9 +1224,10 @@ void lui_overlay_position_func(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    (void)node_data;
+    (void)node_data; (void)auxilary;
 
     for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->hori_offset = 0;
@@ -1232,10 +1254,11 @@ void sizebox_width_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
     const lui_sizebox_data* data = node_data;
-    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states);
+    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
     if (data->flag & lui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
     if (data->flag & lui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
     if (data->flag & lui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
@@ -1245,10 +1268,11 @@ void sizebox_height_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
     const lui_sizebox_data* data = node_data;
-    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states);
+    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
     if (data->flag & lui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
     if (data->flag & lui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
     if (data->flag & lui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
@@ -1297,8 +1321,10 @@ void padding_width_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
+    (void)auxilary;
     const lui_padding_data* data = node_data;
     lui_length own = {0, 0, 0.0f};
     
@@ -1322,10 +1348,11 @@ void padding_width_distribute(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states)
-{
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; if (children_count == 0) return;
     const lui_padding_data* data = node_data;
-    if (children_count == 0) return;
     lui_node_layout_state* child = children_states[0];
 
     // Give every element its minimum
@@ -1350,9 +1377,10 @@ void padding_height_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states)
-{
-    const lui_padding_data* data = node_data;
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; const lui_padding_data* data = node_data;
 
     int child_min = 0, child_max = 0;
     if (children_count > 0) {
@@ -1374,10 +1402,11 @@ void padding_height_distribute(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states)
-{
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; if (children_count == 0) return;
     const lui_padding_data* data = node_data;
-    if (children_count == 0) return;
     lui_node_layout_state* child = children_states[0];
 
     // Give every element its minimum
@@ -1417,8 +1446,10 @@ void row_width_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
+    (void)auxilary; 
     const lui_row_data* data = (const lui_row_data*)node_data;
     lui_length          own  = {0, 0, 0.0f};
 
@@ -1441,9 +1472,10 @@ void row_width_distribute(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    const lui_row_data* data = (const lui_row_data*)node_data;
+    (void)auxilary; const lui_row_data* data = (const lui_row_data*)node_data;
 
     // Find spaces count
     size_t spaces_count = children_count ? children_count - 1 : 0;
@@ -1515,9 +1547,10 @@ void row_position(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    const lui_row_data* data = (const lui_row_data*)node_data;
+    (void)auxilary; const lui_row_data* data = (const lui_row_data*)node_data;
 
     // Position children in vertial axis
     for (size_t i = 0; i < children_count; ++i) {
@@ -1545,8 +1578,10 @@ void column_height_measure(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
+    (void)auxilary;
     const lui_column_data* data = (const lui_column_data*)node_data;
     lui_length             own  = {0, 0, 0.0f};
 
@@ -1569,8 +1604,10 @@ void column_height_distribute(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
+    (void)auxilary;
     const lui_column_data* data = (const lui_column_data*)node_data;
 
     // Find spaces count
@@ -1643,9 +1680,10 @@ void column_position(
     const void*             node_data,
     lui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states
+    lui_node_layout_state** children_states,
+    void*                   auxilary
 ) {
-    const lui_column_data* data = (const lui_column_data*)node_data;
+    (void)auxilary; const lui_column_data* data = (const lui_column_data*)node_data;
 
     // Position children in horizontal axis
     for (size_t i = 0; i < children_count; ++i) {
