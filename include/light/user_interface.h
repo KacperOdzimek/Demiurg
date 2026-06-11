@@ -4,6 +4,7 @@
 #include "/home/kacper/Projects/LightFramework/include/light/graphics.h"
 #include "/home/kacper/Projects/LightFramework/include/light/linear_algebra.h"
 #include "/home/kacper/Projects/LightFramework/include/light/font.h"
+#include "/home/kacper/Projects/LightFramework/include/light/partitioner.h"
 
 // ===========================
 // Forwards
@@ -1539,6 +1540,22 @@ const lui_type lui_text_type = {
 // ===========================
 // Rendering Common
 
+#define INTERNAL_TEXTURES_LIMIT             1024
+
+#define INITIAL_INSTANCES_BUFFER_SIZE       (1024 * sizeof(gpu_instance))
+#define INITIAL_DRAW_ITEM_BUFFER_SIZE       (1024 * sizeof(gpu_draw_item))
+#define INITIAL_CLIPBOXES_BUFFER_SIZE       (16 * sizeof(gpu_clipbox))
+#define INITIAL_GLYPH_BUFFER_SIZE           (2024 * sizeof(gpu_glyph))
+
+#define GLYPH_STRUCTURE_ALIGN               4
+
+#define INSTANCES_BUFFER_DESCRIPTOR_BINDING 0
+#define DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING 1
+#define GLYPH_BUFFER_DESCRIPTOR_BINDING     2
+#define CLIPBOXES_BUFFER_DESCRIPTOR_BINDING 3
+#define SAMPLER_DESCRIPTOR_BINDING          4
+#define TEXTURES_ARRAY_DESCRIPTOR_BINDING   5
+
 typedef struct gpu_instance {
     int item;
     int glyph;
@@ -1571,11 +1588,6 @@ lgx_buffer* create_ssbo(lgx_hardware* hardware, uint64_t bytes) {
         .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
     });
 }
-
-static const uint32_t internal_textures_limit       = 1024;
-static const uint64_t initial_instances_buffer_size = 1024 * sizeof(gpu_instance);
-static const uint64_t initial_draw_item_buffer_size = 1024 * sizeof(gpu_draw_item);
-static const uint64_t initial_clipboxes_buffer_size =   16 * sizeof(gpu_clipbox);
 
 // vec2 position, vec2 uv
 static const float quad_vertices_array[] = {
@@ -1610,31 +1622,37 @@ static lgx_vertex_input_binding_info vertex_bindings[] = {
 
 static lgx_descriptor_binding descriptor_bindings[] = {
     {   // the instances buffer
-        .binding = 0,
+        .binding = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
         .stages  = lgx_shader_stage_vertex,
         .type    = lgx_descriptor_binding_type_storage_buffer
     },
     {   // the draw items buffer
-        .binding = 1,
+        .binding = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_vertex,
+        .type    = lgx_descriptor_binding_type_storage_buffer
+    },
+    {   // the glyphs buffer
+        .binding = GLYPH_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
         .stages  = lgx_shader_stage_vertex,
         .type    = lgx_descriptor_binding_type_storage_buffer
     },
     {   // the clips buffer
-        .binding = 2,
+        .binding = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
         .stages  = lgx_shader_stage_pixel,
         .type    = lgx_descriptor_binding_type_storage_buffer
     },
     {   // the sampler
-        .binding = 3,
+        .binding = SAMPLER_DESCRIPTOR_BINDING,
         .count   = 1,
         .stages  = lgx_shader_stage_pixel,
         .type    = lgx_descriptor_binding_type_sampler,
     },
     {   // the textures
-        .binding = 4,
+        .binding = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
         .count   = -1, // Needs to be set per hardware!
         .stages  = lgx_shader_stage_pixel,
         .type    = lgx_descriptor_binding_type_sampled_texture
@@ -1653,8 +1671,10 @@ struct lui_shared {
     uint32_t                            descriptor_textures_array_length;
     lgx_descriptor_layout*              descriptor_layout;
     lgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
-
     lgx_pipeline*                       pipeline;
+
+    lpr_partitioner*                    glyph_buffer_partitioner;
+    lgx_buffer*                         glyph_buffer;
 };
 
 lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_info* info) {
@@ -1673,7 +1693,7 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
 
     // Query textures limit
     uint32_t max_textures = lgx_hardware_query_limit(hardware, lgx_hardware_limit_max_descriptor_sampled_images);
-    shared->descriptor_textures_array_length = max_textures > internal_textures_limit ? internal_textures_limit : max_textures;
+    shared->descriptor_textures_array_length = max_textures > INTERNAL_TEXTURES_LIMIT ? INTERNAL_TEXTURES_LIMIT : max_textures;
 
     // Copy descriptor bindings info
     uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(lgx_descriptor_binding);
@@ -1681,7 +1701,7 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
     if (!bindings) goto _fail; memcpy(bindings, descriptor_bindings, sizeof(descriptor_bindings));
 
     // Overwrite textures limit
-    bindings[4].count = shared->descriptor_textures_array_length;
+    bindings[TEXTURES_ARRAY_DESCRIPTOR_BINDING].count = shared->descriptor_textures_array_length;
 
     // Descriptor Layout
     
@@ -1719,6 +1739,16 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
         .max_lod                    = 1,
         .mip_lod_bias               = 0,
     }); if (!shared->sampler) goto _fail;
+
+    // Glyphs buffer
+    shared->glyph_buffer = create_ssbo(hardware, INITIAL_GLYPH_BUFFER_SIZE);
+    if (!shared->glyph_buffer) goto _fail;
+
+    // Glyph buffer partitioner
+    shared->glyph_buffer_partitioner = lpr_create_partitioner(&(lpr_partitioner_create_info){
+        .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE,
+        .align_bytes  = GLYPH_STRUCTURE_ALIGN
+    }); if (!shared->glyph_buffer_partitioner) goto _fail;
 
     // Pipeline Shaders
     if (!info->pipeline_vertex_shader || !info->pipeline_pixel_shader) goto _fail;
@@ -1773,6 +1803,8 @@ void lui_free_shared(lui_shared* shared) {
     lgx_free_pipeline(shared->pipeline);
     lgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
     lgx_free_descriptor_layout(shared->descriptor_layout);
+    lgx_free_buffer(shared->glyph_buffer);
+    lpr_free_partitioner(shared->glyph_buffer_partitioner);
     free(shared);
 }
 
@@ -1794,9 +1826,9 @@ struct lui_frames {
     single_frame*               frames;
 };
 
-void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, single_frame* frame, lgx_sampler* sampler) {
-    lgx_descriptor_write_info           writes[4];
-    lgx_descriptor_buffer_write_info    binfos[3];
+void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_shared* shared, single_frame* frame) {
+    lgx_descriptor_write_info           writes[5];
+    lgx_descriptor_buffer_write_info    binfos[4];
     lgx_descriptor_sampler_write_info   sinfos[1];
 
     binfos[0] = (lgx_descriptor_buffer_write_info){
@@ -1812,19 +1844,25 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, single_fr
     };
 
     binfos[2] = (lgx_descriptor_buffer_write_info){
+        .buffer = shared->glyph_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(shared->glyph_buffer)
+    };
+
+    binfos[3] = (lgx_descriptor_buffer_write_info){
         .buffer = frame->clipboxes_buffer,
         .offset = 0,
         .length = lgx_buffer_get_size_bytes(frame->clipboxes_buffer)
     };
 
     sinfos[0] = (lgx_descriptor_sampler_write_info){
-        .sampler = sampler
+        .sampler = shared->sampler
     };
 
     writes[0] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = 0,
+        .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[0]
@@ -1833,7 +1871,7 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, single_fr
     writes[1] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = 1,
+        .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[1]
@@ -1842,22 +1880,31 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, single_fr
     writes[2] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = 2,
+        .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[2]
     };
-
+    
     writes[3] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_index          = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[3]
+    };
+
+    writes[4] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_sampler,
-        .binding_index          = 3,
+        .binding_index          = SAMPLER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_samplers     = &sinfos[0]
     };
     
-    lgx_descriptors_write(hardware, 4, writes);
+    lgx_descriptors_write(hardware, 5, writes);
 }
 
 lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_info* info) {
@@ -1884,13 +1931,13 @@ lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_in
         single_frame* frame = &frames->frames[i];
         *frame = (single_frame){
             .descriptor        = lgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
-            .instances_buffer  = create_ssbo(hardware, initial_instances_buffer_size),
-            .draw_items_buffer = create_ssbo(hardware, initial_draw_item_buffer_size),
-            .clipboxes_buffer  = create_ssbo(hardware, initial_clipboxes_buffer_size),
+            .instances_buffer  = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
+            .draw_items_buffer = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
+            .clipboxes_buffer  = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE),
         };
 
         if (!frame->descriptor || !frame->instances_buffer || !frame->draw_items_buffer || !frame->clipboxes_buffer) goto _fail;
-        frame_descriptor_bind_buffers_and_sampler(hardware, frame, shared->sampler);
+        frame_descriptor_bind_buffers_and_sampler(hardware, shared, frame);
     }
 
     return frames;
@@ -2023,7 +2070,7 @@ void lui_upload_cache(
 
     // If resize failed return
     if (!frame->draw_items_buffer || !frame->instances_buffer) return;
-    if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frame, frames->owning_shared->sampler);
+    if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frames->owning_shared, frame);
 
     // Upload
     lgx_buffer_multi_upload_region regions[] = {
