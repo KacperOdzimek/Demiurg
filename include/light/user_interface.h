@@ -18,8 +18,9 @@
     typedef struct lui_text_data  lui_text_data;
     typedef struct lui_box_data   lui_box_data;
 
-    lfont*       lui_injection_query_font   (lui_text_data* data);
-    lgx_texture* lui_injection_query_texture(lui_box_data* data);
+    // returns non-zero at success (if returned is valid pointer)
+    int lui_injection_query_font   (const lui_text_data* data, lfont**       font_out);
+    int lui_injection_query_texture(const lui_box_data*  data, lgx_texture** texture_out, lgx_uv_2d* uv_out);
 #endif // LIGHT_USER_INTERFACE_IMPL
 
 /*
@@ -1325,14 +1326,14 @@ static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_in
 // Cache dynamic arrays
 
 struct draw_request {
-    lla_mat2x3          transform;
-    int                 texture_index;
-    lgx_uv_2d           texture_atlas;
-    int                 clip_index;
-    short               depth_index;
-    unsigned char       r, g, b, a;
-    int                 shader;
-    node_stable_index   text_node;
+    lla_mat2x3              transform;
+    int                     clip_index;
+    short                   depth_index;
+    char                    is_box_not_text;
+    union {
+        lui_box_data        box_data;
+        node_stable_index   text_node;
+    };
 };
 
 struct text_request {
@@ -1698,17 +1699,11 @@ void render_dfs(
     if (node->type == &lui_box_type){
         const lui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
-            .transform      = transform,
-            .texture_index  = 0,                // todo
-            .texture_atlas  = (lgx_uv_2d){0},   // todo
-            .clip_index     = clipbox_index,
-            .depth_index    = depth_index,
-            .r              = bdata->tint.r,
-            .g              = bdata->tint.g,
-            .b              = bdata->tint.b,
-            .a              = bdata->tint.a,
-            .shader         = bdata->shader,
-            .text_node      = (node_stable_index){NULL, NULL}
+            .transform          = transform,
+            .clip_index         = clipbox_index,
+            .depth_index        = depth_index,
+            .is_box_not_text    = 1,
+            .box_data           = *bdata
         });
     }
     else if (node->type == &lui_text_type) {
@@ -1716,17 +1711,11 @@ void render_dfs(
         const text_type_auxilary_state* taux  = auxilary_get_utill(cache, index)->state_ptr;
 
         draw_request_cache_push(cache, (draw_request){
-            .transform      = transform,
-            .texture_index  = 0,                // todo
-            .texture_atlas  = (lgx_uv_2d){0},   // todo
-            .clip_index     = clipbox_index,
-            .depth_index    = depth_index,
-            .r              = tdata->tint.r,
-            .g              = tdata->tint.g,
-            .b              = tdata->tint.b,
-            .a              = tdata->tint.a,
-            .shader         = tdata->shader,
-            .text_node      = index
+            .transform          = transform,
+            .clip_index         = clipbox_index,
+            .depth_index        = depth_index,
+            .is_box_not_text    = 0,
+            .text_node          = index
         });
     }
     else if (node->type == &lui_depth_type) {
@@ -1773,9 +1762,9 @@ void lui_update_cache(
     // Init state
     cache->walk_current_resolution_x = resolution_x;
     cache->walk_current_resolution_y = resolution_y;
-    cache->draw_requests_count = 0;
-    cache->text_requests_count = 0;
-    cache->clipbox_requests_count = 0;
+    cache->draw_requests_count      = 0;
+    cache->text_requests_count      = 0;
+    cache->clipbox_requests_count   = 0;
 
     // Pick next frame index
     cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 3) cache->walk_current_frame_index = 3;
@@ -2343,25 +2332,56 @@ void lui_upload_cache(
     items = malloc(items_bytes);
     for (uint32_t i = 0; i < items_count; i++) {
         draw_request req = cache->draw_requests[i];
-        items[i] = (gpu_draw_item){
-            .transform      = req.transform,
-            .texture_index  = req.texture_index,
-            .clipbox_index  = req.clip_index,
-            .r              = (float)req.r / 255.0f,
-            .g              = (float)req.g / 255.0f,
-            .b              = (float)req.b / 255.0f,
-            .a              = (float)req.a / 255.0f,
-            .shader         = req.shader
-        };
 
-        if (req.text_node.node) {
+        if (req.is_box_not_text) {
+            int texture_index = 0;
+            if (req.box_data.image) {
+                lgx_texture* texture; lgx_uv_2d uv;
+                if (lui_injection_query_texture(&req.box_data, &texture, &uv)) {
+                    // to hashmap
+                }
+            }
+
+            items[i] = (gpu_draw_item){
+                .transform      = req.transform,
+                .clipbox_index  = req.clip_index,
+                .texture_index  = 0,    // todo
+                .atlas_position = {0},  // todo
+                .r              = (float)req.box_data.tint.r / 255.0f,
+                .g              = (float)req.box_data.tint.g / 255.0f,
+                .b              = (float)req.box_data.tint.b / 255.0f,
+                .a              = (float)req.box_data.tint.a / 255.0f,
+                .shader         = req.box_data.shader
+            };
+
+            instances_count += 1;  // single box
+        }
+        else {
             auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
             text_type_auxilary_state* aux  = slot->state_ptr;
             lpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
+
+            lfont* font; if (!lui_injection_query_font(
+                get_node_data(slot->key.node, slot->key.instance), &font)
+            ) continue;
+
+            // to hashmap texture
+
+            items[i] = (gpu_draw_item){
+                .transform      = req.transform,
+                .clipbox_index  = req.clip_index,
+                .texture_index  = 0,    // todo
+                .atlas_position = (lgx_uv_2d){0, 0, 1, 1},
+                .r              = (float)req.box_data.tint.r / 255.0f,
+                .g              = (float)req.box_data.tint.g / 255.0f,
+                .b              = (float)req.box_data.tint.b / 255.0f,
+                .a              = (float)req.box_data.tint.a / 255.0f,
+                .shader         = req.box_data.shader
+            };
+
             instances_count += lpr_partition_query_size(part) / sizeof(gpu_glyph);
         }
-        else instances_count += 1;  // single box
     }
 
     // Generate GPU Instances
@@ -2370,7 +2390,13 @@ void lui_upload_cache(
     uint32_t instance_idx = 0;
     for (int i = 0; i < cache->draw_requests_count; i++) {
         draw_request req = cache->draw_requests[i];
-        if (req.text_node.node) {
+        if (req.is_box_not_text) {
+            instances[instance_idx++] = (gpu_instance){
+                .item   = i,
+                .glyph  = -1
+            };
+        }
+        else {
             auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
             text_type_auxilary_state* aux  = slot->state_ptr;
             lpr_partition*            part = aux->owned_glyph_buffer_partition;
@@ -2384,12 +2410,6 @@ void lui_upload_cache(
                     .glyph  = first + g
                 };
             }
-        }
-        else {
-            instances[instance_idx++] = (gpu_instance){
-                .item   = i,
-                .glyph  = -1
-            };
         }
     }
 
