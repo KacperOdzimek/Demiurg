@@ -2371,10 +2371,9 @@ void lui_upload_cache(
         draw_request req = cache->draw_requests[i];
 
         if (req.is_box_not_text) {
-            int texture_index = 0;
+            int texture_index = 0; lgx_uv_2d uv;
             if (req.box_data.image) {
-                lgx_texture* texture; lgx_uv_2d uv;
-                if (lui_injection_query_texture(&req.box_data, &texture, &uv)) {
+                lgx_texture* texture; if (lui_injection_query_texture(&req.box_data, &texture, &uv)) {
                     texture_index = push_texture(shared, textures_writes_infos, texture, 0);
                 }
             }
@@ -2382,8 +2381,8 @@ void lui_upload_cache(
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
                 .clipbox_index  = req.clip_index,
-                .texture_index  = 0,    // todo
-                .atlas_position = {0},  // todo
+                .texture_index  = texture_index,
+                .atlas_position = uv,
                 .r              = (float)req.box_data.tint.r / 255.0f,
                 .g              = (float)req.box_data.tint.g / 255.0f,
                 .b              = (float)req.box_data.tint.b / 255.0f,
