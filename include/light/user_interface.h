@@ -2248,6 +2248,36 @@ void lui_free_frames(lui_frames* frames) {
 // ===========================
 // Rendering Functions
 
+static int push_texture(const lui_shared* shared, lgx_descriptor_sampled_texture_write_info* writes, lgx_texture* texture, int is_font) {
+    if (texture == NULL) return 0;
+
+    // start search at module of texture pointer,
+    // bit shift because pointers may be aligned, will often lead to same slot
+    uint64_t hash = ((size_t)texture >> 4) * 11400714819323198485llu;
+    uint64_t begin = hash % shared->descriptor_textures_array_length;
+
+    // search for free slot
+    int itr = begin;
+    do {
+        // same texture already assigned, return
+        if (writes[itr].sampled_texture == texture) {
+            if (is_font) return -itr - 1;
+            return itr + 1;
+        }
+        // free slot, assing
+        if (writes[itr].sampled_texture == NULL) {
+            writes[itr].sampled_texture = texture;
+            if (is_font) return -itr - 1;
+            return itr + 1;
+        }
+        // else continue search
+        itr = (itr + 1) % shared->descriptor_textures_array_length;
+    } while(itr != begin);
+
+    // no empty slots left
+    return 0;
+}
+
 void lui_upload_cache(
     lui_cache*          cache,
     lui_shared*         shared,
@@ -2261,7 +2291,14 @@ void lui_upload_cache(
     lgx_cpu_signal*     upload_finished_cpu,
     lgx_gpu_signal*     upload_finished_gpu
 ) {
-    lgx_hardware* hardware = frames->owning_shared->owning_hardware;
+    lgx_hardware* hardware = shared->owning_hardware;
+    single_frame* frame    = &frames->frames[frame_idx];
+
+    // Allocate textures write info
+    lgx_descriptor_sampled_texture_write_info* textures_writes_infos = calloc(
+        shared->descriptor_textures_array_length,
+        sizeof(lgx_descriptor_sampled_texture_write_info)
+    );
 
     // Allocate upload regions descriptors array
 
@@ -2338,7 +2375,7 @@ void lui_upload_cache(
             if (req.box_data.image) {
                 lgx_texture* texture; lgx_uv_2d uv;
                 if (lui_injection_query_texture(&req.box_data, &texture, &uv)) {
-                    // to hashmap
+                    texture_index = push_texture(shared, textures_writes_infos, texture, 0);
                 }
             }
 
@@ -2366,12 +2403,12 @@ void lui_upload_cache(
                 get_node_data(slot->key.node, slot->key.instance), &font)
             ) continue;
 
-            // to hashmap texture
+            int texture_index = push_texture(shared, textures_writes_infos, lfont_get_texture(font), 1);
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
                 .clipbox_index  = req.clip_index,
-                .texture_index  = 0,    // todo
+                .texture_index  = texture_index,
                 .atlas_position = (lgx_uv_2d){0, 0, 1, 1},
                 .r              = (float)req.box_data.tint.r / 255.0f,
                 .g              = (float)req.box_data.tint.g / 255.0f,
@@ -2425,7 +2462,7 @@ void lui_upload_cache(
     }
 
     // Ensure Buffer Sizes
-    int rebind = 0; single_frame* frame = &frames->frames[frame_idx];
+    int rebind = 0;
 
     // Items buffer
     if (lgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
@@ -2474,6 +2511,7 @@ void lui_upload_cache(
         .source_bytes   = instances_count * sizeof(gpu_instance)
     };
 
+    // Write all buffers
     lgx_buffer_multi_upload(
         upload_regions,
         upload_regions_position,
@@ -2486,6 +2524,20 @@ void lui_upload_cache(
         upload_finished_gpu
     );
 
+    // Update textures descriptor
+    lgx_descriptor_write_info textures_descriptor_write = {
+        .descriptor                 = frame->descriptor,
+        .binding_type               = lgx_descriptor_binding_type_sampled_texture,
+        .binding_index              = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
+        .array_element_index        = 0,
+        .array_elements_count       = shared->descriptor_textures_array_length,
+        .infos.for_sampled_textures = textures_writes_infos
+    };
+    
+    lgx_descriptors_write(
+        hardware, 1, &textures_descriptor_write
+    );
+
     // Mark to render
     frame->instances_to_render = instances_count;
 
@@ -2493,7 +2545,7 @@ void lui_upload_cache(
     free_cached_text_requests(cache);
 
     // Free allocated memory
-    free(items); free(clipboxes); free(instances); free(upload_regions);
+    free(items); free(clipboxes); free(instances); free(upload_regions); free(textures_writes_infos);
 }
 
 void lui_gcmd_render(

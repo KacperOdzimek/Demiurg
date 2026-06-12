@@ -2909,11 +2909,17 @@ void lgx_descriptor_allocator_free_descriptor(lgx_descriptor* descriptor) {
 void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_descriptor_write_info* write_infos) {
     uint32_t itr = 0; VkWriteDescriptorSet* vkwrites = tlom_alloc(&itr, writes_count * sizeof(VkWriteDescriptorSet));
 
+    // discard writes with array length == 0
+    size_t actual_writes_count = 0;
+
     for (uint32_t i = 0; i < writes_count; i++) {
         lgx_descriptor_write_info* info = &write_infos[i];
 
         VkDescriptorBufferInfo* write_buffer_info = NULL;
         VkDescriptorImageInfo*  write_image_info  = NULL;
+
+        // discard NULL writes
+        size_t actual_array_count = 0;
 
         switch (info->binding_type) {
         case lgx_descriptor_binding_type_uniform_buffer:
@@ -2921,7 +2927,8 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
             write_buffer_info = tlom_alloc(&itr, info->array_elements_count * sizeof(VkDescriptorBufferInfo));
             for (uint32_t j = 0; j < info->array_elements_count; j++) {
                 const lgx_descriptor_buffer_write_info* lgx_elem_info = &info->infos.for_buffers[j];
-                write_buffer_info[j] = (VkDescriptorBufferInfo){
+                if (!lgx_elem_info->buffer->buffer) continue;
+                write_buffer_info[actual_array_count++] = (VkDescriptorBufferInfo){
                     .buffer = lgx_elem_info->buffer->buffer,
                     .offset = lgx_elem_info->offset,
                     .range  = lgx_elem_info->length
@@ -2932,9 +2939,10 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
         write_image_info = tlom_alloc(&itr, info->array_elements_count * sizeof(VkDescriptorImageInfo));
             for (uint32_t j = 0; j < info->array_elements_count; j++) {
                 const lgx_descriptor_sampled_texture_write_info* lgx_elem_info = &info->infos.for_sampled_textures[j];
-                write_image_info[j] = (VkDescriptorImageInfo){
+                if (!lgx_elem_info->sampled_texture) continue;
+                write_image_info[actual_array_count++] = (VkDescriptorImageInfo){
                     .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    .imageView = lgx_elem_info->sampled_texture->view
+                    .imageView   = lgx_elem_info->sampled_texture->view
                 };
             }
         } break;
@@ -2942,14 +2950,18 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
             write_image_info = tlom_alloc(&itr, info->array_elements_count * sizeof(VkDescriptorImageInfo));
             for (uint32_t j = 0; j < info->array_elements_count; j++) {
                 const lgx_descriptor_sampler_write_info* lgx_elem_info = &info->infos.for_samplers[j];
-                write_image_info[j] = (VkDescriptorImageInfo){
+                if (!lgx_elem_info->sampler) continue;
+                write_image_info[actual_array_count++] = (VkDescriptorImageInfo){
                     .sampler = lgx_elem_info->sampler->sampler,
                 };
             }
         } break;
         }
 
-        vkwrites[i] = (VkWriteDescriptorSet){
+        // malformed call, discard
+        if (!actual_array_count) continue;
+
+        vkwrites[actual_writes_count++] = (VkWriteDescriptorSet){
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 
             .dstSet             = info->descriptor->dsc_set,
@@ -2957,7 +2969,7 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
             .dstArrayElement    = info->array_element_index,
 
             .descriptorType     = lgx_to_vk_descriptor_type(info->binding_type),
-            .descriptorCount    = info->array_elements_count,
+            .descriptorCount    = actual_array_count,
 
             .pBufferInfo        = write_buffer_info,
             .pImageInfo         = write_image_info,
@@ -2965,9 +2977,10 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
         };
     }
 
+    if (!actual_writes_count) return;
     vkUpdateDescriptorSets(
         hardware->logical_device,
-        writes_count,
+        actual_writes_count,
         vkwrites,
         0,
         NULL
