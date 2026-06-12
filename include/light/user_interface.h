@@ -2313,7 +2313,7 @@ void lui_upload_cache(
         text_request              req  = cache->text_requests[i];
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
         lpr_partition*            prt = aux->owned_glyph_buffer_partition;
-        if (!prt) continue; // text empty
+        if (!prt) continue; // text empty, nothing to upload
 
         upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
             .buffer         = shared->glyph_buffer,
