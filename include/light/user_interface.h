@@ -19,8 +19,8 @@
     typedef struct lui_box_data   lui_box_data;
 
     // returns non-zero at success (if returned is valid pointer)
-    int lui_injection_query_font   (const lui_text_data* data, lfont**       font_out);
-    int lui_injection_query_texture(const lui_box_data*  data, lgx_texture** texture_out, lgx_uv_2d* uv_out);
+    int lui_injection_query_font (const char* font,  lfont**       font_out);
+    int lui_injection_query_image(const char* image, lgx_texture** texture_out, lgx_uv_2d* uv_out);
 #endif // LIGHT_USER_INTERFACE_IMPL
 
 /*
@@ -1064,14 +1064,57 @@ const lui_type lui_box_type = box_behavior_type;
 // This type is specially handled in pass implementation
 
 typedef struct text_type_auxilary_state {
-    lpr_partition*  owned_glyph_buffer_partition;
-    int             text_width;
-    int             text_height;
+    lpr_partitioner*    partitioner;
+    lpr_partition*      owned_glyph_buffer_partition;
+    float               text_width;
+    float               text_height;
 } text_type_auxilary_state;
 
+void text_auxilary_destructor(void* auxilary) {
+    text_type_auxilary_state* aux = auxilary;
+    if (aux->owned_glyph_buffer_partition) lpr_partitioner_free_partition(aux->partitioner, aux->owned_glyph_buffer_partition);
+    aux->owned_glyph_buffer_partition = NULL;
+}
+
+void text_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    text_type_auxilary_state* aux = auxilary;
+    node_state->measured_width.min = max_int(node_state->measured_width.min, (int)aux->text_width);
+    node_state->measured_width.max = max_int(node_state->measured_width.max, (int)aux->text_width);
+    if (node_state->measured_width.min != node_state->measured_width.max) node_state->measured_width.flex = 1.0f;
+}
+
+void text_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    text_type_auxilary_state* aux = auxilary;
+    node_state->measured_height.min = max_int(node_state->measured_height.min, (int)aux->text_height);
+    node_state->measured_height.max = max_int(node_state->measured_height.max, (int)aux->text_height);
+    if (node_state->measured_height.min != node_state->measured_height.max) node_state->measured_height.flex = 1.0f;
+}
+
 const lui_type lui_text_type = {
-    .array_child    = 0,
-    .auxilary_bytes = sizeof(text_type_auxilary_state)
+    .array_child            = 0,
+    .auxilary_bytes         = sizeof(text_type_auxilary_state),
+    .auxilary               = NULL,
+    .auxilary_destructor    = text_auxilary_destructor,
+    .width_measure          = text_width_measure,
+    .width_distribute       = lui_overlay_width_distribute_func,
+    .height_measure         = text_height_measure,
+    .height_distribute      = lui_overlay_height_distribute_func,
+    .position               = lui_overlay_position_func,
+    .transform              = NULL
 };
 
 // ===========================
@@ -1220,7 +1263,7 @@ static size_t hash_key(node_stable_index key) {
     uint64_t h2 = hash_ptr(key.instance);
     return (size_t)(h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)));
 }
-
+#include <stdio.h>
 // Definies three functions:
 // void       PREFIX##_hashmap_grow             (lui_cache* cache);
 // SLOT_TYPE* PREFIX##_hashmap_get              (lui_cache* cache, node_stable_index key, int insert_if_none)
@@ -1265,6 +1308,7 @@ static SLOT_TYPE* PREFIX##_hashmap_get(                                         
 \
         if (!slot->last_frame_used_in_render) {                                 \
             if (insert_if_none) {                                               \
+                fprintf(stderr, "Inserted"#PREFIX"\n"); \
                 *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                    \
                 ++cache->FILL_FIELD;                                            \
                 return slot;                                                    \
@@ -1286,7 +1330,7 @@ static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                
         unsigned char* time = &slot->last_frame_used_in_render;                 \
         if (*time && *time != cache->walk_current_frame_index) {                \
             HASHMAP_SLOT_DESTRUCTOR(slot);                                      \
-            cache->cache_fill--; *time = 0;                                     \
+            cache->FILL_FIELD--; *time = 0;                                     \
         }                                                                       \
     }                                                                           \
 }
@@ -1300,11 +1344,14 @@ DEFINE_HASHMAP_FUNCS(
 #undef HASHMAP_SLOT_INITIALIZER
 #undef HASHMAP_SLOT_DESTRUCTOR
 
+static inline void auxilary_hashmap_slot_destructor(auxilary_slot* slot) {
+    if (slot->key.node->type->auxilary_destructor) {
+        slot->key.node->type->auxilary_destructor(slot->state_ptr); 
+    } free(slot->state_ptr); slot->state_ptr = NULL;
+}
+
 #define HASHMAP_SLOT_INITIALIZER {.key = key, .state_ptr = NULL, .last_frame_used_in_render = 2}
-#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)                                   \
-    if (slot_ptr->key.node->type->auxilary_destructor) {                    \
-        slot_ptr->key.node->type->auxilary_destructor(slot_ptr->state_ptr); \
-    } free(slot_ptr->state_ptr); slot_ptr->state_ptr = NULL;
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) auxilary_hashmap_slot_destructor(slot_ptr)
 DEFINE_HASHMAP_FUNCS(
     auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
 );
@@ -1379,6 +1426,7 @@ static inline void free_cached_text_requests(lui_cache* cache) {
     for (size_t i = 0; i < cache->text_requests_count; i++) {
         free(cache->text_requests[i].glyphs);
     }
+    cache->text_requests_count = 0;
 }
 
 // ===========================
@@ -1443,8 +1491,8 @@ int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* wa
         scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
     }
     else if (child) for (const lui_node* cc = child; cc->type != NULL; cc++) {
-        cache_slot*     child_slot = cache_get_utill(cache, (node_stable_index){child, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(cache, (node_stable_index){child, instance});
+        cache_slot*     child_slot = cache_get_utill(cache, (node_stable_index){cc, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(cache, (node_stable_index){cc, instance});
         scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
     }
 
@@ -1708,7 +1756,7 @@ void render_dfs(
     }
     else if (node->type == &lui_text_type) {
         const lui_text_data*            tdata = data;
-        const text_type_auxilary_state* taux  = auxilary_get_utill(cache, index)->state_ptr;
+        const text_type_auxilary_state* taux  = aux->state_ptr;
 
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
@@ -1780,8 +1828,8 @@ void lui_update_cache(
     // This is important so hashmap pointers does not get invalidated during passes
     // This means we are one frame behind with layout, but it is not a big deal actually.
     if (1) {
-        cache_slot*     root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
-        auxilary_slot*  root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
+        cache_slot*    root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
+        auxilary_slot* root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
 
         // Give root entire screen
         // Will auto bound to desired at distribute
@@ -1857,8 +1905,8 @@ typedef struct gpu_clipbox {
 
 typedef struct gpu_glyph {
     lgx_uv_2d   atlas_position;
-    int         off_x,  off_y;
-    int         size_x, size_y;
+    float       off_x,  off_y;
+    float       size_x, size_y;
 } gpu_glyph;
 
 lgx_buffer* create_ssbo(lgx_hardware* hardware, uint64_t bytes) {
@@ -2382,6 +2430,8 @@ void lui_upload_cache(
         text_request              req  = cache->text_requests[i];
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
 
+        aux->partitioner = shared->glyph_buffer_partitioner;
+
         // always free owned partition to reduce fragmentation
         if (aux->owned_glyph_buffer_partition) {
             lpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
@@ -2443,7 +2493,7 @@ void lui_upload_cache(
         if (req.is_box_not_text) {
             int texture_index = 0; lgx_uv_2d uv;
             if (req.box_data.image) {
-                lgx_texture* texture; if (lui_injection_query_texture(&req.box_data, &texture, &uv)) {
+                lgx_texture* texture; if (lui_injection_query_image(req.box_data.image, &texture, &uv)) {
                     texture_index = push_texture(
                         &texture_writes_array, shared->descriptor_textures_array_length, 
                         frame, texture, 0
@@ -2645,15 +2695,101 @@ void lui_gcmd_render(
 // ===========================
 // Text layout generation
 
-/*
-    size_t              glyphs_count;
-    struct gpu_glyph*   glyphs;
-*/
-
 void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
-    text_request req = {0};
-    req.owning_node = slot->key;
+    const lui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
+    lfont* font; if (!lui_injection_query_font(tdata->font, &font)) return;
+    const char* text = tdata->text;
 
+    if (!text || !font) {
+        text_request req = {
+            .owning_node  = slot->key,
+            .glyphs_count = 0,
+            .glyphs       = NULL,
+        };
+        text_request_cache_push(cache, req);
+        return; // overwrite current text buffer with empty text
+    }
+
+    /* ----------------------------------------------------------------
+       Pass 1 — count renderable glyphs (newlines are layout, not glyphs)
+    ---------------------------------------------------------------- */
+    size_t glyph_count = 0;
+    for (size_t i = 0; text[i] != '\0';) {
+        uint32_t cp;
+        i += lfont_utf8_decode(text, i, &cp);
+        if (cp != '\n') glyph_count++;
+    }
+
+    gpu_glyph* glyphs = glyph_count ? malloc(sizeof(gpu_glyph) * glyph_count) : NULL;
+    if (glyph_count && !glyphs) {
+        text_request req = { .owning_node = slot->key, .glyphs_count = 0, .glyphs = NULL };
+        text_request_cache_push(cache, req);
+        return;
+    }
+
+    /* ----------------------------------------------------------------
+       Pass 2 — layout glyphs from (0, 0)
+         pen_x / pen_y  : current baseline cursor
+         off_x           : pen_x + bearing_x  (horizontal shift from pen)
+         off_y           : pen_y - bearing_y  (bearing is above-baseline positive,
+                                               subtract for Y-down screen space)
+    ---------------------------------------------------------------- */
+    const float ascent      = lfont_get_base_ascent(font);
+    const float descent     = lfont_get_base_descent(font); // typically negative
+    const float line_gap    = lfont_get_base_line_gap(font);
+    const float line_height = ascent - descent + line_gap;
+
+    float    pen_x      = 0.0f;
+    float    pen_y      = 0.0f;
+    float    text_width = 0.0f; // max line width across all lines
+    size_t   glyph_idx  = 0;
+    uint32_t prev_cp    = 0;    // for kerning; 0 = no previous glyph
+
+    for (size_t itr = 0; text[itr] != '\0';) {
+        uint32_t cp;
+        itr += lfont_utf8_decode(text, itr, &cp);
+
+        if (cp == '\n') {
+            if (pen_x > text_width) text_width = pen_x;
+            pen_x   = 0.0f;
+            pen_y  += line_height;
+            prev_cp = 0; // reset kerning across lines
+            continue;
+        }
+
+        // kerning between consecutive glyphs on the same line
+        if (prev_cp) pen_x += lfont_get_kerning(font, prev_cp, cp);
+
+        const lfont_glyph g = lfont_get_glyph(font, cp);
+
+        glyphs[glyph_idx++] = (gpu_glyph){
+            .atlas_position = g.atlas_position,
+            .off_x          = pen_x + g.bearing_x,
+            .off_y          = pen_y - g.bearing_y,
+            .size_x         = g.size_x,
+            .size_y         = g.size_y,
+        };
+
+        pen_x  += g.advance_x;
+        prev_cp = cp;
+    }
+
+    // account for final line (no trailing newline)
+    if (pen_x > text_width) text_width = pen_x;
+
+    // total pixel height: baseline of last line + full single-line cap height
+    float text_height = pen_y + (ascent - descent);
+
+    // store text dimensions
+    aux->text_width  = text_width;
+    aux->text_height = text_height;
+
+    // request text upload
+    text_request req = {
+        .owning_node  = slot->key,
+        .glyphs_count = glyph_count,
+        .glyphs       = glyphs,
+    };
     text_request_cache_push(cache, req);
 }
 
