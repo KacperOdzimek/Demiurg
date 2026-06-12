@@ -2259,12 +2259,6 @@ void lui_free_frames(lui_frames* frames) {
 // ===========================
 // Rendering Functions
 
-// Walk and remeasure
-// Walk and generate render desires
-// Sort render desires by depth
-// Upload
-// Problematic upload : text - automatically issue previous to free after new allocated todo
-
 void lui_upload_cache(
     lui_cache*          cache,
     lui_shared*         shared,
@@ -2293,24 +2287,24 @@ void lui_upload_cache(
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
 
         // always free owned partition to reduce fragmentation
-        // new block will be possibly better aligned
-        // allocs are fast
         if (aux->owned_glyph_buffer_partition) {
             lpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
+            aux->owned_glyph_buffer_partition = NULL;
         }
 
-        lpr_partition* prt = lpr_partitioner_alloc_partition(
+        // new text is empty - creation of 0 bytes partition is forbidden
+        if (!req.glyphs_count) continue;
+
+        // request new partition
+        aux->owned_glyph_buffer_partition = lpr_partitioner_alloc_partition(
             shared->glyph_buffer_partitioner,
             req.glyphs_count * sizeof(gpu_glyph)
         );
 
-        // failed to find space for our text - we need to create bigger buffer
-        // and defrag also
-        if (!prt) {
+        // failed to create partition - create bigger text buffer
+        if (!aux->owned_glyph_buffer_partition) {
             // todo
         }
-
-        aux->owned_glyph_buffer_partition = prt;
     }
 
     // Generate draw regions for texts
@@ -2319,7 +2313,7 @@ void lui_upload_cache(
         text_request              req  = cache->text_requests[i];
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
         lpr_partition*            prt = aux->owned_glyph_buffer_partition;
-        if (!prt) continue;
+        if (!prt) continue; // text empty
 
         upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
             .buffer         = shared->glyph_buffer,
