@@ -2708,6 +2708,8 @@ void lui_gcmd_render(
 // ===========================
 // Text layout generation
 
+#define GLYPHS_GENERATION_FONT_SIZE 48
+
 void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
     const lui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
     lfont* font; if (!lui_injection_query_font(tdata->font, &font)) return;
@@ -2741,10 +2743,13 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
         return;
     }
 
+    // Find font scale
+    const float font_scale = lfont_get_base_size(font) / GLYPHS_GENERATION_FONT_SIZE;
+
     // Populate glyphs buffer
-    const float ascent      = lfont_get_base_ascent(font);
-    const float descent     = lfont_get_base_descent(font);
-    const float line_gap    = lfont_get_base_line_gap(font);
+    const float ascent      = lfont_get_base_ascent(font)   * font_scale;
+    const float descent     = lfont_get_base_descent(font)  * font_scale;
+    const float line_gap    = lfont_get_base_line_gap(font) * font_scale;
     const float line_height = ascent - descent + line_gap;
 
     float    pen_x      = 0.0f;
@@ -2757,6 +2762,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
         uint32_t cp;
         itr += lfont_utf8_decode(text, itr, &cp);
 
+        // Handle newline
         if (cp == '\n') {
             if (pen_x > text_width) text_width = pen_x;
             pen_x   = 0.0f;
@@ -2765,34 +2771,35 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
             continue;
         }
 
-        // kerning between consecutive glyphs on the same line
+        // Kerning between consecutive glyphs on the same line
         if (prev_cp) pen_x += lfont_get_kerning(font, prev_cp, cp);
 
+        // Write glyph
         const lfont_glyph g = lfont_get_glyph(font, cp);
-
         glyphs[glyph_idx++] = (gpu_glyph){
             .atlas_position = g.atlas_position,
-            .off_x          = pen_x + g.bearing_x,
-            .off_y          = (extra_lines_count * line_height + pen_y) - g.bearing_y,
-            .size_x         = g.size_x,
-            .size_y         = g.size_y,
+            .off_x          = pen_x + g.bearing_x * font_scale,
+            .off_y          = (extra_lines_count * line_height + pen_y) - g.bearing_y * font_scale,
+            .size_x         = g.size_x * font_scale,
+            .size_y         = g.size_y * font_scale,
         };
 
-        pen_x  += g.advance_x;
+        // Advance
+        pen_x  += g.advance_x * font_scale;
         prev_cp = cp;
     }
 
-    // account for final line (no trailing newline)
+    // Account for final line (no trailing newline)
     if (pen_x > text_width) text_width = pen_x;
 
-    // total pixel height: baseline of last line + full single-line cap height
+    // Total pixel height: baseline of last line + full single-line cap height
     float text_height = -pen_y + (ascent - descent);
 
-    // store text dimensions
+    // Store text dimensions
     aux->text_width  = text_width;
     aux->text_height = text_height;
 
-    // request text upload
+    // Request text upload
     text_request req = {
         .owning_node  = slot->key,
         .glyphs_count = glyph_count,
