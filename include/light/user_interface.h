@@ -2536,9 +2536,8 @@ void lui_upload_cache(
             lpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
 
-            lfont* font; if (!lui_injection_query_font(
-                get_node_data(slot->key.node, slot->key.instance), &font)
-            ) continue;
+            lui_text_data text_data = *(const lui_text_data*)get_node_data(slot->key.node, slot->key.instance);
+            lfont* font; if (!lui_injection_query_font(text_data.font, &font)) continue;
 
             int texture_index = push_texture(
                 &texture_writes_array, shared->descriptor_textures_array_length, 
@@ -2550,11 +2549,11 @@ void lui_upload_cache(
                 .clipbox_index  = req.clip_index,
                 .texture_index  = texture_index,
                 .atlas_position = (lgx_uv_2d){0, 0, 1, 1},
-                .r              = (float)req.box_data.tint.r / 255.0f,
-                .g              = (float)req.box_data.tint.g / 255.0f,
-                .b              = (float)req.box_data.tint.b / 255.0f,
-                .a              = (float)req.box_data.tint.a / 255.0f,
-                .shader         = req.box_data.shader
+                .r              = (float)text_data.tint.r / 255.0f,
+                .g              = (float)text_data.tint.g / 255.0f,
+                .b              = (float)text_data.tint.b / 255.0f,
+                .a              = (float)text_data.tint.a / 255.0f,
+                .shader         = text_data.shader
             };
 
             instances_count += lpr_partition_query_size(part) / sizeof(gpu_glyph);
