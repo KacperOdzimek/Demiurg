@@ -1443,7 +1443,7 @@ typedef struct caches_walk_order {
     size_t                  position;   // in cache_slot pointers
     cache_slot**            slots;      // sized capacity, node cache slots in enter order
     lui_node_layout_state** states;     // sized capacity, node layout states in children oreder
-    void**                  auxilary;   // sized capacity, node auxilary slots in enter order
+    auxilary_slot**         auxilary;   // sized capacity, node auxilary slots in enter order
 } caches_walk_order;
 
 // Returns non-zero at success
@@ -1453,7 +1453,7 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
     
         cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
         lui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(lui_node_layout_state*));
-        void**                  new_aux = realloc(walk_order->auxilary, new_cap * sizeof(void*));
+        auxilary_slot**         new_aux = realloc(walk_order->auxilary, new_cap * sizeof(auxilary_slot*));
 
         if (!new_slt || !new_sts || !new_aux) return 0; // failed to realloc -> failed to ensure space
 
@@ -1521,22 +1521,22 @@ size_t auxilary_dfs(
     lui_cache*          cache,
     caches_walk_order*  walk_order,
     cache_slot*         current,
-    void*               auxilary,
+    auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children        = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
+    size_t          last_descendant = first_child + current->value_child_count;
+    const void*     data            = get_node_data(current->key.node, current->key.instance);
 
     // special case for text - update GPU glyphs buffer
     if (current->key.node->type == &lui_text_type) {
-        create_text_request(cache, current, (text_type_auxilary_state*)auxilary);
+        create_text_request(cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
     }
 
     // do call
     lui_node_auxilary_func func = current->key.node->type->auxilary;
-    if (func != NULL) func(data, auxilary);
+    if (func != NULL) func(data, auxilary ? auxilary->state_ptr : NULL);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -1553,13 +1553,13 @@ size_t auxilary_dfs(
 size_t width_measure_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
-    void*               auxilary,
+    auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children        = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
+    size_t          last_descendant = first_child + current->value_child_count;
+    const void*     data            = get_node_data(current->key.node, current->key.instance);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -1568,7 +1568,10 @@ size_t width_measure_dfs(
 
     // call own measure
     lui_node_layout_func func = current->key.node->type->width_measure;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count,&walk_order->states[first_child], auxilary);
+    if (func != NULL) func(
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child], 
+        auxilary ? auxilary->state_ptr : NULL
+    );
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_width) {
@@ -1586,12 +1589,12 @@ size_t width_measure_dfs(
 size_t width_distribute_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
-    void*               auxilary,
+    auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
+    cache_slot**    children        = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
+    size_t          last_descendant = first_child + current->value_child_count;
     const void*  data            = get_node_data(current->key.node, current->key.instance);
 
     // ensure received width is okay
@@ -1602,7 +1605,10 @@ size_t width_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->width_distribute;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+    if (func != NULL) func(
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child], 
+        auxilary ? auxilary->state_ptr : NULL
+    );
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -1615,13 +1621,13 @@ size_t width_distribute_dfs(
 size_t height_measure_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
-    void*               auxilary,
+    auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children        = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
+    size_t          last_descendant = first_child + current->value_child_count;
+    const void*     data            = get_node_data(current->key.node, current->key.instance);
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -1630,7 +1636,10 @@ size_t height_measure_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_measure;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+    if (func != NULL) func(
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child], 
+        auxilary ? auxilary->state_ptr : NULL
+    );
 
     // apply flags
     if (current->key.node->flags & lui_flag_ignore_min_height) {
@@ -1648,13 +1657,13 @@ size_t height_measure_dfs(
 size_t height_distribute_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
-    void*               auxilary,
+    auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children        = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
+    size_t          last_descendant = first_child + current->value_child_count;
+    const void*     data            = get_node_data(current->key.node, current->key.instance);
 
     // ensure received height is okay
     current->value_state.given_height = limit_length(
@@ -1664,7 +1673,10 @@ size_t height_distribute_dfs(
 
     // do call
     lui_node_layout_func func = current->key.node->type->height_distribute;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+    if (func != NULL) func(
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child], 
+        auxilary ? auxilary->state_ptr : NULL
+    );
 
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -1677,17 +1689,20 @@ size_t height_distribute_dfs(
 size_t position_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
-    void*               auxilary,
+    auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot** children        = &walk_order->slots[first_child];
-    void**       auxilaries      = &walk_order->auxilary[first_child];
-    size_t       last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children        = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
+    size_t          last_descendant = first_child + current->value_child_count;
+    const void*     data            = get_node_data(current->key.node, current->key.instance);
 
     // do call
     lui_node_layout_func func = current->key.node->type->position;
-    if (func != NULL) func(data, &current->value_state, current->value_child_count, &walk_order->states[first_child], auxilary);
+    if (func != NULL) func(
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child], 
+        auxilary ? auxilary->state_ptr : NULL
+    );
     
     // recurse
     for (size_t i = 0; i < current->value_child_count; i++) {
@@ -2700,6 +2715,8 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     lfont* font; if (!lui_injection_query_font(tdata->font, &font)) return;
     const char* text = tdata->text;
 
+    // If text empty or font invalid
+    // Sent empty text request
     if (!text || !font) {
         text_request req = {
             .owning_node  = slot->key,
@@ -2710,16 +2727,14 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
         return; // overwrite current text buffer with empty text
     }
 
-    /* ----------------------------------------------------------------
-       Pass 1 — count renderable glyphs (newlines are layout, not glyphs)
-    ---------------------------------------------------------------- */
+    // Count glyphs to allocate
     size_t glyph_count = 0;
     for (size_t i = 0; text[i] != '\0';) {
-        uint32_t cp;
-        i += lfont_utf8_decode(text, i, &cp);
+        uint32_t cp; i += lfont_utf8_decode(text, i, &cp);
         if (cp != '\n') glyph_count++;
     }
 
+    // Allocate glyphs buffer
     gpu_glyph* glyphs = glyph_count ? malloc(sizeof(gpu_glyph) * glyph_count) : NULL;
     if (glyph_count && !glyphs) {
         text_request req = { .owning_node = slot->key, .glyphs_count = 0, .glyphs = NULL };
@@ -2727,15 +2742,9 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
         return;
     }
 
-    /* ----------------------------------------------------------------
-       Pass 2 — layout glyphs from (0, 0)
-         pen_x / pen_y  : current baseline cursor
-         off_x           : pen_x + bearing_x  (horizontal shift from pen)
-         off_y           : pen_y - bearing_y  (bearing is above-baseline positive,
-                                               subtract for Y-down screen space)
-    ---------------------------------------------------------------- */
+    // Populate glyphs buffer
     const float ascent      = lfont_get_base_ascent(font);
-    const float descent     = lfont_get_base_descent(font); // typically negative
+    const float descent     = lfont_get_base_descent(font);
     const float line_gap    = lfont_get_base_line_gap(font);
     const float line_height = ascent - descent + line_gap;
 
@@ -2752,7 +2761,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
         if (cp == '\n') {
             if (pen_x > text_width) text_width = pen_x;
             pen_x   = 0.0f;
-            pen_y  += line_height;
+            pen_y  -= line_height;
             prev_cp = 0; // reset kerning across lines
             continue;
         }
@@ -2778,7 +2787,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     if (pen_x > text_width) text_width = pen_x;
 
     // total pixel height: baseline of last line + full single-line cap height
-    float text_height = pen_y + (ascent - descent);
+    float text_height = -pen_y + (ascent - descent);
 
     // store text dimensions
     aux->text_width  = text_width;
