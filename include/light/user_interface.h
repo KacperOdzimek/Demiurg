@@ -2708,8 +2708,6 @@ void lui_gcmd_render(
 // ===========================
 // Text layout generation
 
-#define GLYPHS_GENERATION_FONT_SIZE 48
-
 void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
     const lui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
     lfont* font; if (!lui_injection_query_font(tdata->font, &font)) return;
@@ -2744,7 +2742,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     }
 
     // Find font scale
-    const float font_scale = lfont_get_base_size(font) / GLYPHS_GENERATION_FONT_SIZE;
+    const float font_scale = tdata->size / lfont_get_base_size(font);
 
     // Populate glyphs buffer
     const float ascent      = lfont_get_base_ascent(font)   * font_scale;
