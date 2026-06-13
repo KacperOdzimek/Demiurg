@@ -1263,7 +1263,7 @@ static size_t hash_key(node_stable_index key) {
     uint64_t h2 = hash_ptr(key.instance);
     return (size_t)(h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)));
 }
-#include <stdio.h>
+
 // Definies three functions:
 // void       PREFIX##_hashmap_grow             (lui_cache* cache);
 // SLOT_TYPE* PREFIX##_hashmap_get              (lui_cache* cache, node_stable_index key, int insert_if_none)
@@ -1308,7 +1308,6 @@ static SLOT_TYPE* PREFIX##_hashmap_get(                                         
 \
         if (!slot->last_frame_used_in_render) {                                 \
             if (insert_if_none) {                                               \
-                fprintf(stderr, "Inserted"#PREFIX"\n"); \
                 *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                    \
                 ++cache->FILL_FIELD;                                            \
                 return slot;                                                    \
@@ -2727,10 +2726,11 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     }
 
     // Count glyphs to allocate
-    size_t glyph_count = 0;
+    size_t glyph_count = 0; size_t extra_lines_count = 0;
     for (size_t i = 0; text[i] != '\0';) {
         uint32_t cp; i += lfont_utf8_decode(text, i, &cp);
-        if (cp != '\n') glyph_count++;
+        if (cp != '\n') glyph_count++; 
+        else extra_lines_count++;
     }
 
     // Allocate glyphs buffer
@@ -2773,7 +2773,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
         glyphs[glyph_idx++] = (gpu_glyph){
             .atlas_position = g.atlas_position,
             .off_x          = pen_x + g.bearing_x,
-            .off_y          = pen_y - g.bearing_y,
+            .off_y          = (extra_lines_count * line_height + pen_y) - g.bearing_y,
             .size_x         = g.size_x,
             .size_y         = g.size_y,
         };
