@@ -1446,8 +1446,9 @@ static inline void free_cached_text_requests(lui_cache* cache) {
 // Cache Walk Pass
 // Called on remeasure
 // Computes: 
-//  - walk order (the order caches are visited, to avoid hashmaping multiple times)
-//  - nodes children count (simplify implementations)
+// - walk order (the order layout and auxilary caches are visited, to avoid hashmaping multiple times)
+// - nodes children count (simplify implementations)
+// - nodes subtree size (including self, to easily skip on invalidation nodes)
 
 typedef struct caches_walk_order {
     size_t                  capacity;   // in cache_slot pointers
@@ -1455,28 +1456,45 @@ typedef struct caches_walk_order {
     cache_slot**            slots;      // sized capacity, node cache slots in enter order
     lui_node_layout_state** states;     // sized capacity, node layout states in children oreder
     auxilary_slot**         auxilary;   // sized capacity, node auxilary slots in enter order
+    size_t*                 subtree;    // sized capacity, node subtree size, including self
 } caches_walk_order;
+
+// Guaranteed valid 0-intialized object after free
+void free_caches_walk_order(caches_walk_order* order) {
+    free(order->slots);     order->slots    = NULL;
+    free(order->states);    order->states   = NULL;
+    free(order->auxilary);  order->auxilary = NULL;
+    free(order->subtree);   order->subtree  = NULL;
+    order->capacity = 0;    order->position = 0;
+}
 
 // Returns non-zero at success
 static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot, void* auxilary) {
-    if (walk_order->position + 1 >= walk_order->capacity) {
+    if (walk_order->position + 1 > walk_order->capacity) {
         size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
     
         cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
         lui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(lui_node_layout_state*));
         auxilary_slot**         new_aux = realloc(walk_order->auxilary, new_cap * sizeof(auxilary_slot*));
+        size_t*                 new_sub = realloc(walk_order->subtree,  new_cap * sizeof(size_t));
 
-        if (!new_slt || !new_sts || !new_aux) return 0; // failed to realloc -> failed to ensure space
+        if (!new_slt || !new_sts || !new_aux || !new_sub) {
+            free(new_slt); free(new_sts); free(new_aux); free(new_sub);
+            free_caches_walk_order(walk_order);
+            return 0; // failed to realloc -> failed to push -> entire layout fails
+        }
 
         walk_order->capacity = new_cap;
         walk_order->slots    = new_slt;
         walk_order->states   = new_sts;
         walk_order->auxilary = new_aux;
+        walk_order->subtree  = new_sub;
     }
 
-    walk_order->slots[walk_order->position]     = slot;
-    walk_order->states[walk_order->position]    = &slot->value_state;
+    walk_order->slots   [walk_order->position]  = slot;
+    walk_order->states  [walk_order->position]  = &slot->value_state;
     walk_order->auxilary[walk_order->position]  = auxilary;
+    walk_order->subtree [walk_order->position]  = 1; // included node itself
     walk_order->position++;
 
     return 1; // success
@@ -1485,7 +1503,13 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
 // Pushes all child nodes caches of node to caches_walk_order
 // Recurse into children left to right
 // Returns non-zero at success
-int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* walk_order, const void* instance) {
+int caches_walk_dfs(
+    lui_cache*          cache, 
+    caches_walk_order*  walk_order, 
+    cache_slot*         current, 
+    size_t*             subtree_size_target, 
+    const void*         instance
+) {
     const lui_node* node  = current->key.node;
     const lui_node* child = get_node_child(current->key.node, current->key.instance);
     size_t          count = 0;
@@ -1510,17 +1534,12 @@ int caches_walk_dfs(lui_cache* cache, cache_slot* current, caches_walk_order* wa
     // recurse
     size_t begin_pos = walk_order->position - count;
     for (size_t i = 0; i < count; i++) {
-        scc &= caches_walk_dfs(cache, walk_order->slots[begin_pos + i], walk_order, instance);
+        scc &= caches_walk_dfs(cache, walk_order, walk_order->slots[begin_pos + i], &walk_order->subtree[begin_pos + i], instance);
+        *subtree_size_target += walk_order->subtree[begin_pos + i];
     }
 
     current->value_child_count = count;
     return scc;
-}
-
-void free_caches_walk_order(caches_walk_order* order) {
-    free(order->slots);
-    free(order->states);
-    free(order->auxilary);
 }
 
 // Auxilary pass
@@ -1528,17 +1547,17 @@ void free_caches_walk_order(caches_walk_order* order) {
 // Builds text
 
 void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
-size_t auxilary_dfs(
+void auxilary_dfs(
     lui_cache*          cache,
     caches_walk_order*  walk_order,
     cache_slot*         current,
     auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot**    children        = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
-    size_t          last_descendant = first_child + current->value_child_count;
-    const void*     data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children    = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // special case for text - update GPU glyphs buffer
     if (current->key.node->type == &lui_text_type) {
@@ -1550,31 +1569,33 @@ size_t auxilary_dfs(
     if (func != NULL) func(data, auxilary ? auxilary->state_ptr : NULL);
 
     // recurse
+    size_t child_first_child = first_child + current->value_child_count;
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = auxilary_dfs(cache, walk_order, children[i], auxilaries[i], last_descendant);
+        auxilary_dfs(cache, walk_order, children[i], auxilaries[i], child_first_child);
+        child_first_child += subtrees[i] - 1;
     }
-
-    return last_descendant;
 }
 
 // Layout passes
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
 
-size_t width_measure_dfs(
+void width_measure_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
     auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot**    children        = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
-    size_t          last_descendant = first_child + current->value_child_count;
-    const void*     data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children    = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // recurse
+    size_t child_first_child = first_child + current->value_child_count;
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = width_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+        width_measure_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+        child_first_child += subtrees[i] - 1;
     }
 
     // call own measure
@@ -1593,8 +1614,6 @@ size_t width_measure_dfs(
         current->value_state.measured_width.max  = lui_inf_length;
         current->value_state.measured_width.flex = 1.0f;
     }
-
-    return last_descendant;
 }
 
 size_t width_distribute_dfs(
@@ -1603,10 +1622,10 @@ size_t width_distribute_dfs(
     auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot**    children        = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
-    size_t          last_descendant = first_child + current->value_child_count;
-    const void*  data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children    = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // ensure received width is okay
     current->value_state.given_width = limit_length(
@@ -1622,27 +1641,29 @@ size_t width_distribute_dfs(
     );
 
     // recurse
+    size_t child_first_child = first_child + current->value_child_count;
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = width_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+        width_distribute_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+        child_first_child += subtrees[i] - 1;
     }
-
-    return last_descendant;
 }
 
-size_t height_measure_dfs(
+void height_measure_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
     auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot**    children        = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
-    size_t          last_descendant = first_child + current->value_child_count;
-    const void*     data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children    = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // recurse
+    size_t child_first_child = first_child + current->value_child_count;
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = height_measure_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+        height_measure_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+        child_first_child += subtrees[i] - 1;
     }
 
     // do call
@@ -1661,20 +1682,18 @@ size_t height_measure_dfs(
         current->value_state.measured_height.max  = lui_inf_length;
         current->value_state.measured_height.flex = 1.0f;
     }
-
-    return last_descendant;
 }
 
-size_t height_distribute_dfs(
+void height_distribute_dfs(
     caches_walk_order*  walk_order,
     cache_slot*         current,
     auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot**    children        = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
-    size_t          last_descendant = first_child + current->value_child_count;
-    const void*     data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children    = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // ensure received height is okay
     current->value_state.given_height = limit_length(
@@ -1690,11 +1709,11 @@ size_t height_distribute_dfs(
     );
 
     // recurse
+    size_t child_first_child = first_child + current->value_child_count;
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = height_distribute_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+        height_distribute_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+        child_first_child += subtrees[i] - 1;
     }
-
-    return last_descendant;
 }
 
 size_t position_dfs(
@@ -1703,10 +1722,10 @@ size_t position_dfs(
     auxilary_slot*      auxilary,
     size_t              first_child
 ) {
-    cache_slot**    children        = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries      = &walk_order->auxilary[first_child];
-    size_t          last_descendant = first_child + current->value_child_count;
-    const void*     data            = get_node_data(current->key.node, current->key.instance);
+    cache_slot**    children    = &walk_order->slots[first_child];
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // do call
     lui_node_layout_func func = current->key.node->type->position;
@@ -1716,11 +1735,11 @@ size_t position_dfs(
     );
     
     // recurse
+    size_t child_first_child = first_child + current->value_child_count;
     for (size_t i = 0; i < current->value_child_count; i++) {
-        last_descendant = position_dfs(walk_order, children[i], auxilaries[i], last_descendant);
+        position_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+        child_first_child += subtrees[i] - 1;
     }
-
-    return last_descendant;
 }
 
 // Renders widget
@@ -1769,7 +1788,7 @@ void render_dfs(
         aux
     );
     
-    // special nodes (box, text, depth,clipbox)
+    // special nodes (box, text, depth, clipbox)
     if (node->type == &lui_box_type){
         const lui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
@@ -1863,8 +1882,9 @@ void lui_update_cache(
         root_cache->value_state.given_height = resolution_y;
 
         // Find walk order
-        caches_walk_order walk_order = {0};
-        if (!caches_walk_dfs(cache, root_cache, &walk_order, NULL)) {
+        caches_walk_order walk_order   = {0};
+        size_t            root_subtree = 1; // root itself included
+        if (!caches_walk_dfs(cache, &walk_order, root_cache, &root_subtree, NULL)) {
             free_caches_walk_order(&walk_order);
             return;
         }
