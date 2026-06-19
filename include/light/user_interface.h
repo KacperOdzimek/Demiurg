@@ -88,12 +88,6 @@ typedef struct lui_node_layout_state {
     int                     vert_offset;        // node center vertical offset from parent center
 } lui_node_layout_state;
 
-typedef void (lui_node_auxilary_func_signature)(
-    const void*             node_data,          // node data
-    void*                   auxilary            // node auxilary buffer if requested by type
-);
-typedef lui_node_auxilary_func_signature* lui_node_auxilary_func;
-
 typedef void (lui_node_auxilary_destructor_func_signature)(
     void*                   auxilary            // node auxilary buffer - do not free it
 );
@@ -139,7 +133,7 @@ typedef struct lui_type {
     // Allow for node own data changes (eg. caching some preprocessed state)
     // Unless it is convenient, this pass shall not be used, to preserve data-oriented-design,
     // and composability. Used to generate text format for GPU in implementation.
-    lui_node_auxilary_func  auxilary;
+    lui_node_layout_func    auxilary;
 
     // Layout Stages
 
@@ -1569,114 +1563,92 @@ int caches_walk_dfs(
     return scc;
 }
 
+// Generic layout dfs generation macros
+
+// Definies function:
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// Exec order: recurse -> own function -> additional code
+#define BOTTOM_UP_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                              \
+void PREFIX##_dfs(                                                                                  \
+    caches_walk_order*  walk_order,                                                                 \
+    cache_slot*         current,                                                                    \
+    auxilary_slot*      auxilary,                                                                   \
+    size_t              first_child                                                                 \
+) {                                                                                                 \
+    cache_slot**    children    = &walk_order->slots[first_child];                                  \
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
+    size_t*         subtrees    = &walk_order->subtree[first_child];                                \
+    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+\
+    if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
+        size_t child_first_child = first_child + current->value_child_count;                        \
+        for (size_t i = 0; i < current->value_child_count; i++) {                                   \
+            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            child_first_child += subtrees[i] - 1;                                                   \
+        }                                                                                           \
+    }                                                                                               \
+\
+    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
+    if (func != NULL) func(                                                                         \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
+        auxilary ? auxilary->state_ptr : NULL                                                       \
+    );                                                                                              \
+\
+    __VA_ARGS__                                                                                     \
+}
+
+// Definies function:
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// Exec order: additional code -> own function -> recurse
+#define TOP_DOWN_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                               \
+void PREFIX##_dfs(                                                                                  \
+    caches_walk_order*  walk_order,                                                                 \
+    cache_slot*         current,                                                                    \
+    auxilary_slot*      auxilary,                                                                   \
+    size_t              first_child                                                                 \
+) {                                                                                                 \
+    cache_slot**    children    = &walk_order->slots[first_child];                                  \
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
+    size_t*         subtrees    = &walk_order->subtree[first_child];                                \
+    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+\
+    __VA_ARGS__                                                                                     \
+\
+    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
+    if (func != NULL) func(                                                                         \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
+        auxilary ? auxilary->state_ptr : NULL                                                       \
+    );                                                                                              \
+\
+    if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
+        size_t child_first_child = first_child + current->value_child_count;                        \
+        for (size_t i = 0; i < current->value_child_count; i++) {                                   \
+            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            child_first_child += subtrees[i] - 1;                                                   \
+        }                                                                                           \
+    }                                                                                               \
+}
+
 // Auxilary pass
 // Top-down pass, allowing for own data rebuild
 // Builds text
 
 void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
-void auxilary_dfs(
-    lui_cache*          cache,
-    caches_walk_order*  walk_order,
-    cache_slot*         current,
-    auxilary_slot*      auxilary,
-    size_t              first_child
-) {
-    cache_slot**    children    = &walk_order->slots[first_child];
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];
-    size_t*         subtrees    = &walk_order->subtree[first_child];
-    const void*     data        = get_node_data(current->key.node, current->key.instance);
 
-    // special case for text - update GPU glyphs buffer
+// additionaly update text buffer
+TOP_DOWN_DFS(
+    auxilary, auxilary, invalidation_flag_only_auxilary,
     if (current->key.node->type == &lui_text_type) {
-        create_text_request(cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
+        create_text_request(walk_order->cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
     }
-
-    // do call
-    lui_node_auxilary_func func = current->key.node->type->auxilary;
-    if (func != NULL) func(data, auxilary ? auxilary->state_ptr : NULL);
-
-    // recurse
-    if (find_shall_recurse(current, data, invalidation_flag_only_auxilary)) {
-        size_t child_first_child = first_child + current->value_child_count;
-        for (size_t i = 0; i < current->value_child_count; i++) {
-            auxilary_dfs(cache, walk_order, children[i], auxilaries[i], child_first_child);
-            child_first_child += subtrees[i] - 1;
-        }
-    }
-}
-
-// Generic layout dfs generation macros
-
-// Definies function:
-// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
-// VA ARGS is code appended in recursive function after own call and recurse
-#define LAYOUT_BOTTOM_UP_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                       \
-void PREFIX##_dfs(                                                                                  \
-    caches_walk_order*  walk_order,                                                                 \
-    cache_slot*         current,                                                                    \
-    auxilary_slot*      auxilary,                                                                   \
-    size_t              first_child                                                                 \
-) {                                                                                                 \
-    cache_slot**    children    = &walk_order->slots[first_child];                                  \
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
-    size_t*         subtrees    = &walk_order->subtree[first_child];                                \
-    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
-\
-    if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
-        size_t child_first_child = first_child + current->value_child_count;                        \
-        for (size_t i = 0; i < current->value_child_count; i++) {                                   \
-            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
-            child_first_child += subtrees[i] - 1;                                                   \
-        }                                                                                           \
-    }                                                                                               \
-\
-    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
-    if (func != NULL) func(                                                                         \
-        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
-        auxilary ? auxilary->state_ptr : NULL                                                       \
-    );                                                                                              \
-\
-    __VA_ARGS__                                                                                     \
-}
-
-// Definies function:
-// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
-// VA ARGS is code appended in recursive function before own call and recurse
-#define LAYOUT_TOP_DOWN_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                        \
-void PREFIX##_dfs(                                                                                  \
-    caches_walk_order*  walk_order,                                                                 \
-    cache_slot*         current,                                                                    \
-    auxilary_slot*      auxilary,                                                                   \
-    size_t              first_child                                                                 \
-) {                                                                                                 \
-    cache_slot**    children    = &walk_order->slots[first_child];                                  \
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
-    size_t*         subtrees    = &walk_order->subtree[first_child];                                \
-    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
-\
-    __VA_ARGS__                                                                                     \
-\
-    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
-    if (func != NULL) func(                                                                         \
-        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
-        auxilary ? auxilary->state_ptr : NULL                                                       \
-    );                                                                                              \
-\
-    if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
-        size_t child_first_child = first_child + current->value_child_count;                        \
-        for (size_t i = 0; i < current->value_child_count; i++) {                                   \
-            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
-            child_first_child += subtrees[i] - 1;                                                   \
-        }                                                                                           \
-    }                                                                                               \
-}
+);
 
 // Layout passes
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
 
 // additionaly handle ignore flags
-LAYOUT_BOTTOM_UP_DFS(
+BOTTOM_UP_DFS(
     width_measure, width_measure, invalidation_flag_only_width_measure,
     if (current->key.node->flags & lui_flag_ignore_min_width) {
         current->value_state.measured_width.min = 0;
@@ -1690,7 +1662,7 @@ LAYOUT_BOTTOM_UP_DFS(
 
 // additionaly ensure received width
 // is within node measured limits
-LAYOUT_TOP_DOWN_DFS(
+TOP_DOWN_DFS(
     width_distribute, width_distribute, invalidation_flag_only_width_distribute,
     current->value_state.given_width = limit_length(
         current->value_state.given_width,
@@ -1699,7 +1671,7 @@ LAYOUT_TOP_DOWN_DFS(
 );
 
 // additionaly handle ignore flags
-LAYOUT_BOTTOM_UP_DFS(
+BOTTOM_UP_DFS(
     height_measure, height_measure, invalidation_flag_only_height_measure,
     if (current->key.node->flags & lui_flag_ignore_min_height) {
         current->value_state.measured_height.min = 0;
@@ -1713,7 +1685,7 @@ LAYOUT_BOTTOM_UP_DFS(
 
 // additionaly ensure received height 
 // is within node measured limits
-LAYOUT_TOP_DOWN_DFS(
+TOP_DOWN_DFS(
     height_distribute, height_distribute, invalidation_flag_only_height_distribute,
     current->value_state.given_height = limit_length(
         current->value_state.given_height,
@@ -1722,7 +1694,7 @@ LAYOUT_TOP_DOWN_DFS(
 );
 
 // no additional code
-LAYOUT_TOP_DOWN_DFS(
+TOP_DOWN_DFS(
     position, position, invalidation_flag_only_position
 );
 
@@ -1837,8 +1809,8 @@ void lui_update_cache(
     int             resolution_y
 ) {
     // Init state
-    cache->resolution_x = resolution_x;
-    cache->resolution_y = resolution_y;
+    cache->resolution_x             = resolution_x;
+    cache->resolution_y             = resolution_y;
     cache->draw_requests_count      = 0;
     cache->text_requests_count      = 0;
     cache->clipbox_requests_count   = 0;
@@ -1852,7 +1824,7 @@ void lui_update_cache(
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
 
-    // Relayout if needed
+    // Always relayout
     // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
     // This is important so hashmap pointers does not get invalidated during passes
     // This means we are one frame behind with layout, but it is not a big deal actually.
@@ -1873,17 +1845,14 @@ void lui_update_cache(
             return;
         }
         
-        // Perform layout passes
-        auxilary_dfs(cache, &walk_order, root_cache, root_auxlr, 0);
-
+        // Perform all passes
+        auxilary_dfs(&walk_order, root_cache, root_auxlr, 0);
         width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
         width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
         height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
         height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-
         position_dfs(&walk_order, root_cache, root_auxlr, 0);
 
-        // Could potentialy be cached and used at render
         free_caches_walk_order(&walk_order);
     }
 
