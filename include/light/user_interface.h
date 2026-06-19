@@ -4,7 +4,7 @@
 */
 
 #include "light/graphics.h"
-#include "linear_algebra.h"
+#include "light/linear_algebra.h"
 #include "light/font.h"
 #include "light/partitioner.h"
 
