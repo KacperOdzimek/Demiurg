@@ -437,9 +437,14 @@ static inline lui_color lui_hex(const char* hex) {
 /*
     0     - empty cell
     1     - imposible value, to force garbage collection on all
-    2     - just added, not rendered yet
-    2-255 - rendered at frame of index
+    2     - tombstone
+    3-255 - rendered at frame of index
 */
+
+#define LAST_FRAME_USED_IN_RENDER_EMPTY      0
+#define LAST_FRAME_USED_IN_RENDER_IMPOSIBLE  1
+#define LAST_FRAME_USED_IN_RENDER_TOMBSTONE  2
+#define LAST_FRAME_USED_IN_RENDER_FIRST      3
 
 #include <stdlib.h>
 
@@ -1222,7 +1227,7 @@ void lui_free_cache(lui_cache* cache) {
     if (!cache) return;
 
     // Free all auxilary slots by using impossible value
-    cache->frame_index = 1;
+    cache->frame_index = LAST_FRAME_USED_IN_RENDER_IMPOSIBLE;
     auxilary_hashmap_garbage_collect(cache);
 
     // Free all cached textes
@@ -1289,11 +1294,13 @@ static void PREFIX##_hashmap_grow(lui_cache* cache) {                           
     size_t new_cap = old_cap ? old_cap * 2 : 64;                                \
 \
     cache->SLOTS_FIELD = calloc(new_cap, sizeof(*cache->SLOTS_FIELD));          \
-    cache->CAP_FIELD = new_cap;                                                 \
-    cache->FILL_FIELD = 0;                                                      \
+    cache->CAP_FIELD   = new_cap;                                               \
+    cache->FILL_FIELD  = 0;                                                     \
 \
     for (size_t i = 0; i < old_cap; ++i) {                                      \
-        if (!old_slots[i].last_frame_used_in_render) continue;                  \
+        unsigned char time = old_slots[i].last_frame_used_in_render;            \
+        if (time == LAST_FRAME_USED_IN_RENDER_EMPTY ||                          \
+            time == LAST_FRAME_USED_IN_RENDER_TOMBSTONE) continue;              \
         SLOT_TYPE* dst = PREFIX##_hashmap_get(cache, old_slots[i].key, 1);      \
         *dst = old_slots[i];                                                    \
     }                                                                           \
@@ -1310,21 +1317,25 @@ static SLOT_TYPE* PREFIX##_hashmap_get(                                         
     size_t mask = cache->CAP_FIELD - 1;                                         \
     size_t idx  = hash_key(key) & mask;                                         \
 \
-    for (;;) {                                                                  \
+    for (SLOT_TYPE* tombstone = NULL;;) {                                       \
         SLOT_TYPE* slot = &cache->SLOTS_FIELD[idx];                             \
+        unsigned char time = slot->last_frame_used_in_render;                   \
 \
-        if (!slot->last_frame_used_in_render) {                                 \
-            if (insert_if_none) {                                               \
-                *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                    \
-                ++cache->FILL_FIELD;                                            \
-                return slot;                                                    \
-            }                                                                   \
-            else return NULL;                                                   \
-        }                                                                       \
-\
-        if (slot->key.node == key.node && slot->key.instance == key.instance) { \
+        if (time == LAST_FRAME_USED_IN_RENDER_EMPTY) {                          \
+            if (!insert_if_none) return NULL;                                   \
+            if (tombstone) slot = tombstone;                                    \
+            else cache->FILL_FIELD++;                                           \
+            *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                        \
             return slot;                                                        \
         }                                                                       \
+\
+        if (time == LAST_FRAME_USED_IN_RENDER_TOMBSTONE) {                      \
+            if (!tombstone) tombstone = slot;                                   \
+         }                                                                      \
+        else if (                                                               \
+            slot->key.node == key.node &&                                       \
+            slot->key.instance == key.instance                                  \
+        ) return slot;                                                          \
 \
         idx = (idx + 1) & mask;                                                 \
     }                                                                           \
@@ -1334,14 +1345,17 @@ static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                
     for (size_t i = 0; i < cache->CAP_FIELD; i++) {                             \
         SLOT_TYPE*     slot = &cache->SLOTS_FIELD[i];                           \
         unsigned char* time = &slot->last_frame_used_in_render;                 \
-        if (*time && *time != cache->frame_index) {                             \
+        if (*time                                           &&                  \
+            *time != LAST_FRAME_USED_IN_RENDER_TOMBSTONE    &&                  \
+            *time != cache->frame_index                                         \
+        ) {                                                                     \
             HASHMAP_SLOT_DESTRUCTOR(slot);                                      \
-            cache->FILL_FIELD--; *time = 0;                                     \
+            *time = LAST_FRAME_USED_IN_RENDER_TOMBSTONE;                        \
         }                                                                       \
     }                                                                           \
 }
 
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .last_frame_used_in_render = 2}
+#define HASHMAP_SLOT_INITIALIZER {.key = key}
 #define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)
 DEFINE_HASHMAP_FUNCS(
     cache, cache_slot, cache_slots, cache_capacity, cache_fill
@@ -1356,7 +1370,7 @@ static inline void auxilary_hashmap_slot_destructor(auxilary_slot* slot) {
     } free(slot->state_ptr); slot->state_ptr = NULL;
 }
 
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_type = NULL, .state_ptr = NULL, .last_frame_used_in_render = 2}
+#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_type = NULL, .state_ptr = NULL}
 #define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) auxilary_hashmap_slot_destructor(slot_ptr)
 DEFINE_HASHMAP_FUNCS(
     auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
@@ -1825,7 +1839,7 @@ void lui_update_cache(
     cache->clipbox_requests_count   = 0;
 
     // Pick next frame index
-    cache->frame_index++; if (cache->frame_index < 3) cache->frame_index = 3;
+    cache->frame_index++; if (cache->frame_index < LAST_FRAME_USED_IN_RENDER_FIRST) cache->frame_index = LAST_FRAME_USED_IN_RENDER_FIRST;
 
     // Render pass
     render_dfs(cache, cache->resolution_x, cache->resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
