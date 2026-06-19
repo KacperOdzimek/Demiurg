@@ -1629,13 +1629,13 @@ void PREFIX##_dfs(                                                              
     }                                                                                               \
 }
 
-// Auxilary pass
-// Top-down pass, allowing for own data rebuild
-// Builds text
+// Layout passes
+// Travels tree, call functions as specified in type comments
+// to calcualate what specfied in type comments
 
 void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
 
-// additionaly update text buffer
+// auxilary pass, additionaly update text buffer
 TOP_DOWN_DFS(
     auxilary, auxilary, invalidation_flag_only_auxilary,
     if (current->key.node->type == &lui_text_type) {
@@ -1643,11 +1643,7 @@ TOP_DOWN_DFS(
     }
 );
 
-// Layout passes
-// Travels tree, call functions as specified in type comments
-// to calcualate what specfied in type comments
-
-// additionaly handle ignore flags
+// width measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     width_measure, width_measure, invalidation_flag_only_width_measure,
     if (current->key.node->flags & lui_flag_ignore_min_width) {
@@ -1660,7 +1656,7 @@ BOTTOM_UP_DFS(
     }
 );
 
-// additionaly ensure received width
+// width distribute pass, additionaly ensure received width
 // is within node measured limits
 TOP_DOWN_DFS(
     width_distribute, width_distribute, invalidation_flag_only_width_distribute,
@@ -1670,7 +1666,7 @@ TOP_DOWN_DFS(
     );
 );
 
-// additionaly handle ignore flags
+// height measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     height_measure, height_measure, invalidation_flag_only_height_measure,
     if (current->key.node->flags & lui_flag_ignore_min_height) {
@@ -1683,7 +1679,7 @@ BOTTOM_UP_DFS(
     }
 );
 
-// additionaly ensure received height 
+// height distribute pass, additionaly ensure received height 
 // is within node measured limits
 TOP_DOWN_DFS(
     height_distribute, height_distribute, invalidation_flag_only_height_distribute,
@@ -1693,7 +1689,7 @@ TOP_DOWN_DFS(
     );
 );
 
-// no additional code
+// position pass, no additional code
 TOP_DOWN_DFS(
     position, position, invalidation_flag_only_position
 );
