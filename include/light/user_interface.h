@@ -1253,7 +1253,7 @@ typedef struct cache_slot {
 
 typedef struct auxilary_slot {
     node_stable_index       key;
-    size_t                  state_bytes;
+    const lui_type*         state_type;
     void*                   state_ptr;
     unsigned char           last_frame_used_in_render;  
 } auxilary_slot;
@@ -1356,7 +1356,7 @@ static inline void auxilary_hashmap_slot_destructor(auxilary_slot* slot) {
     } free(slot->state_ptr); slot->state_ptr = NULL;
 }
 
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_bytes = 0, .state_ptr = NULL, .last_frame_used_in_render = 2}
+#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_type = NULL, .state_ptr = NULL, .last_frame_used_in_render = 2}
 #define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) auxilary_hashmap_slot_destructor(slot_ptr)
 DEFINE_HASHMAP_FUNCS(
     auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
@@ -1372,15 +1372,16 @@ static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_in
     if (!index.node->type->auxilary_bytes) return NULL; // none desired
     auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
 
-    // ensure state size is okay (in case node type changed)
-    if (slot->state_ptr && slot->state_bytes != index.node->type->auxilary_bytes) {
+    // handle case where node type has changed
+    if (slot->state_type && slot->state_type != index.node->type) {
+        if (index.node->type->auxilary_destructor) index.node->type->auxilary_destructor(slot->state_ptr);
         free(slot->state_ptr); slot->state_ptr = NULL;
     }
     
     // allocate state
     if (!slot->state_ptr) {
-        slot->state_ptr = calloc(1, index.node->type->auxilary_bytes);
-        slot->state_bytes = index.node->type->auxilary_bytes;
+        slot->state_ptr  = calloc(1, index.node->type->auxilary_bytes);
+        slot->state_type = index.node->type;
     }
 
     return slot;
