@@ -1187,9 +1187,9 @@ typedef struct clipbox_request clipbox_request;
 
 struct lui_cache {
     // Passes constants
-    int                 walk_current_resolution_x;
-    int                 walk_current_resolution_y;
-    unsigned char       walk_current_frame_index;
+    int                 resolution_x;
+    int                 resolution_y;
+    unsigned char       frame_index;
 
     // Nodes cache hashmap
     size_t              cache_capacity;
@@ -1228,7 +1228,7 @@ void lui_free_cache(lui_cache* cache) {
     if (!cache) return;
 
     // Free all auxilary slots by using impossible value
-    cache->walk_current_frame_index = 1;
+    cache->frame_index = 1;
     auxilary_hashmap_garbage_collect(cache);
 
     // Free all cached textes
@@ -1339,7 +1339,7 @@ static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                
     for (size_t i = 0; i < cache->CAP_FIELD; i++) {                             \
         SLOT_TYPE*     slot = &cache->SLOTS_FIELD[i];                           \
         unsigned char* time = &slot->last_frame_used_in_render;                 \
-        if (*time && *time != cache->walk_current_frame_index) {                \
+        if (*time && *time != cache->frame_index) {                             \
             HASHMAP_SLOT_DESTRUCTOR(slot);                                      \
             cache->FILL_FIELD--; *time = 0;                                     \
         }                                                                       \
@@ -1750,15 +1750,15 @@ void render_dfs(
     auxilary_slot*  aux   = auxilary_get_utill(cache, index);
 
     // mark used, to avoid garbage collect
-    own->last_frame_used_in_render = cache->walk_current_frame_index;
-    if (aux) aux->last_frame_used_in_render = cache->walk_current_frame_index;
+    own->last_frame_used_in_render = cache->frame_index;
+    if (aux) aux->last_frame_used_in_render = cache->frame_index;
 
     // change instance for subtree
     if (node->type == &lui_instance_type) instance = data;
 
     // change transform based on node's position and scale
-    float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->walk_current_resolution_x;
-    float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->walk_current_resolution_y;
+    float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->resolution_x;
+    float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->resolution_y;
     float scale_x = ((float)own->value_state.given_width)       / previous_width;
     float scale_y = ((float)own->value_state.given_height)      / previous_height;
     transform = mat2x3_offset(transform, off_x, off_y);
@@ -1767,8 +1767,8 @@ void render_dfs(
     // do transform if method provided
     if (node->type->transform) node->type->transform(
         data, &transform, 
-        cache->walk_current_resolution_x, 
-        cache->walk_current_resolution_y,
+        cache->resolution_x, 
+        cache->resolution_y,
         aux
     );
     
@@ -1837,17 +1837,17 @@ void lui_update_cache(
     int             resolution_y
 ) {
     // Init state
-    cache->walk_current_resolution_x = resolution_x;
-    cache->walk_current_resolution_y = resolution_y;
+    cache->resolution_x = resolution_x;
+    cache->resolution_y = resolution_y;
     cache->draw_requests_count      = 0;
     cache->text_requests_count      = 0;
     cache->clipbox_requests_count   = 0;
 
     // Pick next frame index
-    cache->walk_current_frame_index++; if (cache->walk_current_frame_index < 3) cache->walk_current_frame_index = 3;
+    cache->frame_index++; if (cache->frame_index < 3) cache->frame_index = 3;
 
     // Render pass
-    render_dfs(cache, cache->walk_current_resolution_x, cache->walk_current_resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
+    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
 
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
@@ -1890,7 +1890,7 @@ void lui_update_cache(
     // Garbage collect dead cache entries
     // If entry was not used in render, mark it free
     // Do every 16 frames not to spend to much time on it
-    if (cache->walk_current_frame_index % 16 == 0) {
+    if (cache->frame_index % 16 == 0) {
         cache_hashmap_garbage_collect(cache);
         auxilary_hashmap_garbage_collect(cache);
     }
@@ -1899,21 +1899,22 @@ void lui_update_cache(
 // ===========================
 // Rendering Common
 
-#define INTERNAL_TEXTURES_LIMIT             1024
+#define INTERNAL_TEXTURES_LIMIT                 1024
 
-#define INITIAL_INSTANCES_BUFFER_SIZE       (1024 * sizeof(gpu_instance))
-#define INITIAL_DRAW_ITEM_BUFFER_SIZE       (1024 * sizeof(gpu_draw_item))
-#define INITIAL_CLIPBOXES_BUFFER_SIZE       (16 * sizeof(gpu_clipbox))
-#define INITIAL_GLYPH_BUFFER_SIZE           (2024 * sizeof(gpu_glyph))
+#define INITIAL_INSTANCES_BUFFER_SIZE           (1024 * sizeof(gpu_instance))
+#define INITIAL_DRAW_ITEM_BUFFER_SIZE           (1024 * sizeof(gpu_draw_item))
+#define INITIAL_CLIPBOXES_BUFFER_SIZE           (16 * sizeof(gpu_clipbox))
+#define INITIAL_GLYPH_BUFFER_SIZE               (2024 * sizeof(gpu_glyph))
 
-#define GLYPH_STRUCTURE_ALIGN               4
+#define GLYPH_STRUCTURE_ALIGN                   4
 
-#define INSTANCES_BUFFER_DESCRIPTOR_BINDING 0
-#define DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING 1
-#define GLYPH_BUFFER_DESCRIPTOR_BINDING     2
-#define CLIPBOXES_BUFFER_DESCRIPTOR_BINDING 3
-#define SAMPLER_DESCRIPTOR_BINDING          4
-#define TEXTURES_ARRAY_DESCRIPTOR_BINDING   5
+#define PARAMETERS_BUFFER_DESCRIPTOR_BINDING    0
+#define INSTANCES_BUFFER_DESCRIPTOR_BINDING     1
+#define DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING     2
+#define GLYPH_BUFFER_DESCRIPTOR_BINDING         3
+#define CLIPBOXES_BUFFER_DESCRIPTOR_BINDING     4
+#define SAMPLER_DESCRIPTOR_BINDING              5
+#define TEXTURES_ARRAY_DESCRIPTOR_BINDING       6
 
 typedef struct gpu_instance {
     int item;
@@ -1939,7 +1940,21 @@ typedef struct gpu_glyph {
     float       size_x, size_y;
 } gpu_glyph;
 
-lgx_buffer* create_ssbo(lgx_hardware* hardware, uint64_t bytes) {
+typedef struct gpu_parameters {
+    int         resolution_x;
+    int         resolution_y;
+} gpu_parameters;
+
+static inline lgx_buffer* create_ubo(lgx_hardware* hardware, uint64_t bytes) {
+    return lgx_create_buffer(hardware, &(lgx_buffer_create_info){
+        .size_bytes         = bytes,
+        .usage              = lgx_buffer_usage_uniform,
+        .memory_strategy    = lgx_memory_allocation_strategy_dedicated,
+        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+    });
+}
+
+static inline lgx_buffer* create_ssbo(lgx_hardware* hardware, uint64_t bytes) {
     return lgx_create_buffer(hardware, &(lgx_buffer_create_info){
         .size_bytes         = bytes,
         .usage              = lgx_buffer_usage_storage,
@@ -1980,6 +1995,12 @@ static lgx_vertex_input_binding_info vertex_bindings[] = {
 };
 
 static lgx_descriptor_binding descriptor_bindings[] = {
+    {   // the parameters buffer
+        .binding = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_vertex,
+        .type    = lgx_descriptor_binding_type_uniform_buffer
+    },
     {   // the instances buffer
         .binding = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
@@ -2172,6 +2193,7 @@ void lui_free_shared(lui_shared* shared) {
 
 typedef struct single_frame {
     uint32_t                    instances_to_render;
+    lgx_buffer*                 parameters_buffer;
     lgx_buffer*                 instances_buffer;
     lgx_buffer*                 draw_items_buffer;
     lgx_buffer*                 clipboxes_buffer;
@@ -2189,29 +2211,35 @@ struct lui_frames {
 };
 
 void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_shared* shared, single_frame* frame) {
-    lgx_descriptor_write_info           writes[5];
-    lgx_descriptor_buffer_write_info    binfos[4];
+    lgx_descriptor_write_info           writes[6];
+    lgx_descriptor_buffer_write_info    binfos[5];
     lgx_descriptor_sampler_write_info   sinfos[1];
 
     binfos[0] = (lgx_descriptor_buffer_write_info){
+        .buffer = frame->parameters_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(frame->parameters_buffer)
+    };
+
+    binfos[1] = (lgx_descriptor_buffer_write_info){
         .buffer = frame->instances_buffer,
         .offset = 0,
         .length = lgx_buffer_get_size_bytes(frame->instances_buffer)
     };
 
-    binfos[1] = (lgx_descriptor_buffer_write_info){
+    binfos[2] = (lgx_descriptor_buffer_write_info){
         .buffer = frame->draw_items_buffer,
         .offset = 0,
         .length = lgx_buffer_get_size_bytes(frame->draw_items_buffer)
     };
 
-    binfos[2] = (lgx_descriptor_buffer_write_info){
+    binfos[3] = (lgx_descriptor_buffer_write_info){
         .buffer = shared->glyph_buffer,
         .offset = 0,
         .length = lgx_buffer_get_size_bytes(shared->glyph_buffer)
     };
 
-    binfos[3] = (lgx_descriptor_buffer_write_info){
+    binfos[4] = (lgx_descriptor_buffer_write_info){
         .buffer = frame->clipboxes_buffer,
         .offset = 0,
         .length = lgx_buffer_get_size_bytes(frame->clipboxes_buffer)
@@ -2223,8 +2251,8 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_share
 
     writes[0] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
+        .binding_type           = lgx_descriptor_binding_type_uniform_buffer,
+        .binding_index          = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[0]
@@ -2233,7 +2261,7 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_share
     writes[1] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
+        .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[1]
@@ -2242,22 +2270,31 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_share
     writes[2] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
+        .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[2]
     };
-    
+
     writes[3] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[3]
+    };
+    
+    writes[4] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_storage_buffer,
         .binding_index          = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[3]
+        .infos.for_buffers      = &binfos[4]
     };
 
-    writes[4] = (lgx_descriptor_write_info){
+    writes[5] = (lgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
         .binding_type           = lgx_descriptor_binding_type_sampler,
         .binding_index          = SAMPLER_DESCRIPTOR_BINDING,
@@ -2266,7 +2303,7 @@ void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_share
         .infos.for_samplers     = &sinfos[0]
     };
     
-    lgx_descriptors_write(hardware, 5, writes);
+    lgx_descriptors_write(hardware, 6, writes);
 }
 
 lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_info* info) {
@@ -2293,6 +2330,7 @@ lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_in
         single_frame* frame = &frames->frames[i];
         *frame = (single_frame){
             .descriptor                  = lgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
+            .parameters_buffer           = create_ubo (hardware, sizeof(gpu_parameters)),
             .instances_buffer            = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
             .draw_items_buffer           = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
             .clipboxes_buffer            = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE),
@@ -2300,8 +2338,8 @@ lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_in
             .descriptor_bound_textures_2 = calloc(shared->descriptor_textures_array_length, sizeof(lgx_texture*))
         };
 
-        if (!frame->descriptor || !frame->instances_buffer || !frame->draw_items_buffer || !frame->clipboxes_buffer ||
-            !frame->descriptor_bound_textures_1 || !frame->descriptor_bound_textures_2) goto _fail;
+        if (!frame->descriptor || !frame->parameters_buffer || !frame->instances_buffer || !frame->draw_items_buffer || 
+            !frame->clipboxes_buffer || !frame->descriptor_bound_textures_1 || !frame->descriptor_bound_textures_2) goto _fail;
         frame_descriptor_bind_buffers_and_sampler(hardware, shared, frame);
     }
 
@@ -2317,6 +2355,7 @@ void lui_free_frames(lui_frames* frames) {
 
     for (uint32_t i = 0; i < frames->frames_count; i++) {
         single_frame* frame = &frames->frames[i];
+        lgx_free_buffer(frame->parameters_buffer);
         lgx_free_buffer(frame->instances_buffer);
         lgx_free_buffer(frame->draw_items_buffer);
         lgx_free_buffer(frame->clipboxes_buffer);
@@ -2441,6 +2480,13 @@ void lui_upload_cache(
     lgx_hardware* hardware = shared->owning_hardware;
     single_frame* frame    = &frames->frames[frame_idx];
 
+    // Prepare render parameters uniform
+
+    gpu_parameters parameters = {
+        .resolution_x = cache->resolution_x,
+        .resolution_y = cache->resolution_y
+    };
+
     // Prepare texture descriptor update structure
 
     texture_writes_dynamic_array texture_writes_array = (texture_writes_dynamic_array){
@@ -2450,7 +2496,7 @@ void lui_upload_cache(
 
     // Allocate upload regions descriptors array
 
-    size_t upload_regions_count    = cache->text_requests_count + 3;
+    size_t upload_regions_count    = cache->text_requests_count + 4;
     size_t upload_regions_position = 0;
     lgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(lgx_buffer_multi_upload_region));
 
@@ -2644,6 +2690,14 @@ void lui_upload_cache(
     if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frames->owning_shared, frame);
 
     // Upload
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->parameters_buffer,
+        .buffer_offset  = 0,
+        .source_data    = &parameters,
+        .source_bytes   = sizeof(gpu_parameters)
+    };
+
     upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
         .buffer         = frame->draw_items_buffer,
         .buffer_offset  = 0,
