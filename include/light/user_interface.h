@@ -3,10 +3,10 @@
     Depedencies
 */
 
-#include "/home/kacper/Projects/LightFramework/include/light/graphics.h"
-#include "/home/kacper/Projects/LightFramework/include/light/linear_algebra.h"
-#include "/home/kacper/Projects/LightFramework/include/light/font.h"
-#include "/home/kacper/Projects/LightFramework/include/light/partitioner.h"
+#include "light/graphics.h"
+#include "linear_algebra.h"
+#include "light/font.h"
+#include "light/partitioner.h"
 
 /*
     Implementation Injections
@@ -2464,6 +2464,7 @@ void lui_upload_cache(
     size_t upload_regions_count    = cache->text_requests_count + 4;
     size_t upload_regions_position = 0;
     lgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(lgx_buffer_multi_upload_region));
+    if (!upload_regions) goto _cleanup;
 
     // Prepare partitions for text draws
 
@@ -2527,7 +2528,7 @@ void lui_upload_cache(
     // Generate GPU Items, findout instances count
     items_count = cache->draw_requests_count;
     items_bytes = cache->draw_requests_count * sizeof(gpu_draw_item);
-    items = malloc(items_bytes);
+    items = malloc(items_bytes); if (!items) goto _cleanup;
     for (uint32_t i = 0; i < items_count; i++) {
         draw_request req = cache->draw_requests[i];
 
@@ -2588,7 +2589,7 @@ void lui_upload_cache(
 
     // Generate GPU Instances
     instances_bytes = instances_count * sizeof(gpu_instance);
-    instances = malloc(instances_bytes);
+    instances = malloc(instances_bytes); if (!instances) goto _cleanup;
     uint32_t instance_idx = 0;
     for (int i = 0; i < cache->draw_requests_count; i++) {
         draw_request req = cache->draw_requests[i];
@@ -2618,7 +2619,7 @@ void lui_upload_cache(
     // Generate GPU Clipboxes
     clipboxes_count = cache->clipbox_requests_count;
     clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_draw_item);
-    clipboxes       = malloc(clipboxes_bytes);
+    clipboxes       = malloc(clipboxes_bytes); if (!clipboxes) goto _cleanup;
     for (uint32_t i = 0; i < clipboxes_count; i++) {
         clipbox_request req = cache->clipbox_requests[i];
         clipboxes[i] = (gpu_clipbox){
@@ -2711,6 +2712,7 @@ void lui_upload_cache(
     // Mark to render
     frame->instances_to_render = instances_count;
 
+_cleanup:
     // Free text requests
     free_cached_text_requests(cache);
 
@@ -2772,8 +2774,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     gpu_glyph* glyphs = glyph_count ? malloc(sizeof(gpu_glyph) * glyph_count) : NULL;
     if (glyph_count && !glyphs) {
         text_request req = { .owning_node = slot->key, .glyphs_count = 0, .glyphs = NULL };
-        text_request_cache_push(cache, req);
-        return;
+        text_request_cache_push(cache, req); return;
     }
 
     // Find font scale
@@ -2826,7 +2827,7 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     if (pen_x > text_width) text_width = pen_x;
 
     // Total pixel height: baseline of last line + full single-line cap height
-    float text_height = -pen_y + (ascent - descent);
+    float text_height = -pen_y + ascent;
 
     // Store text dimensions
     aux->text_width  = text_width;
