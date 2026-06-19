@@ -250,8 +250,8 @@ typedef enum lui_invalidation_flag {
     lui_invalidation_flag_all               = 63,
 } lui_invalidation_flag;
 typedef struct lui_invalidation_data {
-    lui_invalidation_flag flag_always;
     lui_invalidation_flag flag_consumable;
+    lui_invalidation_flag flag_always;
 } lui_invalidation_data;
 
 // ===========================
@@ -1443,6 +1443,31 @@ static inline void free_cached_text_requests(lui_cache* cache) {
 // ===========================
 // Cache Update
 
+// Invalidation Node Gate
+
+typedef enum invalidation_flag_only {
+    invalidation_flag_only_auxilary          = 1,
+    invalidation_flag_only_width_measure     = 2,
+    invalidation_flag_only_width_distribute  = 4,
+    invalidation_flag_only_height_measure    = 8,
+    invalidation_flag_only_height_distribute = 16,
+    invalidation_flag_only_position          = 32,
+} invalidation_flag_only;
+
+static inline int find_shall_recurse(cache_slot* node_slot, const void* data, invalidation_flag_only pass) {
+    if (node_slot->key.node->type != &lui_invalidation_type) return 1;
+    lui_invalidation_data* inv_data = (lui_invalidation_data*)data; // special case where const may be discarded
+
+    // recurse one time in this pass
+    if (inv_data->flag_consumable & pass) {
+        inv_data->flag_consumable &= ~(pass);   // turn off this pass bit
+        return 1;
+    }
+
+    // recurse only if marked always to do it
+    return inv_data->flag_always & pass;
+}
+
 // Cache Walk Pass
 // Called on remeasure
 // Computes: 
@@ -1569,10 +1594,12 @@ void auxilary_dfs(
     if (func != NULL) func(data, auxilary ? auxilary->state_ptr : NULL);
 
     // recurse
-    size_t child_first_child = first_child + current->value_child_count;
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        auxilary_dfs(cache, walk_order, children[i], auxilaries[i], child_first_child);
-        child_first_child += subtrees[i] - 1;
+    if (find_shall_recurse(current, data, invalidation_flag_only_auxilary)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            auxilary_dfs(cache, walk_order, children[i], auxilaries[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
 }
 
@@ -1592,10 +1619,12 @@ void width_measure_dfs(
     const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // recurse
-    size_t child_first_child = first_child + current->value_child_count;
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        width_measure_dfs(walk_order, children[i], auxilaries[i], child_first_child);
-        child_first_child += subtrees[i] - 1;
+    if (find_shall_recurse(current, data, invalidation_flag_only_width_measure)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            width_measure_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
 
     // call own measure
@@ -1641,10 +1670,12 @@ size_t width_distribute_dfs(
     );
 
     // recurse
-    size_t child_first_child = first_child + current->value_child_count;
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        width_distribute_dfs(walk_order, children[i], auxilaries[i], child_first_child);
-        child_first_child += subtrees[i] - 1;
+    if (find_shall_recurse(current, data, invalidation_flag_only_width_distribute)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            width_distribute_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
 }
 
@@ -1660,10 +1691,12 @@ void height_measure_dfs(
     const void*     data        = get_node_data(current->key.node, current->key.instance);
 
     // recurse
-    size_t child_first_child = first_child + current->value_child_count;
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        height_measure_dfs(walk_order, children[i], auxilaries[i], child_first_child);
-        child_first_child += subtrees[i] - 1;
+    if (find_shall_recurse(current, data, invalidation_flag_only_height_measure)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            height_measure_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
 
     // do call
@@ -1709,10 +1742,12 @@ void height_distribute_dfs(
     );
 
     // recurse
-    size_t child_first_child = first_child + current->value_child_count;
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        height_distribute_dfs(walk_order, children[i], auxilaries[i], child_first_child);
-        child_first_child += subtrees[i] - 1;
+    if (find_shall_recurse(current, data, invalidation_flag_only_height_distribute)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            height_distribute_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
 }
 
@@ -1735,10 +1770,12 @@ size_t position_dfs(
     );
     
     // recurse
-    size_t child_first_child = first_child + current->value_child_count;
-    for (size_t i = 0; i < current->value_child_count; i++) {
-        position_dfs(walk_order, children[i], auxilaries[i], child_first_child);
-        child_first_child += subtrees[i] - 1;
+    if (find_shall_recurse(current, data, invalidation_flag_only_position)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            position_dfs(walk_order, children[i], auxilaries[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
 }
 
