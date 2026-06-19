@@ -239,6 +239,20 @@ extern const lui_type lui_instance_type;
 // be rebuilt if invalidation node was marked with a proper dirty flag
 // No data, single child
 extern const lui_type lui_invalidation_type;
+typedef enum lui_invalidation_flag {
+    lui_invalidation_flag_auxilary          = 63,
+    lui_invalidation_flag_width_measure     = 62,
+    lui_invalidation_flag_width_distribute  = 60,
+    lui_invalidation_flag_height_measure    = 56,
+    lui_invalidation_flag_height_distribute = 48,
+    lui_invalidation_flag_position          = 32,
+    lui_invalidation_flag_none              = 0,
+    lui_invalidation_flag_all               = 63,
+} lui_invalidation_flag;
+typedef struct lui_invalidation_data {
+    lui_invalidation_flag flag_always;
+    lui_invalidation_flag flag_consumable;
+} lui_invalidation_data;
 
 // ===========================
 // Layout Node Types
@@ -246,7 +260,6 @@ extern const lui_type lui_invalidation_type;
 // During layout, overwrites selected fields with provided values
 // Data is lui_sizebox_data, single child
 extern const lui_type lui_sizebox_type;
-
 typedef enum lui_sizebox_overwrite_flag {
     lui_sizebox_overwrite_none        = 0,
     lui_sizebox_overwrite_all         = 255,
@@ -261,7 +274,6 @@ typedef enum lui_sizebox_overwrite_flag {
     lui_sizebox_overwrite_height_max  = 1 << 4,
     lui_sizebox_overwrite_height_flex = 1 << 5
 } lui_sizebox_overwrite_flag;
-
 typedef struct lui_sizebox_data {
     lui_sizebox_overwrite_flag  flag;
     lui_length                  width;
@@ -1383,13 +1395,13 @@ struct draw_request {
 };
 
 struct text_request {
-    node_stable_index   owning_node;
-    size_t              glyphs_count;
-    struct gpu_glyph*   glyphs;
+    node_stable_index       owning_node;
+    size_t                  glyphs_count;
+    struct gpu_glyph*       glyphs;
 };
 
 struct clipbox_request {
-    lla_mat2x3  transform;
+    lla_mat2x3              transform;
 };
 
 // Definies one function:
