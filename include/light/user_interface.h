@@ -7,77 +7,63 @@ This file implements lui ui system.
 Code info:
 - lui prefix
 - LIGHT_USER_INTERFACE_IMPL macro to build
+- partitioner.h dependent
+- linear_algebra.h dependent
+- graphics.h dependent
+- font.h dependent
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
 */
 
+
 /*
-    Injections
+    Depedencies
 */
 
-#ifndef LIGHT_USER_INTEFACE_H
-    // Input - visible for user, can be used in input handlers
+#include "light/partitioner.h"
+#include "light/linear_algebra.h"
+#include "light/graphics.h"
+#include "light/font.h"
 
-    typedef struct lui_injection_input_state lui_injection_input_state;
-
-    static inline void lui_injection_query_cursor_position(
-        lui_injection_input_state* state,
-        int*    cursor_pixels_x,      // offset from upper left corner in width
-        int*    cursor_pixels_y,      // offset from upper left corner in height
-        float*  cursor_norm_x_target, // normalized [-1, 1] for width
-        float*  cursor_norm_y_target  // normalized [-1, 1] for height
-    );
-
-    // get given current cursor state despite it is consumed or not
-    static inline void lui_injection_query_cursor_state(
-        lui_injection_input_state* state, int check_consumed,
-        int* left_pressed, int* right_pressed, float* scroll_input
-    );
-
-    static inline void lui_injection_consume_cursor_state(
-        lui_injection_input_state* state, int left, int right, int scroll
-    );
-
-    // get input state from previous frame
-    static inline void lui_injection_query_previous_cursor_state(
-        lui_injection_input_state* state,
-        int* left_pressed, int* right_pressed, float* scroll_input
-    );
-#endif
+/*
+    Implementation Injections
+    Define in same file as user interface implementation
+*/
 
 #ifdef LIGHT_USER_INTERFACE_IMPL
     typedef struct lui_length     lui_length;
     typedef struct lui_text_data  lui_text_data;
+    typedef struct lui_box_data   lui_box_data;
 
-    // Measurements
-
-    static inline void lui_injection_measure_text(
-        const lui_text_data*     data,
-        lui_length*              width_target, 
-        lui_length*              height_target,
-        void*                    user_context
-    );
+    // returns non-zero at success (if returned is valid pointer)
+    int lui_injection_query_font (const char* font,  lfont**       font_out);
+    int lui_injection_query_image(const char* image, lgx_texture** texture_out, lgx_uv_2d* uv_out);
 #endif // LIGHT_USER_INTERFACE_IMPL
 
 /*
     Header
 */
 
-#ifndef LIGHT_USER_INTEFACE_H
-#define LIGHT_USER_INTEFACE_H
+#ifndef LIGHT_USER_INTERFACE_H
+#define LIGHT_USER_INTERFACE_H
 
-#include <stdlib.h>
-#include <stddef.h>
-#include <math.h>
+// ===========================
+// Forwards
+
+typedef struct lui_type   lui_type;
+typedef struct lui_node   lui_node;
+typedef struct lui_cache  lui_cache;
+typedef struct lui_shared lui_shared;
+typedef struct lui_frames lui_frames;
 
 // ===========================
 // Layout Length
 
 // variable representing infinte length
 // not set to int max, to avoid overflows in implementation
-// needs to be increased if you are rendering on a (128+)K screen
-const static int lui_inf_length = 128 * 1000;
+// needs to be increased if you are rendering on a (64+)K screen
+const static int lui_inf_length = 64 * 1000;
 
 // structure representing 1d length
 // min  - minimal size element can be rendered with
@@ -91,41 +77,6 @@ typedef struct lui_length {
     int   max;  // maximum dimension
     float flex; // flex ratio
 } lui_length;
-
-// ===========================
-// Render Transforms
-
-// structure representing ui elements tranformations (matrix 2x3)
-// can be modified with functions declared below in the header
-typedef struct lui_transform {
-    float m00, m01, tx;
-    float m10, m11, ty;
-} lui_transform;
-
-// Default ui element transform (identity matrix)
-// offset: (0, 0), scale: (1, 1), rotation: (0)
-static const lui_transform lui_default_trans = {
-    1, 0, 0,
-    0, 1, 0
-};
-
-// runtime transformations
-
-// build transform:
-// identity -> rotate(deg_cw) -> scale(sx, sy) -> offset(dx, dy)
-// lui_TRANS <- compile time alternative
-static inline lui_transform lui_trans(float dx, float dy, float sx, float sy, float deg_cw);
-
-// translate/offset transform by dx, dy normalized units
-static inline lui_transform lui_off(lui_transform m, float dx, float dy);
-
-// scale transform by sx in x and sy in y
-static inline lui_transform lui_sca(lui_transform m, float sx, float sy);
-
-// rotate transform by degrees clockwise
-static inline lui_transform lui_rot(lui_transform m, float deg_cw);
-
-// lui_TRANS <- compile time lui_trans transform builder macro (definied later in the file)
 
 // ===========================
 // Colors
@@ -144,235 +95,183 @@ static inline lui_color lui_hex(const char* hex);
 // LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
 
 // ===========================
-// Input
+// Node Typedefs
 
-// Functions with such signature can be passed as lui_node_input_handle data
-// Will be called to solve input at underlying lui_node_input_boxes
-// Functions are called from top ui element to bottom
-// User can modify input_state to avoid penetration through layers of ui
-// For example you may want to dissable "left pressed" in upper button, 
-// so one below does not notice it
-typedef void (*lui_input_handler_func)(
-    void*                       input_box_data,
-    lui_injection_input_state*  input_state,
-    int                         cursor_inside,
-    float                       delta_time
+typedef struct lui_node_layout_state {
+    lui_length              measured_width;     // desired width  of this node
+    lui_length              measured_height;    // desired height of this node
+    int                     given_width;        // received width
+    int                     given_height;       // received height
+    int                     hori_offset;        // node center horizontal offset from parent center
+    int                     vert_offset;        // node center vertical offset from parent center
+} lui_node_layout_state;
+
+typedef void (lui_node_auxilary_destructor_func_signature)(
+    void*                   auxilary            // node auxilary buffer - do not free it
 );
+typedef lui_node_auxilary_destructor_func_signature* lui_node_auxilary_destructor_func;
 
-// ===========================
-// Node Typedef
+typedef void(lui_node_layout_func_signature)(
+    const void*             node_data,          // node data
+    lui_node_layout_state*  node_state,         // node own state
+    size_t                  children_count,     // node children count
+    lui_node_layout_state** children_states,    // node children states
+    void*                   auxilary            // node auxilary buffer if requested by type
+);
+typedef lui_node_layout_func_signature* lui_node_layout_func;
 
-// common
+typedef void(lui_node_render_func_signature)(
+    const void*             node_data,          // node data
+    lla_mat2x3*             transform,          // given transform, can be changed
+    int                     resolution_x,       // screen resolution x
+    int                     resolution_y,       // screen resolution y
+    void*                   auxilary            // node auxilary buffer if requested by type
+);
+typedef lui_node_render_func_signature* lui_node_render_func;
 
-typedef enum lui_node_type {
-    // Architectural
+typedef struct lui_type {
+    // Structure
 
-    // node instance
-    // sets instance pointer to value of own data
-    // this pointer will be then carried into the subtree during
-    // measure/render travelsals, affecting data reads from child nodes
-    // according to their active flags
-    // single childed
-    lui_node_instance,
+    // Whether child pointer in node means single node
+    // Or and array terminated with LUI_ARRAY_END
+    int     array_child;
 
-    // Queries
+    // This field can be used to request a cache-owned state per node, sized exactly auxilary_bytes bytes.
+    // This state will be shared across all node passes, and given to user in callback functions. 
+    // If state_bytes == 0, the pointer will be NULL.
+    size_t  auxilary_bytes;
 
-    // node measure size query
-    // saves child measured length to it's data
-    // single childed
-    lui_node_measure_size_query,
+    // This function will be called when auxilary storage is freed
+    // You can use it to free some auxilary-owned memory
+    lui_node_auxilary_destructor_func auxilary_destructor;
 
-    // node render size query
-    // saves render pixel size of children to it's data
-    // single childed
-    lui_node_render_size_query,
+    // Auxilary Stage
 
-    // Transform
+    // Auxilary stage
+    // Allow for node own data changes (eg. caching some preprocessed state)
+    // Unless it is convenient, this pass shall not be used, to preserve data-oriented-design,
+    // and composability. Used to generate text format for GPU in implementation.
+    lui_node_layout_func    auxilary;
 
-    // node transform
-    // transforms child nodes measure/render by an matrix
-    // single childed
-    lui_node_transform,
+    // Layout Stages
 
-    // node offset
-    // offsets child during render by given amount of pixels
-    // single childed
-    lui_node_offset,
+    // First layout stage
+    // Generates desired nodes widths, bottom-up
+    // IN:  [children measured width]
+    // OUT: [own measured width]
+    lui_node_layout_func    width_measure;
 
-    // Rendering
+    // Second layout stage
+    // Generates actuall nodes widths, top-down
+    // IN:  [width measurements, own given width]
+    // OUT: [children given width]
+    lui_node_layout_func    width_distribute;
 
-    // node clipbox
-    // constrains rendering to own dimensions
-    // pair with inner sizebox for full control
-    // no data
-    // single childed
-    lui_node_clipbox,
+    // Third layout stage
+    // Generates desired nodes widths, bottom-up
+    // IN:  [given widths, children measured heights]
+    // OUT: [own measured height]
+    lui_node_layout_func    height_measure;
 
-    // node depth
-    // adds node depth offset
-    // decreasing depth means going 'into' the screen
-    // single childed
-    lui_node_depth,
+    // Fourth layout stage
+    // Generates actuall nodes heights, top-down
+    // IN:  [given widths, measured heights, own given height]
+    // OUT  [children given heights]
+    lui_node_layout_func    height_distribute;
 
-    // Input
+    // Fifth layout stage
+    // Position nodes on screen, top-down
+    // IN:  [all widths and heights]
+    // OUT: [node offset from ]
+    lui_node_layout_func    position;
 
-    // node input handle
-    // sets method for handing input in child node_input_boxes
-    // data shall be function pointer of type lui_input_handler_func
-    // single childed
-    lui_node_input_handle,
+    // Rendering Stages
 
-    // node input box
-    // upon calling lui_input, for each of the input boxes,
-    // function set by parent lui_node_input_handle will be called
-    // data of this node will be passed to function call data argument
-    // single childed
-    lui_node_input_box,
+    // First render stage
+    // Allow altering children render transforms, top down
+    // IN:  [complete layout states, parent render transform]
+    // OUT: [own and children render transform]
+    lui_node_render_func    transform;
+} lui_type;
 
-    // Basic Layout
+typedef enum lui_flag {
+    lui_flag_instanced_data     = 1 << 0,
+    lui_flag_instanced_child    = 1 << 1,
+    lui_flag_ignore_min_width   = 1 << 2,
+    lui_flag_ignore_min_height  = 1 << 3,
+    lui_flag_ignore_max_width   = 1 << 4,
+    lui_flag_ignore_max_height  = 1 << 5,
+} lui_flag;
 
-    // node padding
-    // padds children by given length
-    // single childed
-    lui_node_padding, 
-
-    // node sizebox
-    // during measure alters measurements according to own data
-    // single childed
-    lui_node_sizebox,
-
-    // Containers
-
-    // node row
-    // renders children in a horizontal sequence
-    // multiple children (array)
-    lui_node_row,
-
-    // node column
-    // renders children in a vertical sequence
-    // multiple children (array)
-    lui_node_column,
-
-    // Primitives
-
-    // node box
-    // a box render primitive
-    // it is spanned by it's children, unless with lui_node_flag_fill flag
-    // single childed
-    lui_node_box,
-
-    // node text
-    // text render primitive
-    // renders text in it's desired size
-    // data - lui_text_data
-    // single childed
-    lui_node_text,
-
-    // Extra Flags
-
-    // same as putting node inside sizebox that overwrites width min to 0
-    // allow shrinking beyond child minimum in width (usefull for clipboxes)
-    lui_node_flag_ignore_min_width  = 1 << 11,
-
-    // same as putting node inside sizebox that overwrites height min to 0
-    // allow shrinking beyond child minimum in height (usefull for clipboxes)
-    lui_node_flag_ignore_min_height = 1 << 12,
-
-    // same as putting node inside sizebox that overwrites width max to lui_inf_length
-    // allow expansion of node beyond content max in width
-    lui_node_flag_ignore_max_width  = 1 << 13,
-
-    // same as putting node inside sizebox that overwrites height max to lui_inf_length
-    // allow expansion of node beyond content max in height
-    lui_node_flag_ignore_max_height = 1 << 14,
-
-    // see lui_node_instance
-    // if active, during measure and render travelsals
-    // instead of reading node->data, parsing functions will read
-    // (*(node_data_type*)(instance + node->data_instance_offset))
-    lui_node_flag_data_instanced    = 1 << 15,
-
-    // see lui_node_instance
-    // if active, during measure and render travelsals
-    // instead of reading node->data, parsing functions will read
-    // (*(const lui_node*/lui_node_array*)(instance + node->child_instance_offset))
-    lui_node_flag_child_instanced   = 1 << 16
-} lui_node_type;
-
-typedef struct lui_node lui_node;
-typedef struct lui_node_array lui_node_array;
-
-// structure representing ui node - basic ui building block
-// type         - specify ui node type, which determines how node will be read
-// data         - type specific data struct, declared below in the header
-// child        - if node is single childed, this is this node child (may be 0x0 if no child)
-// child_array  - if node is multi childed, this is pointer to children array (may not be 0x0, but array may be of size 0)
-// if lui_node_flag_data_instanced or lui_node_flag_child_instanced are added to node type
-// data/child/child_array reads are altered as described in comments above those flags
 typedef struct lui_node {
-    lui_node_type               type;
-
+    const lui_type* type;
+    const uint32_t  flags;
+    
     union {
-        const lui_node*         child;
-        const lui_node_array*   child_array;
-        size_t                  child_instance_offset;
+        const lui_node* child;
+        size_t          child_offset;
     };
 
     union {
-        const void*             data;
-        size_t                  data_instance_offset;
+        const void*     data;
+        size_t          data_offset;
     };
 } lui_node;
 
-// structure representing an array of ui nodes
-typedef struct lui_node_array {
-    size_t    count;
-    lui_node* nodes;
-} lui_node_array;
+// Sentinel value to mark array end
+#define LUI_ARRAY_END (lui_node){.type = NULL, .child = NULL, .data = NULL}
 
-// measure size query
+// ===========================
+// Predefinied Functions
+// Those implement basic box/overlay behavior, used by most nodes
 
-typedef struct lui_measure_size_query_data {
-    lui_length width;
-    lui_length height;
-} lui_measure_size_query_data;
+// width = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
+lui_node_layout_func_signature lui_overlay_width_measure_func;
 
-// render size query
+// children width = parent width, with applied maxes
+lui_node_layout_func_signature lui_overlay_width_distribute_func;
 
-typedef struct lui_render_size_query_data {
-    float width;
-    float height;
-} lui_render_size_query_data;
+// height = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
+lui_node_layout_func_signature lui_overlay_height_measure_func;
 
-// transform
+// children height = parent height, with applied maxes
+lui_node_layout_func_signature lui_overlay_height_distribute_func;
 
-typedef struct lui_transform_data {
-    unsigned char   apply_transform_at_measure : 1;
-    unsigned char   apply_transform_at_render  : 1;
-    lui_transform   transform;
-} lui_transform_data;
+// centers children inside parent
+lui_node_layout_func_signature lui_overlay_position_func;
 
-// offset
+// ===========================
+// Architectural Node Types
 
-typedef struct lui_offset_data {
-    int offset_x;
-    int offset_y;
-} lui_offset_data;
+// Sets instance pointer to own data value
+// Data shall be arbitrary pointer (or offset in current instance) to instance structure
+extern const lui_type lui_instance_type;
 
-// depth
+// Layout-rebuild gate for the subtree - children layout will only
+// be rebuilt if invalidation node was marked with a proper dirty flag
+// No data, single child
+extern const lui_type lui_invalidation_type;
+typedef enum lui_invalidation_flag {
+    lui_invalidation_flag_auxilary          = 63,
+    lui_invalidation_flag_width_measure     = 62,
+    lui_invalidation_flag_width_distribute  = 60,
+    lui_invalidation_flag_height_measure    = 56,
+    lui_invalidation_flag_height_distribute = 48,
+    lui_invalidation_flag_position          = 32,
+    lui_invalidation_flag_none              = 0,
+    lui_invalidation_flag_all               = 63,
+} lui_invalidation_flag;
+typedef struct lui_invalidation_data {
+    lui_invalidation_flag flag_consumable;
+    lui_invalidation_flag flag_always;
+} lui_invalidation_data;
 
-typedef struct lui_depth_data {
-    short depth_change;
-} lui_depth_data;
+// ===========================
+// Layout Node Types
 
-// padding
-
-typedef struct lui_padding_data {
-    lui_length left, right, top, bottom;
-} lui_padding_data;
-
-// sizebox
-
+// During layout, overwrites selected fields with provided values
+// Data is lui_sizebox_data, single child
+extern const lui_type lui_sizebox_type;
 typedef enum lui_sizebox_overwrite_flag {
     lui_sizebox_overwrite_none        = 0,
     lui_sizebox_overwrite_all         = 255,
@@ -387,136 +286,128 @@ typedef enum lui_sizebox_overwrite_flag {
     lui_sizebox_overwrite_height_max  = 1 << 4,
     lui_sizebox_overwrite_height_flex = 1 << 5
 } lui_sizebox_overwrite_flag;
-
 typedef struct lui_sizebox_data {
-    lui_sizebox_overwrite_flag flag;
-    lui_length                 width;
-    lui_length                 height;    
+    lui_sizebox_overwrite_flag  flag;
+    lui_length                  width;
+    lui_length                  height;    
 } lui_sizebox_data;
 
-// row
+// Padds child inside self
+// Data is lui_padding_data, single child
+extern const lui_type lui_padding_type;
+typedef struct lui_padding_data {
+    lui_length left, right, top, bottom;
+} lui_padding_data;
 
+// Layouts children one on another
+// The first child is deepest, rendered first
+// No data, array children
+extern const lui_type lui_overlay_type;
+
+// Layouts children in a row, left to right
+// Data is lui_row_data, array children
+extern const lui_type lui_row_type;
 typedef struct lui_row_data {
-    float       horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
-    float       vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    lui_length  spacing;          // spacing between childrens
+    float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
+    lui_length      spacing;            // spacing between children
 } lui_row_data;
 
-// column
-
+// Layouts children in a column, top to down
+// Data is lui_column_data, array children
+extern const lui_type lui_column_type;
 typedef struct lui_column_data {
-    float       vertical_align;   // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    float       horizontal_align; // 0 - align left, 0.5 - align center, 1.0 - align right,  other values also work
-    lui_length  spacing;          // spacing between childrens
+    float           horizontal_align;   // 0 - align left,  0.5 - align center, 1.0 - align right, other values also work
+    lui_length      spacing;            // spacing between children
 } lui_column_data;
 
-// box
+// ===========================
+// Rendering Node Types
 
+// Constrains rendering to own dimensions
+// No data, single child
+extern const lui_type lui_clipbox_type;
+
+// Adds node depth offset
+// Decreasing depth means going 'into' the screen
+// Data is lui_depth_data, ingle childed
+extern const lui_type lui_depth_type;
+typedef struct lui_depth_data {
+    short depth_change;
+} lui_depth_data;
+
+// Box render primitive
+// Data is lui_box_data, single child
+extern const lui_type lui_box_type;
 typedef struct lui_box_data {
-    lui_color   tint;       // box color
-    const char* image;      // image name/path, may be NULL
-    uint32_t    shader;     // shader effect index
+    lui_color       tint;               // box color
+    const char*     image;              // image name/path, may be NULL
+    uint32_t        shader;             // shader effect index
 } lui_box_data;
 
-// text
- 
+// Text render primitive
+// Data is lui_text_data, single child
+extern const lui_type lui_text_type;
 typedef struct lui_text_data {
-    unsigned int  size;     // font size
-    const char*   font;     // font name/path
-    const char*   text;     // text pointer
-    lui_color     tint;     // text color modyficator
-    uint32_t      shader;   // shader effect index
+    unsigned int    size;               // font size
+    const char*     font;               // font name/path
+    const char*     text;               // text pointer
+    lui_color       tint;               // text color modyficator
+    uint32_t        shader;             // shader effect index
 } lui_text_data;
 
 // ===========================
-// Api
+// Cache
 
-typedef enum lui_draw_command_type {
-    lui_draw_box,
-    lui_draw_text,
-} lui_draw_command_type;
+lui_cache* lui_create_cache();
+void lui_free_cache(lui_cache*);
 
-typedef struct lui_draw_command {
-    lui_draw_command_type type;
-
-    lui_transform       transform;
-    int                 pixels_width;
-    int                 pixels_height;
-    int                 clipbox_index;
-    short               depth;
-
-    union {
-        lui_box_data     box_data;
-        lui_text_data    text_data;
-    };
-} lui_draw_command;
-
-typedef struct lui_arena {
-    char*  memory;
-    size_t capacity;
-    size_t position;
-} lui_arena;
-
-// ui functions return flag
-// flags are self explanatory
-typedef enum lui_return_flag {
-    lui_return_ok = 0,
-
-    // when temporary memory would overflow
-    lui_return_temp_arena_too_small,
-
-    // when command memory would overflow
-    lui_return_command_arena_too_small,
-
-    // when clip boxes would overflow
-    lui_return_clip_boxes_arena_too_small,
-
-    // when input boxes would overflow
-    lui_return_input_boxes_arena_too_small
-} lui_return_flag;
-
-// Note: if using fresh non-static arena remember to 0-initialized it!
-// If arena does not have memory, (0, 0, 0), allocs new block of required size
-// Else reallocs old block into new one
-// Returns non zero at success, zero at failure
-int lui_arena_resize(lui_arena* target, size_t size, void*(*realloc_func)(void*, size_t));
-
-// Frees arena memory
-// Makes target proper 0 initialized lui_arena
-void lui_arena_free(lui_arena* target, void(*free_func)(void*));
-
-// first step in rendering ui
-// computes desired resolution of each node
-lui_return_flag lui_measure(
-    const lui_node* root,           // ui tree root
-    lui_arena*      temp_arena,     // temporary memory arena
-    void*           user_context    // will be passed to injected measure functions
+void lui_update_cache(
+    lui_cache*      cache,
+    const lui_node* root,
+    int             resolution_x,
+    int             resolution_y
 );
 
-// second step in rendering ui
-// renders the ui according to their desired resolutions
-// resulting commands_arena and input_boxes_arena are depth sorted, from deepest to top
-lui_return_flag lui_render(
-    const lui_node* root,               // ui tree root
-    lui_arena*      temp_arena,         // temporary memory arena
-    int             resolution_x,       // screen resolution width
-    int             resolution_y,       // screen resolution height
-    lui_arena*      commands_arena,     // arena for draw commands
-    lui_arena*      clipboxs_arena,     // arena for clipboxes
-    lui_arena*      input_boxes_arena,  // arena for input boxes (may be NULL)
-    int             clear_input_boxes   // if true, clears input boxes arena, else adds to it
+// ===========================
+// Rendering API
+
+typedef struct lui_shared_create_info {
+    lgx_render_target_layout*   pipeline_render_target_layout;
+    uint32_t                    additional_pipeline_descriptors_layouts_count;
+    lgx_descriptor_layout**     additional_pipeline_descriptors_layouts;
+    lgx_shader*                 pipeline_vertex_shader;
+    lgx_shader*                 pipeline_pixel_shader;
+} lui_shared_create_info;
+
+lui_shared* lui_create_shared(lgx_hardware*, const lui_shared_create_info*);
+void lui_free_shared(lui_shared*);
+
+typedef struct lui_frames_create_info {
+    lui_shared* shared;
+    uint32_t    frames_in_flight_count;
+} lui_frames_create_info;
+
+lui_frames* lui_create_frames(lgx_hardware*, const lui_frames_create_info*);
+void lui_free_frames(lui_frames*);
+
+void lui_upload_cache(
+    lui_cache*          cache,
+    lui_shared*         shared,
+    lui_frames*         frames,
+    uint32_t            frame_idx,
+    lgx_command_list*   command_list,
+    lgx_hardware_queue* queue_for_uploads,
+    lgx_staging_memory* staging_memory,
+    uint64_t            staging_memory_region_offset,
+    uint64_t            staging_memory_region_size,
+    lgx_cpu_signal*     upload_finished_cpu,
+    lgx_gpu_signal*     upload_finished_gpu
 );
 
-// additional step for ui - handling input
-// provided generated input boxes arena, calls assigned lui_input_handler_func functions in the depth-sorted order
-// in case of having multiple widgets in one window, combine all boxes into one arena
-// (do not clear_input_boxes on render, use single arena)
-// otherwise you will have input-consumption bugs
-void lui_input(
-    lui_arena*                  input_boxes_arena,
-    lui_arena*                  clipboxes_arena,
-    lui_injection_input_state*  input_state,
-    float                       delta_time
+void lui_gcmd_render(
+    lgx_command_list*   target,
+    lui_frames*         frames,
+    uint32_t            frame
 );
 
 // ===========================
@@ -554,294 +445,719 @@ static inline lui_color lui_hex(const char* hex) {
     (sizeof(s) > 8 ? LUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
 }
 
-// ===========================
-// Transformations Implementations
-
-static inline lui_transform lui_trans(float dx, float dy, float sx, float sy, float deg_cw) {
-    float rad = deg_cw * (3.14159265358979323846f / 180.0f);
-
-    #ifdef LUI_IMPL_INVERT_ROTATION
-        float cosr = cosf(rad);
-        float sinr = -sinf(rad); // invert rotation
-    #else
-        float cosr = cosf(rad);
-        float sinr = sinf(rad);  // CW rotation by default
-    #endif
-
-    return (lui_transform){
-        .m00 = cosr * sx,
-        .m01 = sinr * sy,
-        .tx  = dx,
-        .m10 = -sinr * sx,
-        .m11 = cosr * sy,
-        .ty  = dy
-    };
-}
-
-static inline lui_transform lui_off(lui_transform m, float dx, float dy) {
-    m.tx += dx * m.m00 + dy * m.m01;
-    m.ty += dx * m.m10 + dy * m.m11;
-    return m;
-}
-
-static inline lui_transform lui_sca(lui_transform m, float sx, float sy) {
-    m.m00 *= sx;  m.m01 *= sy;
-    m.m10 *= sx;  m.m11 *= sy;
-    return m;
-}
-
-static inline lui_transform lui_rot(lui_transform m, float deg_cw) {
-    float rad = deg_cw * (3.14159265358979323846f / 180.0f);
-
-#ifdef LUI_IMPL_INVERT_ROTATION
-    float cosr = cosf(rad);
-    float sinr = sinf(rad);
-#else
-    float cosr = cosf(rad);
-    float sinr = -sinf(rad);
-#endif
-
-    float m00 = m.m00 * cosr + m.m01 * sinr;
-    float m01 = -m.m00 * sinr + m.m01 * cosr;
-    float m10 = m.m10 * cosr + m.m11 * sinr;
-    float m11 = -m.m10 * sinr + m.m11 * cosr;
-
-    m.m00 = m00; m.m01 = m01;
-    m.m10 = m10; m.m11 = m11;
-    return m;
-}
-
-static inline lui_transform lui_mul(lui_transform p, lui_transform c) {
-    lui_transform r;
-
-    r.m00 = p.m00 * c.m00 + p.m01 * c.m10;
-    r.m01 = p.m00 * c.m01 + p.m01 * c.m11;
-    r.tx  = p.m00 * c.tx  + p.m01 * c.ty + p.tx;
-
-    r.m10 = p.m10 * c.m00 + p.m11 * c.m10;
-    r.m11 = p.m10 * c.m01 + p.m11 * c.m11;
-    r.ty  = p.m10 * c.tx  + p.m11 * c.ty + p.ty;
-
-    return r;
-}
-
-// compile time fmod function
-#define LUI_FMOD_APPROX(x, m) \
-    ( ((x) >= 0.0f) ? ((x) - (m) * (int)((x)/(m))) : ((x) - (m) * ((int)((x)/(m)) - 1)) )
-
-#ifdef LUI_IMPL_INVERT_ROTATION
-// compile time deg to rad conversion
-#define LUI_DEG_TO_RAD(deg_cw) \
-    ((((LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) > 3.14159265f) ? \
-        ((LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) - 6.28318531f) : \
-        (((LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) < -3.14159265f) ? \
-            ((LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) + 6.28318531f) : \
-            (LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f))))
-#else
-// compile time deg to rad conversion
-#define LUI_DEG_TO_RAD(deg_cw) \
-    (((( -LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) > 3.14159265f) ? \
-        ((-LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) - 6.28318531f) : \
-        (((-LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) < -3.14159265f) ? \
-            ((-LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f) + 6.28318531f) : \
-            (-LUI_FMOD_APPROX((deg_cw), 360.0f) * 0.017453292519943295f))))
-#endif
-
-// compile time sin approx (x - rad)
-#define LUI_SING_APPROX(x) ((x) \
-  - ((x)*(x)*(x))/6.0 \
-  + ((x)*(x)*(x)*(x)*(x))/120.0 \
-  - ((x)*(x)*(x)*(x)*(x)*(x)*(x))/5040.0 \
-  + ((x)*(x)*(x)*(x)*(x)*(x)*(x)*(x)*(x))/362880.0 \
-  - ((x)*(x)*(x)*(x)*(x)*(x)*(x)*(x)*(x)*(x)*(x))/39916800.0)
-
-// compile time cos approx (x - rad)
-#define LUI_COS_APPROX(x) (1.0 \
-  - ((x)*(x))/2.0 \
-  + ((x)*(x)*(x)*(x))/24.0 \
-  - ((x)*(x)*(x)*(x)*(x)*(x))/720.0 \
-  + ((x)*(x)*(x)*(x)*(x)*(x)*(x)*(x))/40320.0 \
-  - ((x)*(x)*(x)*(x)*(x)*(x)*(x)*(x)*(x)*(x))/3628800.0)
-
-// compile time tranformation matrix builder
-// transformation order: rotate, scale, translate
-// this macro may be a little slow to process, be aware
-#define LUI_TRANS(offx, offy, scax, scay, deg_cw) \
-    (lui_transform){ \
-        .m00 = LUI_COS_APPROX(LUI_DEG_TO_RAD(deg_cw)) * (scax), \
-        .m01 = -LUI_SING_APPROX(LUI_DEG_TO_RAD(deg_cw)) * (scay), \
-        .tx  = (offx), \
-        .m10 = LUI_SING_APPROX(LUI_DEG_TO_RAD(deg_cw)) * (scax), \
-        .m11 = LUI_COS_APPROX(LUI_DEG_TO_RAD(deg_cw)) * (scay), \
-        .ty  = (offy) \
-    }
-
-#endif // LIGHT_USER_INTEFACE_H
-
-/*
-    Implementation
-*/
+#endif // LIGHT_USER_INTERFACE_H
 
 #ifdef LIGHT_USER_INTERFACE_IMPL
 
+// Implementation Notes:
+// 1 - last_frame_used_in_render values reference
+//  last_frame_used_in_render is used to clear hashmap from dead nodes
 /*
-    Important implementation notes!
-
-    1. In both measure and render passes the tree is walked IN THE SAME ORDER
-    This is to assure consistient indexation of children nodes
-
-    Rules:
-    - Root is index 0
-    - We always walk children left to right
-    - The next processed node always takes the first free index
-    - We enter a child, after all children of current node are indexed
-
-    Example:
-       0
-    /     \
-    1     2
-    | \   | \
-    3  4  5 6
-
-    The last used index is saved inside walk context
-
-    2. On adding new node check:
-    - Node info helpers
-    - Measure dispatch
-    - Render dispatch
-
-    3. Temp memory
-    - Temp memory is memory given by client to ui system for it's own needs
-    - In measurements pass, a block of this memory is allocated for measurements info
-    - In render pass, rest of memory is allocated like an arena, by functions that require
-        extra memory like render_row, render_column and so
-    - If temp memory renders to small, we perform longjmp out of recursion
-
-    4. Arena align
-    - Temporary arena is allocated with align, so diffrent types can be mixed
-    - Other arenas are allocated without align, as they hold only one type
+    0     - empty cell
+    1     - imposible value, to force garbage collection on all
+    2     - tombstone
+    3-255 - rendered at frame of index
 */
 
+#define LAST_FRAME_USED_IN_RENDER_EMPTY      0
+#define LAST_FRAME_USED_IN_RENDER_IMPOSIBLE  1
+#define LAST_FRAME_USED_IN_RENDER_TOMBSTONE  2
+#define LAST_FRAME_USED_IN_RENDER_FIRST      3
+
+#include <stdlib.h>
+
 // ===========================
-// Includes
+// Math helpers
 
-#include <setjmp.h>
-#include <stdalign.h>
+static inline int min_int(int a, int b) { return a < b ? a : b; }
+static inline int max_int(int a, int b) { return a < b ? b : a; }
 
-// ===========================
-// Node helpers
-
-static const unsigned char NODE_TYPE_NO_FLAG_MASK = (unsigned char)(lui_node_flag_ignore_min_width - 1);
-
-static inline int helper_is_single_childed(lui_node_type type) {
-    type &= NODE_TYPE_NO_FLAG_MASK;
-
-    switch (type) {
-    case lui_node_row: 
-    case lui_node_column: 
-    return 0;
-    }
-
-    return 1;
+static inline int limit_length(int length, lui_length limits) {
+    if (length > limits.max) length = limits.max;
+    if (length < limits.min) length = limits.min;
+    return length;
 }
 
-static inline const void* helper_get_data(const lui_node* node, const char* instance) {
-    if (node->type & lui_node_flag_data_instanced) return (void*)(instance + node->data_instance_offset);
+static inline int limit_length_gain(int current, lui_length limit, int proposed) {
+    if (current + proposed < limit.min) return limit.min - current;
+    if (current + proposed > limit.max) return limit.max - current;
+    return proposed;
+}
+
+static inline lla_mat2x3 mat2x3_scale(lla_mat2x3 m, float sx, float sy) {
+    m.m[0][0] *= sx;  m.m[0][1] *= sy;
+    m.m[1][0] *= sx;  m.m[1][1] *= sy;
+    return m;
+}
+
+static inline lla_mat2x3 mat2x3_offset(lla_mat2x3 m, float ox, float oy) {
+    m.m[2][0] += ox; m.m[2][1] += oy;
+    return m;
+}
+
+// ===========================
+// Types helper
+
+#define box_behavior_type (lui_type){                           \
+    .array_child        = 0,                                    \
+    .auxilary_bytes     = 0,                                    \
+    .auxilary           = NULL,                                 \
+    .width_measure      = lui_overlay_width_measure_func,       \
+    .width_distribute   = lui_overlay_width_distribute_func,    \
+    .height_measure     = lui_overlay_height_measure_func,      \
+    .height_distribute  = lui_overlay_height_distribute_func,   \
+    .position           = lui_overlay_position_func,            \
+    .transform          = NULL                                  \
+} 
+
+// ===========================
+// Instance type
+// This type is specially handled in pass implementation
+const lui_type lui_instance_type = box_behavior_type;
+
+// ===========================
+// Invalidation type
+// This type is specially handled in pass implementation
+const lui_type lui_invalidation_type = box_behavior_type;
+
+// ===========================
+// Overlay Type
+
+void lui_overlay_width_measure_func(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)node_data; (void)auxilary; lui_length own = {0, 0, 0.0f};
+
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i]->measured_width;
+        own.min  = max_int(own.min, child.min);
+        own.max  = max_int(own.max, child.max);
+    }
+
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_width = own;
+}
+
+void lui_overlay_width_distribute_func(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)node_data; (void)auxilary;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i]->given_width = limit_length(node_state->given_width, children_states[i]->measured_width);
+    }
+}
+
+void lui_overlay_height_measure_func(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)node_data; (void)auxilary; lui_length own = {0, 0, 0.0f};
+
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i]->measured_height;
+        own.min  = max_int(own.min, child.min);
+        own.max  = max_int(own.max, child.max);
+    }
+
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_height = own;
+}
+
+void lui_overlay_height_distribute_func(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)node_data; (void)auxilary;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i]->given_height = limit_length(node_state->given_height, children_states[i]->measured_height);
+    }
+}
+
+void lui_overlay_position_func(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)node_data; (void)auxilary;
+
+    for (size_t i = 0; i < children_count; ++i) {
+        children_states[i]->hori_offset = 0;
+        children_states[i]->vert_offset = 0;
+    }
+}
+
+const lui_type lui_overlay_type = {
+    .array_child        = 1,
+    .auxilary_bytes     = 0,
+    .auxilary           = NULL,
+    .width_measure      = lui_overlay_width_measure_func,
+    .width_distribute   = lui_overlay_width_distribute_func,
+    .height_measure     = lui_overlay_height_measure_func,
+    .height_distribute  = lui_overlay_height_distribute_func,
+    .position           = lui_overlay_position_func,
+    .transform          = NULL
+};
+
+// ===========================
+// Sizebox Type
+
+void sizebox_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    const lui_sizebox_data* data = node_data;
+    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    if (data->flag & lui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
+    if (data->flag & lui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
+    if (data->flag & lui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
+}
+
+void sizebox_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    const lui_sizebox_data* data = node_data;
+    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    if (data->flag & lui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
+    if (data->flag & lui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
+    if (data->flag & lui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
+}
+
+const lui_type lui_sizebox_type = {
+    .array_child        = 0,
+    .auxilary_bytes     = 0,
+    .auxilary           = NULL,
+    .width_measure      = sizebox_width_measure,
+    .width_distribute   = lui_overlay_width_distribute_func,
+    .height_measure     = sizebox_height_measure,
+    .height_distribute  = lui_overlay_height_distribute_func,
+    .position           = lui_overlay_position_func,
+    .transform          = NULL
+};
+
+// ===========================
+// Padding Type
+
+static inline int padding_distribute_length(
+    int* a, lui_length al,
+    int* b, lui_length bl,
+    int* c, lui_length cl,
+    int remaining
+) {
+    for (int pass = 0; pass < 3 && remaining > 0; pass++) {
+        float tf = 0.0f;
+        if (*a < al.max) tf += al.flex;
+        if (*b < bl.max) tf += bl.flex;
+        if (*c < cl.max) tf += cl.flex;
+        if (tf <= 0.0f) break;
+
+        int ga = (*a < al.max && al.flex > 0.0f) ? limit_length_gain(*a, al, (int)((float)remaining * al.flex / tf)) : 0;
+        int gb = (*b < bl.max && bl.flex > 0.0f) ? limit_length_gain(*b, bl, (int)((float)remaining * bl.flex / tf)) : 0;
+        int gc = (*c < cl.max && cl.flex > 0.0f) ? limit_length_gain(*c, cl, (int)((float)remaining * cl.flex / tf)) : 0;
+
+        if (ga + gb + gc == 0) break; // all remaining too small after int cast
+        *a += ga; *b += gb; *c += gc;
+        remaining -= ga + gb + gc;
+    }
+    return remaining;
+}
+
+void padding_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary;
+    const lui_padding_data* data = node_data;
+    lui_length own = {0, 0, 0.0f};
+    
+    int child_min = 0, child_max = 0;
+    if (children_count > 0) {
+        child_min = children_states[0]->measured_width.min;
+        child_max = children_states[0]->measured_width.max;
+    }
+
+    int w_min = data->left.min + child_min + data->right.min;
+    int w_max = data->left.max + child_max + data->right.max;
+
+    node_state->measured_width = (lui_length){
+        .min  = w_min,
+        .max  = w_max,
+        .flex = (w_min != w_max) ? 1.0f : 0.0f,
+    };
+}
+
+void padding_width_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; if (children_count == 0) return;
+    const lui_padding_data* data = node_data;
+    lui_node_layout_state* child = children_states[0];
+
+    // Give every element its minimum
+    int left_w  = data->left.min;
+    int right_w = data->right.min;
+    int child_w = child->measured_width.min;
+
+    // Divide remaining space, give leftover to child
+    int remaining = node_state->given_width - left_w - right_w - child_w;
+    if (remaining > 0) {
+        remaining = padding_distribute_length(
+            &left_w, data->left, &right_w, data->right, &child_w, child->measured_width, remaining
+        ); child_w += limit_length_gain(child_w, child->measured_width, remaining);
+    }
+
+    // Assign child width and position
+    child->given_width = child_w;
+    child->hori_offset = (left_w - right_w) / 2;
+}
+
+void padding_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; const lui_padding_data* data = node_data;
+
+    int child_min = 0, child_max = 0;
+    if (children_count > 0) {
+        child_min = children_states[0]->measured_height.min;
+        child_max = children_states[0]->measured_height.max;
+    }
+
+    int h_min = data->top.min + child_min + data->bottom.min;
+    int h_max = data->top.max + child_max + data->bottom.max;
+
+    node_state->measured_height = (lui_length){
+        .min  = h_min,
+        .max  = h_max,
+        .flex = (h_min != h_max) ? 1.0f : 0.0f,
+    };
+}
+
+void padding_height_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; if (children_count == 0) return;
+    const lui_padding_data* data = node_data;
+    lui_node_layout_state* child = children_states[0];
+
+    // Give every element its minimum
+    int top_h    = data->top.min;
+    int bottom_h = data->bottom.min;
+    int child_h  = child->measured_height.min;
+
+    // Divide remaining space, give leftover to child
+    int remaining = node_state->given_height - top_h - bottom_h - child_h;
+    if (remaining > 0) {
+        remaining = padding_distribute_length(
+            &top_h, data->top, &bottom_h, data->bottom, &child_h, child->measured_height, remaining
+        ); child_h += limit_length_gain(child_h, child->measured_height, remaining);
+    }
+
+    // Assign child width and position
+    child->given_height = child_h;
+    child->vert_offset  = (bottom_h - top_h) / 2;
+}
+
+const lui_type lui_padding_type = {
+    .array_child        = 0,
+    .auxilary_bytes     = 0,
+    .auxilary           = NULL,
+    .width_measure      = padding_width_measure,
+    .width_distribute   = padding_width_distribute,
+    .height_measure     = padding_height_measure,
+    .height_distribute  = padding_height_distribute,
+    .position           = NULL,
+    .transform          = NULL
+};
+
+// ===========================
+// Row Type
+
+void row_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; 
+    const lui_row_data* data = (const lui_row_data*)node_data;
+    lui_length          own  = {0, 0, 0.0f};
+
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i]->measured_width;
+        own.min += child.min; own.max += child.max;
+    }
+
+    size_t spaces = children_count ? children_count - 1 : 0;
+    own.min += spaces * data->spacing.min;
+
+    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) own.max += spaces * data->spacing.max;
+    else own.max = lui_inf_length;
+
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_width = own;
+}
+
+void row_width_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; const lui_row_data* data = (const lui_row_data*)node_data;
+
+    // Find spaces count
+    size_t spaces_count = children_count ? children_count - 1 : 0;
+
+    // Minimal pass
+    int   used_width = 0;
+    float flexsum    = 0.0f;
+    int   spacing    = data->spacing.min;
+    for (size_t i = 0; i < children_count; ++i) {
+        flexsum += children_states[i]->measured_width.flex;
+        children_states[i]->given_width = children_states[i]->measured_width.min;
+        used_width += children_states[i]->given_width;
+    }
+    flexsum += data->spacing.flex;
+    used_width += spaces_count * data->spacing.min;
+
+    // Divide extra space
+    int left_width = node_state->given_width - used_width;
+    if (left_width < 0) left_width = 0;
+    while (left_width) {
+        float next_flexsum = 0.0f;
+        int   partitioned  = 0;
+        
+        // add to spacing
+        if (spacing < data->spacing.max) {
+            int gain = (int)(left_width * (data->spacing.flex / flexsum));
+            if (spaces_count) gain /= (int)spaces_count;
+            gain = limit_length_gain(spacing, data->spacing, gain);
+
+            spacing     += gain; 
+            partitioned += gain * spaces_count;
+
+            if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
+        }
+
+        // add to children
+        for (size_t i = 0; i < children_count; ++i) {
+            lui_length  m = children_states[i]->measured_width;
+            int* assigned = &children_states[i]->given_width;
+            if (*assigned == m.max) continue;   // maxed
+
+            int gain = (int)(left_width * (m.flex / flexsum));
+            gain = limit_length_gain(*assigned, m, gain);
+
+            *assigned   += gain;
+            partitioned += gain;
+
+            if (*assigned != m.max) next_flexsum += m.flex;
+        }
+
+        // if failed to divide the space, break
+        if (partitioned == 0) break;
+
+        left_width -= partitioned;
+        flexsum     = next_flexsum;
+    }
+
+    // Position children in horizontal axis
+    int cursor_x = -node_state->given_width / 2;
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_node_layout_state* child = children_states[i];
+        cursor_x += child->given_width / 2;
+        child->hori_offset = cursor_x;
+        cursor_x += child->given_width / 2 + spacing;
+    }
+}
+
+void row_position(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; const lui_row_data* data = (const lui_row_data*)node_data;
+
+    // Position children in vertial axis
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_node_layout_state* child = children_states[i];
+        child->vert_offset = (node_state->given_height - child->given_height) * (0.5f - data->vertical_align);
+    }
+}
+
+const lui_type lui_row_type = {
+    .array_child        = 1,
+    .auxilary_bytes     = 0,
+    .auxilary           = NULL,
+    .width_measure      = row_width_measure,
+    .width_distribute   = row_width_distribute,
+    .height_measure     = lui_overlay_height_measure_func,
+    .height_distribute  = lui_overlay_height_distribute_func,
+    .position           = row_position,
+    .transform          = NULL
+};
+
+// ===========================
+// Column Type
+
+void column_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary;
+    const lui_column_data* data = (const lui_column_data*)node_data;
+    lui_length             own  = {0, 0, 0.0f};
+
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_length child = children_states[i]->measured_height;
+        own.min += child.min; own.max += child.max;
+    }
+
+    size_t spaces = children_count ? children_count - 1 : 0;
+    own.min += spaces * data->spacing.min;
+
+    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) own.max += spaces * data->spacing.max;
+    else own.max = lui_inf_length;
+
+    if (own.min != own.max) own.flex = 1.0f;
+    node_state->measured_height = own;
+}
+
+void column_height_distribute(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary;
+    const lui_column_data* data = (const lui_column_data*)node_data;
+
+    // Find spaces count
+    size_t spaces_count = children_count ? children_count - 1 : 0;
+
+    // Minimal pass
+    int   used_height = 0;
+    float flexsum     = 0.0f;
+    int   spacing     = data->spacing.min;
+    for (size_t i = 0; i < children_count; ++i) {
+        flexsum += children_states[i]->measured_height.flex;
+        children_states[i]->given_height = children_states[i]->measured_height.min;
+        used_height += children_states[i]->given_height;
+    }
+    flexsum += data->spacing.flex;
+    used_height += spaces_count * data->spacing.min;
+
+    // Divide extra space
+    int left_height = node_state->given_height - used_height;
+    if (left_height < 0) left_height = 0;
+    while (left_height) {
+        float next_flexsum = 0.0f;
+        int   partitioned  = 0;
+
+        // add to spacing
+        if (spacing < data->spacing.max) {
+            int gain = (int)(left_height * (data->spacing.flex / flexsum));
+            if (spaces_count) gain /= (int)spaces_count;
+            gain = limit_length_gain(spacing, data->spacing, gain);
+
+            spacing     += gain;
+            partitioned += gain * spaces_count;
+
+            if (spacing != data->spacing.max) next_flexsum += data->spacing.flex;
+        }
+
+        // add to children
+        for (size_t i = 0; i < children_count; ++i) {
+            lui_length  m = children_states[i]->measured_height;
+            int* assigned = &children_states[i]->given_height;
+            if (*assigned == m.max) continue;   // maxed
+
+            int gain = (int)(left_height * (m.flex / flexsum));
+            gain = limit_length_gain(*assigned, m, gain);
+
+            *assigned   += gain;
+            partitioned += gain;
+
+            if (*assigned != m.max) next_flexsum += m.flex;
+        }
+
+        // if failed to divide the space, break
+        if (partitioned == 0) break;
+
+        left_height -= partitioned;
+        flexsum      = next_flexsum;
+    }
+
+    // Position children in vertical axis
+    int cursor_y = node_state->given_height / 2;
+    for (size_t i = 0; i < children_count; i++) {
+        lui_node_layout_state* child = children_states[i];
+        cursor_y -= child->given_height / 2;
+        child->vert_offset = cursor_y;
+        cursor_y -= child->given_height / 2 + spacing;
+    }
+}
+
+void column_position(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    (void)auxilary; const lui_column_data* data = (const lui_column_data*)node_data;
+
+    // Position children in horizontal axis
+    for (size_t i = 0; i < children_count; ++i) {
+        lui_node_layout_state* child = children_states[i];
+        child->hori_offset = (node_state->given_width  - child->given_width)  * (data->horizontal_align - 0.5f);
+    }
+}
+
+const lui_type lui_column_type = {
+    .array_child        = 1,
+    .auxilary_bytes     = 0,
+    .auxilary           = NULL,
+    .width_measure      = lui_overlay_width_measure_func,
+    .width_distribute   = lui_overlay_width_distribute_func,
+    .height_measure     = column_height_measure,
+    .height_distribute  = column_height_distribute,
+    .position           = column_position,
+    .transform          = NULL
+};
+
+// ===========================
+// Clipbox Type
+// This type is specially handled in pass implementation
+const lui_type lui_clipbox_type = box_behavior_type;
+
+// ===========================
+// Depth Type
+// This type is specially handled in pass implementation
+const lui_type lui_depth_type = box_behavior_type;
+
+// ===========================
+// Box Type
+// This type is specially handled in pass implementation
+const lui_type lui_box_type = box_behavior_type;
+
+// ===========================
+// Text type
+// This type is specially handled in pass implementation
+
+typedef struct text_type_auxilary_state {
+    lpr_partitioner*    partitioner;
+    lpr_partition*      owned_glyph_buffer_partition;
+    float               text_width;
+    float               text_height;
+} text_type_auxilary_state;
+
+void text_auxilary_destructor(void* auxilary) {
+    text_type_auxilary_state* aux = auxilary;
+    if (aux->owned_glyph_buffer_partition) lpr_partitioner_free_partition(aux->partitioner, aux->owned_glyph_buffer_partition);
+    aux->owned_glyph_buffer_partition = NULL;
+}
+
+void text_width_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    text_type_auxilary_state* aux = auxilary;
+    node_state->measured_width.min = max_int(node_state->measured_width.min, (int)aux->text_width);
+    node_state->measured_width.max = max_int(node_state->measured_width.max, (int)aux->text_width);
+    if (node_state->measured_width.min != node_state->measured_width.max) node_state->measured_width.flex = 1.0f;
+}
+
+void text_height_measure(
+    const void*             node_data,
+    lui_node_layout_state*  node_state,
+    size_t                  children_count,
+    lui_node_layout_state** children_states,
+    void*                   auxilary
+) {
+    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    text_type_auxilary_state* aux = auxilary;
+    node_state->measured_height.min = max_int(node_state->measured_height.min, (int)aux->text_height);
+    node_state->measured_height.max = max_int(node_state->measured_height.max, (int)aux->text_height);
+    if (node_state->measured_height.min != node_state->measured_height.max) node_state->measured_height.flex = 1.0f;
+}
+
+const lui_type lui_text_type = {
+    .array_child            = 0,
+    .auxilary_bytes         = sizeof(text_type_auxilary_state),
+    .auxilary               = NULL,
+    .auxilary_destructor    = text_auxilary_destructor,
+    .width_measure          = text_width_measure,
+    .width_distribute       = lui_overlay_width_distribute_func,
+    .height_measure         = text_height_measure,
+    .height_distribute      = lui_overlay_height_distribute_func,
+    .position               = lui_overlay_position_func,
+    .transform              = NULL
+};
+
+// ===========================
+// Node fields reads
+
+static inline const void* get_node_data(const lui_node* node, const char* instance) {
+    if (node->flags & lui_flag_instanced_data) return (void*)(instance + node->data_offset);
     return node->data;
 }
 
-static inline const lui_node* helper_get_node_single_child(const lui_node* node, const char* instance) {
-    if (!(node->type & lui_node_flag_child_instanced)) return node->child;
-    return *(const lui_node**)(instance + node->child_instance_offset);
+static inline const lui_node* get_node_child(const lui_node* node, const char* instance) {
+    if (node->flags & lui_flag_instanced_child) return (const lui_node*)(instance + node->child_offset);
+    return node->child;
 }
-
-static inline const lui_node_array helper_get_node_children_array(const lui_node* node, const char* instance) {
-    if (!(node->type & lui_node_flag_child_instanced)) return *node->child_array;
-    return **(const lui_node_array**)(instance + node->child_instance_offset);
-}
-
-// ===========================
-// Arena helpers
-
-// Alloc block of arena memory after allocated block end
-// If arena proves to small, longjmps to given jmp buffer with given failure flag
-// Allocs aligned with max aligment
-static inline char* helper_arena_alloc_aligned(lui_arena* target, size_t bytes, jmp_buf* failure_jmp, lui_return_flag failure_flag) {
-    size_t alignment   = alignof(max_align_t);
-    size_t aligned_pos = ((target->position) + (alignment - 1)) & ~(alignment - 1);
-
-    if (bytes > target->capacity - aligned_pos) longjmp(*failure_jmp, failure_flag);
-
-    char* result = target->memory + aligned_pos;
-    target->position = aligned_pos + bytes;
-
-    return result;
-}
-
-// Alloc block of arena memory after allocated block end
-// If arena proves to small, longjmps to given jmp buffer with given failure flag
-static inline char* helper_arena_alloc_unaligned(lui_arena* target, size_t bytes, jmp_buf* failure_jmp, lui_return_flag failure_flag) {
-    if (bytes > target->capacity - target->position) longjmp(*failure_jmp, failure_flag);
-    char* result = target->memory + target->position;
-    target->position += bytes;
-    return result;
-}
-
-// Undo all allocations till given position in arena
-static inline void helper_arena_roll_till(lui_arena* target, char* to_position) {
-    size_t temp_pos = to_position - target->memory;
-    target->position = temp_pos;
-}
-
-// ===========================
-// Maths helpers
-
-// max(a, b)
-static inline int helper_max(int a, int b) {
-    return a > b ? a : b;
-}
-
-// min(a, b)
-static inline int helper_min(int a, int b) {
-    return a < b ? a : b;
-}
-
-// linear interpolation function
-static inline float helper_lerp(float a, float b, float t) {
-    return a + t * (b - a);
-}
-
-// ===========================
-// Arena
-
-int lui_arena_resize(lui_arena* target, size_t size, void*(*realloc_func)(void*, size_t)) {
-    char* new_memory = realloc_func(target->memory, size);
-    if (!new_memory) return 0; // realloc failure
-
-    target->memory   = new_memory;
-    target->position = target->position;
-    target->capacity = size;
-
-    return 1;
-}
-
-void lui_arena_free(lui_arena* target, void(*free_func)(void*)) {
-    free_func(target->memory);
-    target->memory   = 0x0;
-    target->position = 0;
-    target->capacity = 0;
-}
-
-// ===========================
-// Input Helper Types
-
-typedef struct helper_input_box {
-    lui_transform           transform;
-    int                     clipbox_index;
-    short                   depth;
-    lui_input_handler_func  handler;
-    void*                   data;
-} helper_input_box;
 
 // ===========================
 // Stable sort helper
@@ -877,1166 +1193,1698 @@ void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void
     return;
 }
 
-static inline int helper_depth_compare_input_boxes(const void* av, const void* bv) {
-    const helper_input_box* a = (const helper_input_box*)av; 
-    const helper_input_box* b = (const helper_input_box*)bv;
-    if (a->depth > b->depth) return 1;
-    return 0;
+// ===========================
+// Cache Object
+
+typedef struct cache_slot cache_slot;
+typedef struct auxilary_slot auxilary_slot;
+typedef struct draw_request draw_request;
+typedef struct text_request text_request;
+typedef struct clipbox_request clipbox_request;
+
+struct lui_cache {
+    // Passes constants
+    int                 resolution_x;
+    int                 resolution_y;
+    unsigned char       frame_index;
+
+    // Nodes cache hashmap
+    size_t              cache_capacity;
+    size_t              cache_fill;
+    cache_slot*         cache_slots;
+
+    // Nodes auxilary state hashmap
+    size_t              auxilary_capacity;
+    size_t              auxilary_fill;
+    auxilary_slot*      auxilary_slots;
+    
+    // Draw requests dynamic array
+    size_t              draw_requests_capacity;
+    size_t              draw_requests_count;
+    draw_request*       draw_requests;
+
+    // Text requests dynamic array
+    size_t              text_requests_capacity;
+    size_t              text_requests_count;
+    text_request*       text_requests;
+
+    // Clipbox requests dynamic array
+    size_t              clipbox_requests_capacity;
+    size_t              clipbox_requests_count;
+    clipbox_request*    clipbox_requests;
+};
+
+lui_cache* lui_create_cache() {
+    lui_cache* cache = calloc(1, sizeof(lui_cache));
+    return cache;
 }
 
-static inline int helper_depth_compare_draw_commands(const void* av, const void* bv) {
-    const lui_draw_command* a = (const lui_draw_command*)av; 
-    const lui_draw_command* b = (const lui_draw_command*)bv;
-    if (a->depth > b->depth) return 1;
-    return 0;
+static void auxilary_hashmap_garbage_collect(lui_cache* cache);
+static void free_cached_text_requests(lui_cache* cache);
+void lui_free_cache(lui_cache* cache) {
+    if (!cache) return;
+
+    // Free all auxilary slots by using impossible value
+    cache->frame_index = LAST_FRAME_USED_IN_RENDER_IMPOSIBLE;
+    auxilary_hashmap_garbage_collect(cache);
+
+    // Free all cached textes
+    free_cached_text_requests(cache);
+
+    free(cache->cache_slots);
+    free(cache->auxilary_slots);
+    free(cache->draw_requests);
+    free(cache->text_requests);
+    free(cache->clipbox_requests);
+    free(cache);
 }
 
 // ===========================
-// Measuring
+// Cache Hashmaps
 
-typedef struct helper_measurement {
-    lui_length width;
-    lui_length height;
-} helper_measurement;
+typedef struct node_stable_index {
+    const lui_node* node;
+    const void*     instance;
+} node_stable_index;
 
-typedef struct helper_measurement_walk_context {
-    jmp_buf             jmp_target;         // lui_measure call jmp buf, in case of error
+typedef struct cache_slot {
+    node_stable_index       key;
+    size_t                  value_child_count;
+    lui_node_layout_state   value_state;
+    unsigned char           last_frame_used_in_render;  
+} cache_slot;
 
-    size_t              last_used_index;    // see implementation note, also equal to count of measurements made, 
-                                            // used to keep track measurements array fill
+typedef struct auxilary_slot {
+    node_stable_index       key;
+    const lui_type*         state_type;
+    void*                   state_ptr;
+    unsigned char           last_frame_used_in_render;  
+} auxilary_slot;
 
-    helper_measurement* measurements;       // measurements array, dynamicaly expanding at the begining of temp_arena
-    lui_arena*          temp_arena;         // temporary arena, measurements write target
+static uint64_t hash_ptr(const void* p) {
+    uint64_t x = (uint64_t)(uintptr_t)p;
+    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27; x *= 0x94d049bb133111ebULL;
+    return (x ^ (x >> 31));
+}
 
-    const void*         instance;           // current subtree instance
-    void*               user_context;       // user context to be passed to injected functions
-} helper_measurement_walk_context;
+static size_t hash_key(node_stable_index key) {
+    uint64_t h1 = hash_ptr(key.node);
+    uint64_t h2 = hash_ptr(key.instance);
+    return (size_t)(h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)));
+}
 
-// Function dispatching measuring based on node type
-// - mc   - measurement walk context
-// - node - current context
-// - idx  - tree order index
-// This function also index node children
-// All measure dispatch case functions have extra argument
-// - cidx - first child index
-static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node* node, size_t idx);
+// Definies three functions:
+// void       PREFIX##_hashmap_grow             (lui_cache* cache);
+// SLOT_TYPE* PREFIX##_hashmap_get              (lui_cache* cache, node_stable_index key, int insert_if_none)
+// void       PREFIX##_hashmap_garbage_collect  (lui_cache* cache) 
+// Define HASHMAP_SLOT_INITIALIZER to define default slot value
+// Define HASHMAP_SLOT_DESTRUCTOR(slot ptr) to set garbage collector slot free method
+#define DEFINE_HASHMAP_FUNCS(PREFIX, SLOT_TYPE, SLOTS_FIELD, CAP_FIELD, FILL_FIELD) \
+\
+static SLOT_TYPE* PREFIX##_hashmap_get                                          \
+(lui_cache* cache, node_stable_index key, int insert_if_none);                  \
+\
+static void PREFIX##_hashmap_grow(lui_cache* cache) {                           \
+    size_t old_cap = cache->CAP_FIELD;                                          \
+    SLOT_TYPE* old_slots = cache->SLOTS_FIELD;                                  \
+\
+    size_t new_cap = old_cap ? old_cap * 2 : 64;                                \
+\
+    cache->SLOTS_FIELD = calloc(new_cap, sizeof(*cache->SLOTS_FIELD));          \
+    cache->CAP_FIELD   = new_cap;                                               \
+    cache->FILL_FIELD  = 0;                                                     \
+\
+    for (size_t i = 0; i < old_cap; ++i) {                                      \
+        unsigned char time = old_slots[i].last_frame_used_in_render;            \
+        if (time == LAST_FRAME_USED_IN_RENDER_EMPTY ||                          \
+            time == LAST_FRAME_USED_IN_RENDER_TOMBSTONE) continue;              \
+        SLOT_TYPE* dst = PREFIX##_hashmap_get(cache, old_slots[i].key, 1);      \
+        *dst = old_slots[i];                                                    \
+    }                                                                           \
+\
+    free(old_slots);                                                            \
+}                                                                               \
+\
+static SLOT_TYPE* PREFIX##_hashmap_get(                                         \
+    lui_cache* cache, node_stable_index key, int insert_if_none) {              \
+    if ((cache->FILL_FIELD + 1) * 10 >= cache->CAP_FIELD * 7) {                 \
+        PREFIX##_hashmap_grow(cache);                                           \
+    }                                                                           \
+\
+    size_t mask = cache->CAP_FIELD - 1;                                         \
+    size_t idx  = hash_key(key) & mask;                                         \
+\
+    for (SLOT_TYPE* tombstone = NULL;;) {                                       \
+        SLOT_TYPE* slot = &cache->SLOTS_FIELD[idx];                             \
+        unsigned char time = slot->last_frame_used_in_render;                   \
+\
+        if (time == LAST_FRAME_USED_IN_RENDER_EMPTY) {                          \
+            if (!insert_if_none) return NULL;                                   \
+            if (tombstone) slot = tombstone;                                    \
+            else cache->FILL_FIELD++;                                           \
+            *slot = (SLOT_TYPE)HASHMAP_SLOT_INITIALIZER;                        \
+            return slot;                                                        \
+        }                                                                       \
+\
+        if (time == LAST_FRAME_USED_IN_RENDER_TOMBSTONE) {                      \
+            if (!tombstone) tombstone = slot;                                   \
+         }                                                                      \
+        else if (                                                               \
+            slot->key.node == key.node &&                                       \
+            slot->key.instance == key.instance                                  \
+        ) return slot;                                                          \
+\
+        idx = (idx + 1) & mask;                                                 \
+    }                                                                           \
+}                                                                               \
+\
+static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                \
+    for (size_t i = 0; i < cache->CAP_FIELD; i++) {                             \
+        SLOT_TYPE*     slot = &cache->SLOTS_FIELD[i];                           \
+        unsigned char* time = &slot->last_frame_used_in_render;                 \
+        if (*time                                           &&                  \
+            *time != LAST_FRAME_USED_IN_RENDER_TOMBSTONE    &&                  \
+            *time != cache->frame_index                                         \
+        ) {                                                                     \
+            HASHMAP_SLOT_DESTRUCTOR(slot);                                      \
+            *time = LAST_FRAME_USED_IN_RENDER_TOMBSTONE;                        \
+        }                                                                       \
+    }                                                                           \
+}
 
-// See measure_copy_child
-// Exposed for lui_node_instance dispatch
-static inline void measure_copy_child_given_child
-(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx, const lui_node* child) {
-    helper_measurement* own = &mc->measurements[idx];
+#define HASHMAP_SLOT_INITIALIZER {.key = key}
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr)
+DEFINE_HASHMAP_FUNCS(
+    cache, cache_slot, cache_slots, cache_capacity, cache_fill
+);
 
-    if (child) {
-        measure_dispatch(mc, child, cidx);
-        *own = mc->measurements[cidx];
-        return;
+#undef HASHMAP_SLOT_INITIALIZER
+#undef HASHMAP_SLOT_DESTRUCTOR
+
+static inline void auxilary_hashmap_slot_destructor(auxilary_slot* slot) {
+    if (slot->key.node->type->auxilary_destructor) {
+        slot->key.node->type->auxilary_destructor(slot->state_ptr); 
+    } free(slot->state_ptr); slot->state_ptr = NULL;
+}
+
+#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_type = NULL, .state_ptr = NULL}
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) auxilary_hashmap_slot_destructor(slot_ptr)
+DEFINE_HASHMAP_FUNCS(
+    auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
+);
+
+// Gets slot, always inserts, as cache must always exist for node
+static inline cache_slot* cache_get_utill(lui_cache* cache, node_stable_index index) {
+    return cache_hashmap_get(cache, index, 1);
+}
+
+// Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
+static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_index index) {
+    if (!index.node->type->auxilary_bytes) return NULL; // none desired
+    auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
+
+    // handle case where node type has changed
+    if (slot->state_type && slot->state_type != index.node->type) {
+        if (index.node->type->auxilary_destructor) index.node->type->auxilary_destructor(slot->state_ptr);
+        free(slot->state_ptr); slot->state_ptr = NULL;
     }
-
-    *own = (helper_measurement){
-        .width  = {0, 0, 0.0f},
-        .height = {0, 0, 0.0f}
-    };
-}
-
-// Basic measure option for single childed nodes
-// If node have child, the parent node measurement is set to child's measurement
-// Else node's measurement is set to (lui_length){0, inf, 1.0f} in both axes
-static inline void measure_copy_child(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    const lui_node* child = helper_get_node_single_child(node, mc->instance);
-    measure_copy_child_given_child(mc, node, idx, cidx, child);
-}
-
-// Measure option for lui_node_measure_transform in three steps:
-// - Measure child 'measure_copy_child'
-// - Apply transform
-// - Find bounding box, and save it as own measurement
-static inline void measure_transform(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    measure_copy_child(mc, node, idx, cidx);
-
-    const lui_transform_data* data = helper_get_data(node, mc->instance);
-    helper_measurement* own = &mc->measurements[idx];
-
-    // if not does not apply
-    if (!data->apply_transform_at_measure) return;
-
-    lui_transform t = data->transform;
-
-    // Helper to transform point
-    #define TRANSFORM_X(x, y) (t.m00 * (x) + t.m01 * (y) + t.tx)
-    #define TRANSFORM_Y(x, y) (t.m10 * (x) + t.m11 * (y) + t.ty)
-
-    // minimum size
-    {
-        float w = (float)own->width.min;
-        float h = (float)own->height.min;
-
-        float x0 = TRANSFORM_X(0, 0);
-        float y0 = TRANSFORM_Y(0, 0);
-
-        float x1 = TRANSFORM_X(w, 0);
-        float y1 = TRANSFORM_Y(w, 0);
-
-        float x2 = TRANSFORM_X(0, h);
-        float y2 = TRANSFORM_Y(0, h);
-
-        float x3 = TRANSFORM_X(w, h);
-        float y3 = TRANSFORM_Y(w, h);
-
-        float min_x = fminf(fminf(x0, x1), fminf(x2, x3));
-        float max_x = fmaxf(fmaxf(x0, x1), fmaxf(x2, x3));
-
-        float min_y = fminf(fminf(y0, y1), fminf(y2, y3));
-        float max_y = fmaxf(fmaxf(y0, y1), fmaxf(y2, y3));
-
-        own->width.min  = (int)ceilf(max_x - min_x);
-        own->height.min = (int)ceilf(max_y - min_y);
-    }
-
-    // maximum size
-    if (own->width.max != lui_inf_length && own->height.max != lui_inf_length) {
-        float w = (float)own->width.max;
-        float h = (float)own->height.max;
-
-        float x0 = TRANSFORM_X(0, 0);
-        float y0 = TRANSFORM_Y(0, 0);
-
-        float x1 = TRANSFORM_X(w, 0);
-        float y1 = TRANSFORM_Y(w, 0);
-
-        float x2 = TRANSFORM_X(0, h);
-        float y2 = TRANSFORM_Y(0, h);
-
-        float x3 = TRANSFORM_X(w, h);
-        float y3 = TRANSFORM_Y(w, h);
-
-        float min_x = fminf(fminf(x0, x1), fminf(x2, x3));
-        float max_x = fmaxf(fmaxf(x0, x1), fmaxf(x2, x3));
-
-        float min_y = fminf(fminf(y0, y1), fminf(y2, y3));
-        float max_y = fmaxf(fmaxf(y0, y1), fmaxf(y2, y3));
-
-        own->width.max  = (int)ceilf(max_x - min_x);
-        own->height.max = (int)ceilf(max_y - min_y);
-    } 
-    // if any axis is infinite stay infinite
-    else { 
-        own->width.max  = lui_inf_length;
-        own->height.max = lui_inf_length;
-    }
-
-    #undef TRANSFORM_X
-    #undef TRANSFORM_Y
-}
-
-// Measure option for lui_node_padding in two steps:
-// - Measure children with 'measure_copy_child'
-// - Extend each axis by padding
-static inline void measure_padding(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    measure_copy_child(mc, node, idx, cidx);
-
-    const lui_padding_data* data = helper_get_data(node, mc->instance);
-    helper_measurement* own = &mc->measurements[idx];
-
-    own->width.min += data->left.min + data->right.min;
-    if (own->width.max != lui_inf_length) own->width.max  += data->left.max + data->right.max;
-
-    own->height.min += data->top.min + data->bottom.min;
-    if (own->height.max != lui_inf_length)  own->height.max += data->top.max + data->bottom.max;
-
-    if (data->left.flex != 0.0f || data->right.flex != 0.0f)  own->width.flex  = 1.0f;
-    if (data->top.flex != 0.0f  || data->bottom.flex != 0.0f) own->height.flex = 1.0f;
-}
-
-// Measure option for lui_node_sizebox in two steps:
-// - Measure children with 'measure_copy_child'
-// - Overwrite specified by data->flag fields with values from data
-static inline void measure_sizebox(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    measure_copy_child(mc, node, idx, cidx);
-
-    const lui_sizebox_data* data = helper_get_data(node, mc->instance);
-    helper_measurement*    own  = &mc->measurements[idx];
-
-    if (data->flag & lui_sizebox_overwrite_width_min)   own->width.min   = data->width.min;
-    if (data->flag & lui_sizebox_overwrite_width_max)   own->width.max   = data->width.max;
-    if (data->flag & lui_sizebox_overwrite_width_flex)  own->width.flex  = data->width.flex;
-
-    if (data->flag & lui_sizebox_overwrite_height_min)  own->height.min  = data->height.min;
-    if (data->flag & lui_sizebox_overwrite_height_max)  own->height.max  = data->height.max;
-    if (data->flag & lui_sizebox_overwrite_height_flex) own->height.flex = data->height.flex;
-}
-
-// Measure option for lui_node_row
-//
-// Width:
-// - minimum = sum over children + spacing minimum
-// - maximum = clamp(sum over children + spacing maximum, inf)
-// - flex    = 1.0f if at least one child or row.spacing have non zero flex else 0
-//
-// Height:
-// - minimum = max over children
-// - maximum = max over children
-// - flex    = 1.0f if at least one child non zero flex else 0
-static inline void measure_row(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    const lui_node_array children = helper_get_node_children_array(node, mc->instance);
-    const lui_row_data*  data     = helper_get_data(node, mc->instance);
-
-    helper_measurement own = {
-        .width  = {0, 0, 0.0f},
-        .height = {0, 0, 0.0f}
-    };
-
-    for (size_t i = 0; i < children.count; i++) {
-        measure_dispatch(mc, &children.nodes[i], cidx + i);
-        const helper_measurement* result = &mc->measurements[cidx + i];
-
-        own.width.min += result->width.min;
-
-        // overflow check, children are likely to return inf in max field
-        // if so, clamp to inf
-        if (own.width.max == lui_inf_length || result->width.max == lui_inf_length) own.width.max = lui_inf_length;
-        else own.width.max += result->width.max;
-
-        // enable flex if child do flex
-        if (result->width.flex != 0.0f) own.width.flex = 1.0f;
-
-        own.height.min = helper_max(own.height.min, result->height.min);
-        own.height.max = helper_max(own.height.max, result->height.max);
-
-        // enable flex if child do flex
-        if (result->height.flex != 0.0f) own.height.flex = 1.0f;
-    }
-
-    // include spacing
-    size_t spaces_count = children.count ? children.count - 1 : 0;
-    own.width.min += spaces_count * data->spacing.min;
     
-    size_t max_spacing = data->spacing.max == lui_inf_length ? lui_inf_length : spaces_count * data->spacing.max;
-    if (own.width.max != lui_inf_length) own.width.max += max_spacing;
+    // allocate state
+    if (!slot->state_ptr) {
+        slot->state_ptr  = calloc(1, index.node->type->auxilary_bytes);
+        slot->state_type = index.node->type;
+    }
 
-    // if spacing may grow enable flex
-    if (data->spacing.flex != 0.0f) own.width.flex = 1.0f;
-
-    mc->measurements[idx] = own;
+    return slot;
 }
 
-// Measure option for lui_node_column
-//
-// Width:
-// - minimum = max over children
-// - maximum = max over children
-// - flex    = 1.0f if at least one child non zero flex else 0
-//
-// Height:
-// - minimum = sum over children + spacing minimum
-// - maximum = clamp(sum over children + spacing maximum, inf)
-// - flex    = 1.0f if at least one child or column.spacing have non zero flex else 0
-static inline void measure_column(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    const lui_node_array   children = helper_get_node_children_array(node, mc->instance);
-    const lui_column_data* data     = helper_get_data(node, mc->instance);
+// ===========================
+// Cache dynamic arrays
 
-    helper_measurement own = {
-        .width  = {0, 0, 0.0f},
-        .height = {0, 0, 0.0f}
+struct draw_request {
+    lla_mat2x3              transform;
+    int                     clip_index;
+    short                   depth_index;
+    char                    is_box_not_text;
+    union {
+        lui_box_data        box_data;
+        node_stable_index   text_node;
     };
+};
 
-    for (size_t i = 0; i < children.count; i++) {
-        measure_dispatch(mc, &children.nodes[i], cidx + i);
-        const helper_measurement* result = &mc->measurements[cidx + i];
+struct text_request {
+    node_stable_index       owning_node;
+    size_t                  glyphs_count;
+    struct gpu_glyph*       glyphs;
+};
 
-        own.height.min += result->height.min;
+struct clipbox_request {
+    lla_mat2x3              transform;
+};
 
-        // overflow check, children are likely to return inf in max field
-        // if so, clamp to inf
-        if (own.height.max == lui_inf_length || result->height.max == lui_inf_length) own.height.max = lui_inf_length;
-        else own.height.max += result->height.max;
-
-        if (result->height.flex != 0.0f) own.height.flex = 1.0f;
-
-        own.width.min = helper_max(own.width.min, result->width.min);
-        own.width.max = helper_max(own.width.max, result->width.max);
-
-        // enable flex if child do flex
-        if (result->width.flex != 0.0f) own.width.flex = 1.0f;
-    }
-
-    // include spacing
-    size_t spaces_count = children.count ? children.count - 1 : 0;
-    own.height.min += spaces_count * data->spacing.min;
-
-    size_t max_spacing = data->spacing.max == lui_inf_length ? lui_inf_length : spaces_count * data->spacing.max;
-    if (own.height.max != lui_inf_length) own.height.max += max_spacing;
-
-    // if spacing may grow enable flex
-    if (data->spacing.flex != 0.0f) own.height.flex = 1.0f;
-
-    mc->measurements[idx] = own;
+// Definies one function:
+// void PREFIX##_cache_push (lui_cache* cache, ELEMENT_TYPE element);
+#define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
+static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE element) {                        \
+    if (cache->CNT_FIELD + 1 > cache->CAP_FIELD) {                                              \
+        size_t          new_cap = cache->CAP_FIELD ? cache->CAP_FIELD * 2 : 64;                 \
+        ELEMENT_TYPE*   new_arr = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
+        if (!new_arr)   return - 1;                                                             \
+\
+        cache->ARRAY_FIELD  = new_arr;                                                          \
+        cache->CAP_FIELD    = new_cap;                                                          \
+    }                                                                                           \
+\
+    cache->ARRAY_FIELD[cache->CNT_FIELD] = element;                                             \
+    return (int)cache->CNT_FIELD++;                                                             \
 }
 
-// Measure option for lui_node_text
-// First measures subtree, then measures the text
-// In both axes:
-// min = max(subtree.min, text.min)
-// max = max(subtree.min, text.max)
-static inline void measure_text(helper_measurement_walk_context* mc, const lui_node* node, size_t idx, size_t cidx) {
-    measure_copy_child(mc, node, idx, cidx);
-    helper_measurement* own = &mc->measurements[idx];
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    draw_request, draw_request, draw_requests, draw_requests_capacity, draw_requests_count
+);
 
-    const lui_text_data* data = helper_get_data(node, mc->instance);
-    lui_length width, height; lui_injection_measure_text(data, &width, &height, mc->user_context);
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    text_request, text_request, text_requests, text_requests_capacity, text_requests_count
+);
 
-    // lower limits
-    own->width.min  = helper_max(own->width.min, width.min);
-    own->height.min = helper_max(own->height.min, height.min);
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    clipbox_request, clipbox_request, clipbox_requests, clipbox_requests_capacity, clipbox_requests_count
+);
 
-    // upper limits
-    own->width.max  = helper_max(own->width.min, width.max);
-    own->height.max = helper_max(own->height.min, height.max);
-
-    // do not flex
-    own->width.flex = 0.0f; own->height.flex = 0.0f;
+static inline void free_cached_text_requests(lui_cache* cache) {
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        free(cache->text_requests[i].glyphs);
+    }
+    cache->text_requests_count = 0;
 }
 
-static void measure_dispatch(helper_measurement_walk_context* mc, const lui_node* node, size_t idx) {
-    // allocate contiguous block of indices for own children
-    size_t first_child_index = mc->last_used_index + 1;
-    if (helper_is_single_childed(node->type)) {
-        if (helper_get_node_single_child(node, mc->instance)) mc->last_used_index++;   
-    } 
-    else mc->last_used_index += helper_get_node_children_array(node, mc->instance).count;
+// ===========================
+// Cache Update
 
-    // alloc measurement memory for this node
-    helper_arena_alloc_aligned(mc->temp_arena, sizeof(helper_measurement), &mc->jmp_target, lui_return_temp_arena_too_small);
+// Invalidation Node Gate
 
-    // dispatch
-    switch (node->type & NODE_TYPE_NO_FLAG_MASK) {
-    case lui_node_instance: {
-        // load a child while still in previous instance
-        const lui_node* child = helper_get_node_single_child(node, mc->instance);
+typedef enum invalidation_flag_only {
+    invalidation_flag_only_auxilary          = 1,
+    invalidation_flag_only_width_measure     = 2,
+    invalidation_flag_only_width_distribute  = 4,
+    invalidation_flag_only_height_measure    = 8,
+    invalidation_flag_only_height_distribute = 16,
+    invalidation_flag_only_position          = 32,
+} invalidation_flag_only;
 
-        const void* old_instance = mc->instance;
-        mc->instance = helper_get_data(node, mc->instance);
-        measure_copy_child_given_child(mc, node, idx, first_child_index, child);
-        mc->instance = old_instance;
-    } break;
+static inline int find_shall_recurse(cache_slot* node_slot, const void* data, invalidation_flag_only pass) {
+    if (node_slot->key.node->type != &lui_invalidation_type) return 1;
+    lui_invalidation_data* inv_data = (lui_invalidation_data*)data; // special case where const may be discarded
 
-    case lui_node_measure_size_query: {
-        const lui_node* child = helper_get_node_single_child(node, mc->instance);
-
-        if (child) measure_copy_child(mc, node, idx, first_child_index);  // recurse into subtree
-        helper_measurement* own = &mc->measurements[idx];
-
-        lui_measure_size_query_data* query_target = (lui_measure_size_query_data*)helper_get_data(node, mc->instance);
-        query_target->width  = own->width; query_target->height = own->height;
-    } break;
-
-    case lui_node_transform:    measure_transform  (mc, node, idx, first_child_index); break;
-    case lui_node_padding:      measure_padding    (mc, node, idx, first_child_index); break;
-    case lui_node_sizebox:      measure_sizebox    (mc, node, idx, first_child_index); break;
-    case lui_node_row:          measure_row        (mc, node, idx, first_child_index); break;
-    case lui_node_column:       measure_column     (mc, node, idx, first_child_index); break;
-    case lui_node_text:         measure_text       (mc, node, idx, first_child_index); break;
-
-    // default dispatch case
-    default: measure_copy_child(mc, node, idx, first_child_index); break;
+    // recurse one time in this pass
+    if (inv_data->flag_consumable & pass) {
+        inv_data->flag_consumable &= ~(pass);   // turn off this pass bit
+        return 1;
     }
 
-    // apply ignore flags
-    helper_measurement* own = &mc->measurements[idx];
-
-    if (node->type & lui_node_flag_ignore_min_width) {
-        own->width.min  = 0;
-        own->width.flex = 1.0f;
-    }
-
-    if (node->type & lui_node_flag_ignore_min_height) {
-        own->height.min  = 0;
-        own->height.flex = 1.0f;
-    }
-
-    if (node->type & lui_node_flag_ignore_max_width) {
-        own->width.max  = lui_inf_length;
-        own->width.flex = 1.0f;
-    }
-
-    if (node->type & lui_node_flag_ignore_max_height) {
-        own->height.max = lui_inf_length;
-        own->height.flex = 1.0f;
-    }
+    // recurse only if marked always to do it
+    return inv_data->flag_always & pass;
 }
 
-lui_return_flag lui_measure(
-    const lui_node*  root,
-    lui_arena*       temp_arena,
-    void*           user_context
+// Cache Walk Pass
+// Called on remeasure
+// Computes: 
+// - walk order (the order layout and auxilary caches are visited, to avoid hashmaping multiple times)
+// - nodes children count (simplify implementations)
+// - nodes subtree size (including self, to easily skip on invalidation nodes)
+
+// shall initialized with cache and 0 in other fields
+typedef struct caches_walk_order {
+    lui_cache*              cache;      // cache owning cache slots
+    size_t                  capacity;   // in cache_slot pointers
+    size_t                  position;   // in cache_slot pointers
+    cache_slot**            slots;      // sized capacity, node cache slots in enter order
+    lui_node_layout_state** states;     // sized capacity, node layout states in children oreder
+    auxilary_slot**         auxilary;   // sized capacity, node auxilary slots in enter order
+    size_t*                 subtree;    // sized capacity, node subtree size, including self
+} caches_walk_order;
+
+// Guaranteed valid 0-intialized object after free
+// except cache field being untouched
+void free_caches_walk_order(caches_walk_order* order) {
+    free(order->slots);     order->slots    = NULL;
+    free(order->states);    order->states   = NULL;
+    free(order->auxilary);  order->auxilary = NULL;
+    free(order->subtree);   order->subtree  = NULL;
+    order->capacity = 0;    order->position = 0;
+}
+
+// Returns non-zero at success
+static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot, void* auxilary) {
+    if (walk_order->position + 1 > walk_order->capacity) {
+        size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
+    
+        cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
+        lui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(lui_node_layout_state*));
+        auxilary_slot**         new_aux = realloc(walk_order->auxilary, new_cap * sizeof(auxilary_slot*));
+        size_t*                 new_sub = realloc(walk_order->subtree,  new_cap * sizeof(size_t));
+
+        if (!new_slt || !new_sts || !new_aux || !new_sub) {
+            free(new_slt); free(new_sts); free(new_aux); free(new_sub);
+            free_caches_walk_order(walk_order);
+            return 0; // failed to realloc -> failed to push -> entire layout fails
+        }
+
+        walk_order->capacity = new_cap;
+        walk_order->slots    = new_slt;
+        walk_order->states   = new_sts;
+        walk_order->auxilary = new_aux;
+        walk_order->subtree  = new_sub;
+    }
+
+    walk_order->slots   [walk_order->position]  = slot;
+    walk_order->states  [walk_order->position]  = &slot->value_state;
+    walk_order->auxilary[walk_order->position]  = auxilary;
+    walk_order->subtree [walk_order->position]  = 1; // included node itself
+    walk_order->position++;
+
+    return 1; // success
+}
+
+// Pushes all child nodes caches of node to caches_walk_order
+// Recurse into children left to right
+// Returns non-zero at success
+int caches_walk_dfs(
+    caches_walk_order*  walk_order, 
+    cache_slot*         current, 
+    size_t*             subtree_size_target, 
+    const void*         instance
 ) {
-    // reset arena
-    temp_arena->position = 0;
+    const lui_node* node  = current->key.node;
+    const lui_node* child = get_node_child(current->key.node, current->key.instance);
+    size_t          count = 0;
+    int             scc   = 1;
 
-    helper_measurement_walk_context mc = {
-        .last_used_index        = 0,
-
-        .measurements           = (helper_measurement*)(temp_arena->memory),
-        .temp_arena             = temp_arena,
-
-        .instance               = 0x0,
-        .user_context           = user_context
-    };
-
-    // be default returns 0 which is lui_return_ok
-    lui_return_flag flag = setjmp(mc.jmp_target);
-
-    // longjmp will not happen with lui_return_ok, therefore no loop in here
-    if (flag == lui_return_ok) measure_dispatch(&mc, root, 0);
-
-    return flag;
-}
-
-// ===========================
-// Rendering
-
-// Transform + pixel dimensions helper
-//
-// The entire screen may be represented as a box in coordinate space:
-// (-1, -1) to (1, 1).
-//
-// The default transform for this space is `lui_default_trans` (identity)
-// The actual pixel resolution of the screen is provided at draw time
-//
-// When we apply a transform (scale) to render smaller UI widgets,
-// we also track the corresponding pixel resolution for that transformed area.
-//
-// This struct bundles both the transform and its associated pixel size.
-typedef struct helper_transform_pack {
-    int          pixel_width; 
-    int          pixel_height; 
-    lui_transform trans;
-} helper_transform_pack;
-
-// Scales helper_transform_pack - transforms both
-// member transform matrix, and the pixel info, so both match each other
-static inline helper_transform_pack helper_scale_pack_to_dim(helper_transform_pack pack, int pixels_width, int pixels_height) {
-    helper_transform_pack result;
-
-    result.trans = lui_sca(
-        pack.trans, 
-        ((float)pixels_width / pack.pixel_width), 
-        ((float)pixels_height / pack.pixel_height)
-    );
-
-    result.pixel_width  = pixels_width;
-    result.pixel_height = pixels_height;
-
-    return result;
-}
-
-// Returns max(length minimum, min(length maximum, parent extend))
-static inline int helper_bound_length_in_parent(lui_length length, int parent_axis_length) {
-    int result = length.max;
-    result = helper_min(result, parent_axis_length);
-    result = helper_max(result, length.min);
-    return result;
-}
-
-// Bounds given space inside given measurement
-static inline helper_transform_pack helper_limit_given_space_to_own_measurement
-(helper_transform_pack trs, helper_measurement measurement) {
-    int width  = helper_bound_length_in_parent(measurement.width,  trs.pixel_width);
-    int height = helper_bound_length_in_parent(measurement.height, trs.pixel_height);
-    trs = helper_scale_pack_to_dim(trs, width, height); return trs;
-}
-
-// Returns sum of width flexes of given node's children
-static inline float helper_children_flexsum_width
-(const helper_measurement* measurements, size_t child_count, const lui_node* children, size_t cidx) {
-    float flexsum = 0.0f;
-    for (size_t i = 0; i < child_count; i++) flexsum += measurements[cidx + i].width.flex;
-    return flexsum;
-}
-
-// Returns sum of height flexes of given node's children
-static inline float helper_children_flexsum_height
-(const helper_measurement* measurements, size_t child_count, const lui_node* children, size_t cidx) {
-    float flexsum = 0.0f;
-    for (size_t i = 0; i < child_count; i++) flexsum += measurements[cidx + i].height.flex;
-    return flexsum;
-}
-
-typedef struct helper_rendering_walk_context {
-    jmp_buf                     jmp_target;             // lui_render call jmp buf, in case of error
-
-    size_t                      last_used_index;        // see implementation note
-
-    const helper_measurement*   measurements;           // measurements read target
-    lui_arena*                  temp_arena;             // temporary arena
-    lui_arena*                  cmd_arena;              // arena for commands
-    lui_arena*                  clip_arena;             // arena for clipboxes
-    lui_arena*                  input_boxes_arena;      // arena for input boxes (may be NULL)
-
-    const void*                 instance;               // current subtree instance
-    int                         current_clipbox_index;  // current clipbox
-    short                       current_depth;          // current depth value
-    lui_input_handler_func      current_input_handler;  // current input handler
-} helper_rendering_walk_context;
-
-// Function dispatching rendering based on node type
-// - rc   - rendering walk context
-// - node - current context
-// - idx  - tree order index
-// - trs  - all transformation informations
-// This function also index node children
-// All measure dispatch case functions have extra argument after idx
-// - cidx - first child index
-static void render_dispatch
-(helper_rendering_walk_context* rc, const lui_node* node, size_t idx, helper_transform_pack trs);
-
-// Render option for sizebox
-// Renders the child, while altering it's transform according to measurements
-static inline void render_sizebox
-(helper_rendering_walk_context* rc, const lui_node* node, size_t idx, size_t cidx, helper_transform_pack trs) {
-    const lui_node* child = helper_get_node_single_child(node, rc->instance);
-
-    helper_measurement own_measure   = rc->measurements[idx];
-    helper_measurement child_measure = rc->measurements[cidx];
-
-    int own_width  = helper_bound_length_in_parent(own_measure.width,  trs.pixel_width);
-    int own_height = helper_bound_length_in_parent(own_measure.height, trs.pixel_height);
-
-    int given_width = helper_bound_length_in_parent(
-        child_measure.width, own_width
-    );
-
-    int given_height = helper_bound_length_in_parent(
-        child_measure.height, own_height
-    );
-
-    if (child) render_dispatch(rc, child, cidx, helper_scale_pack_to_dim(trs, given_width, given_height));
-}
-
-// Render option for padding
-// Renders child padded
-// The padding may scale between [min, max]
-// But keep proportion in axis (between left and right, and top and bottom)
-static inline void render_padding
-(helper_rendering_walk_context* rc, const lui_node* node, size_t idx, size_t cidx, helper_transform_pack trs) {
-    const lui_node*         child = helper_get_node_single_child(node, rc->instance);
-    const lui_padding_data* data  = helper_get_data(node, rc->instance);
-    if (!child) return;
-    
-    const helper_measurement* child_measurement = &rc->measurements[cidx];
-
-    // find maximum free sizes
-    int child_width  = child_measurement->width.min;
-    int child_height = child_measurement->height.min;
-
-    int free_width  = trs.pixel_width - child_width;
-    free_width = helper_min(free_width, data->left.max + data->right.max);      // upper bound
-    free_width = helper_max(free_width, data->left.min + data->right.min);      // lower bound
-
-    int free_height = trs.pixel_height - child_height;
-    free_height = helper_min(free_height, data->top.max + data->bottom.max);    // upper bound
-    free_height = helper_max(free_height, data->top.min + data->bottom.min);    // lower bound
-
-    // for even scaling compare target padding sizes and scale along
-    int max_padding_width = data->left.max + data->right.max;
-    int left  = free_width * ((float)data->left.max  / max_padding_width);
-    int right = free_width * ((float)data->right.max / max_padding_width);
-
-    int max_padding_height = data->top.max + data->bottom.max;
-    int top    = free_height * ((float)data->top.max    / max_padding_height);
-    int bottom = free_height * ((float)data->bottom.max / max_padding_height);
-
-    // find offsets from center
-    float screen_to_right = (float)(left - right) / trs.pixel_width;
-    float screen_to_top   = (float)(bottom - top) / trs.pixel_width;
-
-    // transform
-    trs.trans = lui_off(trs.trans, screen_to_right, screen_to_top);
-    trs = helper_scale_pack_to_dim(
-        trs, 
-        trs.pixel_width - left - right, 
-        trs.pixel_height - top - bottom
-    );
-
-    // render child
-    if (child) render_dispatch(rc, child, cidx, trs);
-}
-
-// Render option for row
-// Layouts and renders children in a sequence
-// Divides leftower space among children proportional to their flex values
-static inline void render_row
-(helper_rendering_walk_context* rc, const lui_node* node, size_t idx, size_t cidx, helper_transform_pack trs) {
-    const lui_node_array children    = helper_get_node_children_array(node, rc->instance);
-    const lui_row_data*  data        = helper_get_data(node, rc->instance);
-    helper_measurement   own_measure = rc->measurements[idx];
-
-    // find flexsum
-    float flexsum = helper_children_flexsum_width(rc->measurements, children.count, children.nodes, cidx);
-    flexsum += data->spacing.flex;
-
-    // allocate temporary memory
-    typedef struct slot {
-        char solved;
-        int  width;
-    } slot;
-
-    slot* slots = (slot*)helper_arena_alloc_aligned(
-        rc->temp_arena, children.count * sizeof(slot), &rc->jmp_target, lui_return_temp_arena_too_small
-    ); for (size_t i = 0; i < children.count; i++) slots[i] = (slot){0, 0};
-
-    // find number of spaces
-    size_t spaces_count = children.count == 0 ? 0 : children.count - 1;
-    
-    // accumulative multipass space distribution
-    int    content_width = 0;
-    int    spacing       = 0;
-    int    left_width    = trs.pixel_width;
-    size_t unmaxed_slots = children.count;
-
-    do {
-        float next_flexsum = 0.0f;
-
-        // distribute to spacing if not maxed
-        if (spacing < data->spacing.max && spaces_count) {
-            // assign left width proportional to flexsum
-            int new_spacing = spacing + (data->spacing.flex / flexsum) * left_width;
-            new_spacing /= spaces_count; // divide to get one space size
-
-            new_spacing = helper_min(new_spacing, data->spacing.max); // upper limit
-            new_spacing = helper_max(new_spacing, data->spacing.min); // lower limit
-
-            // remove space
-            left_width -= (new_spacing - spacing) * spaces_count;
-            flexsum    -= data->spacing.flex;
-
-            // if not maxed sign up for next partition
-            if (new_spacing >= data->spacing.max) next_flexsum += data->spacing.flex;
-
-            // save result
-            content_width += (new_spacing - spacing) * spaces_count;
-            spacing = new_spacing;
-        }
-
-        // left to right
-        for (size_t i = 0; i < children.count; i++) {
-            // already solved
-            if (slots[i].solved) continue;
-
-            // child measurements
-            helper_measurement child_measurement = rc->measurements[cidx + i];
-
-            // find width
-            int child_width = slots[i].width;
-            int new_child_width; 
-
-            // flexing path
-            if (child_measurement.width.flex != 0) {
-                new_child_width = child_width + (child_measurement.width.flex / flexsum) * left_width;
-                new_child_width = helper_min(new_child_width, child_measurement.width.max); // upper limit
-                new_child_width = helper_max(new_child_width, child_measurement.width.min); // lower limit
-            }
-            // fixed path, take min by convention
-            else {
-                new_child_width = child_measurement.width.min;
-            }
-
-            // remove space
-            left_width -= (new_child_width - child_width);
-            flexsum    -= child_measurement.width.flex;
-            
-            // check if maxed / fixed and solved
-            if (new_child_width >= child_measurement.width.max || child_measurement.width.flex == 0.0f) {
-                unmaxed_slots--;
-                slots[i].solved = 1;
-            }
-            // if not, sign up for next distribution
-            else {
-                next_flexsum += child_measurement.width.flex;
-            }
-
-            // save result
-            content_width += (new_child_width - child_width);
-            slots[i].width = new_child_width;
-        }
-
-        // prepare for next round
-        flexsum = next_flexsum;
-    } while (left_width > 4 && unmaxed_slots);
-
-    // find spacing on screen dir
-    float screen_spacing = 2.0f * ((float)(spacing) / trs.pixel_width);
-
-    // find cursor begining
-    float cursor_interp_pixels = helper_lerp(0, (float)trs.pixel_width - content_width, data->horizontal_align);
-    float screen_cursor = 2.0f * (cursor_interp_pixels / trs.pixel_width) - 1.0f;
-
-    // draw according to calculated widths
-    for (size_t i = 0; i < children.count; i++) {
-        // find child dimension in pixels
-        int child_width  = slots[i].width;
-        int child_height = helper_bound_length_in_parent(rc->measurements[cidx + i].height, trs.pixel_height);
-
-        // find child dimension on screen
-        float screen_child_width  = 2 * (float)child_width  / trs.pixel_width;
-        float screen_child_height = 2 * (float)child_height / trs.pixel_height;
-
-        // find vertical aligment offset
-        float screen_vertical_offset = helper_lerp(
-            1.0f - screen_child_height / 2.0f,  // top align
-            -1.0f + screen_child_height / 2.0f, // down align
-            data->vertical_align
-        );
-
-        // find child transformation
-        helper_transform_pack child_trs = trs;
-        child_trs.trans = lui_off(child_trs.trans, 
-            screen_cursor + screen_child_width / 2.0f, 
-            screen_vertical_offset
-        );
-        child_trs = helper_scale_pack_to_dim(child_trs, child_width, child_height);
-
-        // render child
-        render_dispatch(rc, &children.nodes[i], cidx + i, child_trs);
-
-        // move cursor
-        screen_cursor += screen_child_width;
-        screen_cursor += screen_spacing;
+    // change instance for subtree
+    if (node->type == &lui_instance_type) {
+        instance = get_node_data(current->key.node, instance);
     }
 
-    // free temporary memory
-    helper_arena_roll_till(rc->temp_arena, (char*)slots);
-}
-
-// Render option for column
-// Layouts and renders children in a sequence
-// Divides lower space among children proportional to their flex values
-static inline void render_column
-(helper_rendering_walk_context* rc, const lui_node* node, size_t idx, size_t cidx, helper_transform_pack trs) {
-    const lui_node_array   children    = helper_get_node_children_array(node, rc->instance);
-    const lui_column_data* data        = helper_get_data(node, rc->instance);
-    helper_measurement    own_measure = rc->measurements[idx];
-
-    // find flexsum
-    float flexsum = helper_children_flexsum_height(rc->measurements, children.count, children.nodes, cidx);
-    flexsum += data->spacing.flex;
-
-    // allocate temporary memory
-    typedef struct slot {
-        char solved;
-        int  height;
-    } slot;
-
-    slot* slots = (slot*)helper_arena_alloc_aligned(
-        rc->temp_arena, children.count * sizeof(slot), &rc->jmp_target, lui_return_temp_arena_too_small
-    ); for (size_t i = 0; i < children.count; i++) slots[i] = (slot){0, 0};
-
-    // find number of spaces
-    size_t spaces_count = children.count == 0 ? 0 : children.count - 1;
-    
-    // accumulative multipass space distribution
-    int    content_height = 0;
-    int    spacing        = 0;
-    int    left_height    = trs.pixel_height;
-    size_t unsolved_slots = children.count;
-
-    do {
-        float next_flexsum = 0.0f;
-
-        // distribute to spacing if not maxed
-        if (spacing < data->spacing.max && spaces_count) {
-            // assign left height proportional to flexsum
-            int new_spacing = spacing + (data->spacing.flex / flexsum) * left_height;
-            new_spacing /= spaces_count; // divide to get one space size
-
-            new_spacing = helper_min(new_spacing, data->spacing.max); // upper limit
-            new_spacing = helper_max(new_spacing, data->spacing.min); // lower limit
-
-            // remove space
-            left_height -= (new_spacing - spacing) * spaces_count;
-            flexsum     -= data->spacing.flex;
-
-            // if not maxed sign up for next partition
-            if (new_spacing >= data->spacing.max) next_flexsum += data->spacing.flex;
-
-            // save result
-            content_height += (new_spacing - spacing) * spaces_count;
-            spacing = new_spacing;
-        }
-
-        // top to bottom
-        for (size_t i = 0; i < children.count; i++) {
-            // already solved
-            if (slots[i].solved) continue;
-
-            // child measurements
-            helper_measurement child_measurement = rc->measurements[cidx + i];
-
-            // find height
-            int child_height = slots[i].height;
-            int new_child_height; 
-
-            // flexing path
-            if (child_measurement.height.flex != 0) {
-                new_child_height = child_height + (child_measurement.height.flex / flexsum) * left_height;
-                new_child_height = helper_min(new_child_height, child_measurement.height.max); // upper limit
-                new_child_height = helper_max(new_child_height, child_measurement.height.min); // lower limit
-            }
-            // fixed path, take min by convention
-            else {
-                new_child_height = child_measurement.height.min;
-            }
-
-            // remove space
-            left_height -= (new_child_height - child_height);
-            flexsum     -= child_measurement.height.flex;
-            
-            // check if maxed / fixed and solved
-            if (new_child_height >= child_measurement.height.max || child_measurement.height.flex == 0.0f) {
-                unsolved_slots--;
-                slots[i].solved = 1;
-            }
-            // if not, sign up for next distribution
-            else {
-                next_flexsum += child_measurement.height.flex;
-            }
-
-            // save result
-            content_height += (new_child_height - child_height);
-            slots[i].height = new_child_height;
-        }
-
-        // prepare for next round
-        flexsum = next_flexsum;
-    } while (left_height > 4 && unsolved_slots);
-
-    // find spacing on screen dir
-    float screen_spacing = 2.0f * ((float)(spacing) / trs.pixel_height);
-
-    // find cursor begining
-    float cursor_interp_pixels = helper_lerp(0, (float)trs.pixel_height - content_height, data->vertical_align);
-    float screen_cursor = 1.0f - 2.0f * (cursor_interp_pixels / trs.pixel_height);
-
-    // draw according to calculated heights
-    for (size_t i = 0; i < children.count; i++) {
-        // find child dimension in pixels
-        int child_width  = helper_bound_length_in_parent(rc->measurements[cidx + i].width, trs.pixel_width);
-        int child_height = slots[i].height;
-
-        // find child dimension on screen
-        float screen_child_width  = 2 * (float)child_width  / trs.pixel_width;
-        float screen_child_height = 2 * (float)child_height / trs.pixel_height;
-
-        // find horizontal aligment offset
-        float screen_horizontal_offset = helper_lerp(
-            -1.0f + screen_child_width / 2.0f, // left align
-            1.0f - screen_child_width / 2.0f,  // right align
-            data->horizontal_align
-        );
-
-        // find child transformation
-        helper_transform_pack child_trs = trs;
-        child_trs.trans = lui_off(child_trs.trans, 
-            screen_horizontal_offset, 
-            screen_cursor - screen_child_height / 2.0f
-        );
-        child_trs = helper_scale_pack_to_dim(child_trs, child_width, child_height);
-
-        // render child
-        render_dispatch(rc, &children.nodes[i], cidx + i, child_trs);
-
-        // move cursor
-        screen_cursor -= screen_child_height;
-        screen_cursor -= screen_spacing;
+    if (!node->type->array_child && child) {
+        cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){child, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){child, instance});
+        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+    }
+    else if (child) for (const lui_node* cc = child; cc->type != NULL; cc++) {
+        cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){cc, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){cc, instance});
+        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
     }
 
-    // free temporary memory
-    helper_arena_roll_till(rc->temp_arena, (char*)slots);
-}
-
-static void render_dispatch(helper_rendering_walk_context* rc, const lui_node* node, size_t idx, helper_transform_pack trs) {
-    // allocate contiguous block of indices for own children
-    size_t first_child_index = rc->last_used_index + 1;
-    if (helper_is_single_childed(node->type)) {
-        if (helper_get_node_single_child(node, rc->instance)) rc->last_used_index++;   
-    } 
-    else rc->last_used_index += helper_get_node_children_array(node, rc->instance).count;
-
-    // dispatch
-    switch (node->type & NODE_TYPE_NO_FLAG_MASK) {
-    case lui_node_instance: {
-        // load a child while still in previous instance
-        const lui_node* child = helper_get_node_single_child(node, rc->instance);
-
-        const void* old_instance = rc->instance;
-        rc->instance = helper_get_data(node, rc->instance);
-
-        // recurse into subtree
-        if (child) render_dispatch(rc, child, first_child_index, trs);
-
-        rc->instance = old_instance;
-    } return;   // subtree explorated
-
-    case lui_node_render_size_query: {
-        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
-        lui_render_size_query_data* data = (lui_render_size_query_data*)helper_get_data(node, rc->instance);
-        data->width = trs.pixel_width; data->height = trs.pixel_height;
-    } break;
-
-    // save current clipbox, overwrite, restore
-    case lui_node_clipbox: {
-        int old_clip = rc->current_clipbox_index;
-
-        lui_transform* slot = (lui_transform*)helper_arena_alloc_unaligned(
-            rc->clip_arena, sizeof(lui_transform), &rc->jmp_target, lui_return_clip_boxes_arena_too_small
-        ); *slot = trs.trans;
-        rc->current_clipbox_index = ((size_t)(slot) - (size_t)(rc->clip_arena->memory)) / sizeof(lui_transform);
-
-        // recurse into subtree
-        const lui_node* child = helper_get_node_single_child(node, rc->instance);
-        if (child) render_dispatch(rc, child, first_child_index, trs);
-
-        rc->current_clipbox_index = old_clip;
-    } return;   // subtree explorated
-
-    // offset depth in subtree
-    case lui_node_depth: {
-        short old_depth = rc->current_depth;
-
-        const lui_depth_data* data = helper_get_data(node, rc->instance);
-        rc->current_depth += data->depth_change;
-
-        // recurse into subtree
-        const lui_node* child = helper_get_node_single_child(node, rc->instance);
-        if (child) render_dispatch(rc, child, first_child_index, trs);
-
-        rc->current_depth = old_depth;
-    } return;   // subtree explorated
-
-    // push new input handler
-    case lui_node_input_handle: {
-        lui_input_handler_func old_handler = rc->current_input_handler;
-
-        rc->current_input_handler = (lui_input_handler_func)helper_get_data(node, rc->instance);
-
-        // recurse into subtree
-        const lui_node* child = helper_get_node_single_child(node, rc->instance);
-        if (child) render_dispatch(rc, child, first_child_index, trs);
-
-        rc->current_input_handler = old_handler;
-    } return;   // subtree explorated
-    
-    // push input box
-    case lui_node_input_box: {
-        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
-        if (!rc->input_boxes_arena) break; // continue tree travel
-        
-        helper_input_box* slot = (helper_input_box*)helper_arena_alloc_unaligned(
-            rc->input_boxes_arena, sizeof(helper_input_box), &rc->jmp_target, lui_return_input_boxes_arena_too_small
-        );
-
-        *slot = (helper_input_box){
-            .transform     = trs.trans,
-            .clipbox_index = rc->current_clipbox_index,
-            .depth         = rc->current_depth,
-            .handler       = rc->current_input_handler,
-            .data          = (void*)helper_get_data(node, rc->instance)
-        };
-    } break;
-
-    // transform matrix, then continue
-    case lui_node_transform: {
-        const lui_transform_data* data = helper_get_data(node, rc->instance);
-        if (!data->apply_transform_at_render) break;
-        trs.trans = lui_mul(trs.trans, data->transform);
-    } break;
-
-    // offset by pixels
-    case lui_node_offset: {
-        const lui_offset_data* data = helper_get_data(node, rc->instance);
-        trs.trans = lui_off(trs.trans, 
-            ((float)data->offset_x) / trs.pixel_width  * 2,
-            ((float)data->offset_y) / trs.pixel_height * 2
-        );
-    } break;
-
-    case lui_node_padding: render_padding(rc, node, idx, first_child_index, trs); return;
-    case lui_node_sizebox: render_sizebox(rc, node, idx, first_child_index, trs); return;
-    case lui_node_row:     render_row    (rc, node, idx, first_child_index, trs); return;
-    case lui_node_column:  render_column (rc, node, idx, first_child_index, trs); return;
-
-    // for primitves call injected methods
-    case lui_node_box: {
-        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
-
-        lui_draw_command cmd = {
-            .type           = lui_draw_box,
-            .transform      = trs.trans,
-            .pixels_width   = trs.pixel_width,
-            .pixels_height  = trs.pixel_height,
-            .depth          = rc->current_depth,
-            .clipbox_index  = rc->current_clipbox_index,
-            .box_data       = *(const lui_box_data*)helper_get_data(node, rc->instance)
-        };
-
-        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
-            rc->cmd_arena, sizeof(lui_draw_command), &rc->jmp_target, lui_return_command_arena_too_small
-        ); *slot = cmd;
-    } break;
-    
-    case lui_node_text: {
-        trs = helper_limit_given_space_to_own_measurement(trs, rc->measurements[idx]); // wrap to contents
-
-        lui_draw_command cmd = {
-            .type           = lui_draw_text,
-            .transform      = trs.trans,
-            .pixels_width   = trs.pixel_width,
-            .pixels_height  = trs.pixel_height,
-            .depth          = rc->current_depth,
-            .clipbox_index  = rc->current_clipbox_index,
-            .text_data      = *(const lui_text_data*)helper_get_data(node, rc->instance)
-        };
-
-        lui_draw_command* slot = (lui_draw_command*)helper_arena_alloc_unaligned(
-            rc->cmd_arena, sizeof(lui_draw_command), &rc->jmp_target, lui_return_command_arena_too_small
-        ); *slot = cmd;
-    }
+    // recurse
+    size_t begin_pos = walk_order->position - count;
+    for (size_t i = 0; i < count; i++) {
+        scc &= caches_walk_dfs(walk_order, walk_order->slots[begin_pos + i], &walk_order->subtree[begin_pos + i], instance);
+        *subtree_size_target += walk_order->subtree[begin_pos + i];
     }
 
-    // by default recurse into subtree, without altering transform
-    // works only for single childed nodes - multi childed nodes must be specified
-    // this is, because not all nodes alters transform anyhow
-    const lui_node* child = helper_get_node_single_child(node, rc->instance);
-    if (child) render_dispatch(rc, child, first_child_index, trs);
+    current->value_child_count = count;
+    return scc;
 }
 
-lui_return_flag lui_render(
+// Generic layout dfs generation macros
+
+// Definies function:
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// Exec order: recurse -> own function -> additional code
+#define BOTTOM_UP_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                              \
+void PREFIX##_dfs(                                                                                  \
+    caches_walk_order*  walk_order,                                                                 \
+    cache_slot*         current,                                                                    \
+    auxilary_slot*      auxilary,                                                                   \
+    size_t              first_child                                                                 \
+) {                                                                                                 \
+    cache_slot**    children    = &walk_order->slots[first_child];                                  \
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
+    size_t*         subtrees    = &walk_order->subtree[first_child];                                \
+    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+\
+    if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
+        size_t child_first_child = first_child + current->value_child_count;                        \
+        for (size_t i = 0; i < current->value_child_count; i++) {                                   \
+            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            child_first_child += subtrees[i] - 1;                                                   \
+        }                                                                                           \
+    }                                                                                               \
+\
+    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
+    if (func != NULL) func(                                                                         \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
+        auxilary ? auxilary->state_ptr : NULL                                                       \
+    );                                                                                              \
+\
+    __VA_ARGS__                                                                                     \
+}
+
+// Definies function:
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// Exec order: additional code -> own function -> recurse
+#define TOP_DOWN_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                               \
+void PREFIX##_dfs(                                                                                  \
+    caches_walk_order*  walk_order,                                                                 \
+    cache_slot*         current,                                                                    \
+    auxilary_slot*      auxilary,                                                                   \
+    size_t              first_child                                                                 \
+) {                                                                                                 \
+    cache_slot**    children    = &walk_order->slots[first_child];                                  \
+    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
+    size_t*         subtrees    = &walk_order->subtree[first_child];                                \
+    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+\
+    __VA_ARGS__                                                                                     \
+\
+    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
+    if (func != NULL) func(                                                                         \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
+        auxilary ? auxilary->state_ptr : NULL                                                       \
+    );                                                                                              \
+\
+    if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
+        size_t child_first_child = first_child + current->value_child_count;                        \
+        for (size_t i = 0; i < current->value_child_count; i++) {                                   \
+            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            child_first_child += subtrees[i] - 1;                                                   \
+        }                                                                                           \
+    }                                                                                               \
+}
+
+// Layout passes
+// Travels tree, call functions as specified in type comments
+// to calcualate what specfied in type comments
+
+void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
+
+// auxilary pass, additionaly update text buffer
+TOP_DOWN_DFS(
+    auxilary, auxilary, invalidation_flag_only_auxilary,
+    if (current->key.node->type == &lui_text_type) {
+        create_text_request(walk_order->cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
+    }
+);
+
+// width measure pass, additionaly handle ignore flags
+BOTTOM_UP_DFS(
+    width_measure, width_measure, invalidation_flag_only_width_measure,
+    if (current->key.node->flags & lui_flag_ignore_min_width) {
+        current->value_state.measured_width.min = 0;
+        current->value_state.measured_width.flex = 1.0f;
+    }
+    if (current->key.node->flags & lui_flag_ignore_max_width) {
+        current->value_state.measured_width.max  = lui_inf_length;
+        current->value_state.measured_width.flex = 1.0f;
+    }
+);
+
+// width distribute pass, additionaly ensure received width
+// is within node measured limits
+TOP_DOWN_DFS(
+    width_distribute, width_distribute, invalidation_flag_only_width_distribute,
+    current->value_state.given_width = limit_length(
+        current->value_state.given_width,
+        current->value_state.measured_width
+    );
+);
+
+// height measure pass, additionaly handle ignore flags
+BOTTOM_UP_DFS(
+    height_measure, height_measure, invalidation_flag_only_height_measure,
+    if (current->key.node->flags & lui_flag_ignore_min_height) {
+        current->value_state.measured_height.min = 0;
+        current->value_state.measured_height.flex = 1.0f;
+    }
+    if (current->key.node->flags & lui_flag_ignore_max_height) {
+        current->value_state.measured_height.max  = lui_inf_length;
+        current->value_state.measured_height.flex = 1.0f;
+    }
+);
+
+// height distribute pass, additionaly ensure received height 
+// is within node measured limits
+TOP_DOWN_DFS(
+    height_distribute, height_distribute, invalidation_flag_only_height_distribute,
+    current->value_state.given_height = limit_length(
+        current->value_state.given_height,
+        current->value_state.measured_height
+    );
+);
+
+// position pass, no additional code
+TOP_DOWN_DFS(
+    position, position, invalidation_flag_only_position
+);
+
+// Renders widget
+// Issues rendering of ui primitives
+// Render pass is safe in terms of hashmap pointers invalidation
+// Since it refers on the pointer only on enter - after visiting any child it is not used
+
+void render_dfs(
+    lui_cache*          cache, 
+    int                 previous_width,
+    int                 previous_height, 
+    const lui_node*     node,
+    lla_mat2x3          transform, 
+    const void*         instance,
+    short               depth_index,
+    int                 clipbox_index
+) {
+    node_stable_index index = {node, instance};
+
+    // get node data
+    const lui_node* child = get_node_child(node, instance);
+    const void*     data  = get_node_data (node, instance);
+    cache_slot*     own   = cache_get_utill(cache, index);
+    auxilary_slot*  aux   = auxilary_get_utill(cache, index);
+
+    // mark used, to avoid garbage collect
+    own->last_frame_used_in_render = cache->frame_index;
+    if (aux) aux->last_frame_used_in_render = cache->frame_index;
+
+    // change instance for subtree
+    if (node->type == &lui_instance_type) instance = data;
+
+    // change transform based on node's position and scale
+    float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->resolution_x;
+    float off_y   = ((float)own->value_state.vert_offset * 2)   / cache->resolution_y;
+    float scale_x = ((float)own->value_state.given_width)       / previous_width;
+    float scale_y = ((float)own->value_state.given_height)      / previous_height;
+    transform = mat2x3_offset(transform, off_x, off_y);
+    transform = mat2x3_scale (transform, scale_x, scale_y);
+
+    // do transform if method provided
+    if (node->type->transform) node->type->transform(
+        data, &transform, 
+        cache->resolution_x, 
+        cache->resolution_y,
+        aux
+    );
+    
+    // special nodes (box, text, depth, clipbox)
+    if (node->type == &lui_box_type){
+        const lui_box_data* bdata = data;
+        draw_request_cache_push(cache, (draw_request){
+            .transform          = transform,
+            .clip_index         = clipbox_index,
+            .depth_index        = depth_index,
+            .is_box_not_text    = 1,
+            .box_data           = *bdata
+        });
+    }
+    else if (node->type == &lui_text_type) {
+        const lui_text_data*            tdata = data;
+        const text_type_auxilary_state* taux  = aux->state_ptr;
+
+        draw_request_cache_push(cache, (draw_request){
+            .transform          = transform,
+            .clip_index         = clipbox_index,
+            .depth_index        = depth_index,
+            .is_box_not_text    = 0,
+            .text_node          = index
+        });
+    }
+    else if (node->type == &lui_depth_type) {
+        const lui_depth_data* ddata = data;
+        depth_index += ddata->depth_change;
+    }
+    else if (node->type == &lui_clipbox_type) {
+        clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){
+            .transform = transform
+        });
+    }
+
+    // back node dimensions to avoid reading own slot after visiting child
+    int own_width  = own->value_state.given_width;
+    int own_height = own->value_state.given_height;
+
+    // single child
+    if (!node->type->array_child && child) {
+        render_dfs(cache, own_width, own_height, child, transform, instance, depth_index, clipbox_index);
+    }
+    // multiple children
+    else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
+        render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
+    }
+}
+
+// Helper for draw requests depth sorting
+static inline int helper_draw_requests_greater_depth(const void* av, const void* bv) {
+    const draw_request* a = (const draw_request*)av; 
+    const draw_request* b = (const draw_request*)bv;
+    if (a->depth_index > b->depth_index) return 1;
+    return 0;
+}
+
+// Main update function
+// Calls passes
+
+void lui_update_cache(
+    lui_cache*      cache,
     const lui_node* root,
-    lui_arena*      temp_arena,
     int             resolution_x,
-    int             resolution_y,
-    lui_arena*      commands_arena,
-    lui_arena*      clipboxs_arena,
-    lui_arena*      input_boxes_arena,
-    int             clear_input_boxes
+    int             resolution_y
 ) {
-    // reset write target arenas
-    commands_arena->position = 0;
-    clipboxs_arena->position = 0;
-    
-    if (input_boxes_arena && clear_input_boxes) {
-        input_boxes_arena->position = 0;
+    // Init state
+    cache->resolution_x             = resolution_x;
+    cache->resolution_y             = resolution_y;
+    cache->draw_requests_count      = 0;
+    cache->text_requests_count      = 0;
+    cache->clipbox_requests_count   = 0;
+
+    // Pick next frame index
+    cache->frame_index++; if (cache->frame_index < LAST_FRAME_USED_IN_RENDER_FIRST) cache->frame_index = LAST_FRAME_USED_IN_RENDER_FIRST;
+
+    // Render pass
+    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
+
+    // Sort render requests by depth
+    stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
+
+    // Always relayout
+    // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
+    // This is important so hashmap pointers does not get invalidated during passes
+    // This means we are one frame behind with layout, but it is not a big deal actually.
+    if (1) {
+        cache_slot*    root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
+        auxilary_slot* root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
+
+        // Give root entire screen
+        // Will auto bound to desired at distribute
+        root_cache->value_state.given_width  = resolution_x;
+        root_cache->value_state.given_height = resolution_y;
+
+        // Find walk order
+        caches_walk_order walk_order    = {.cache = cache};
+        size_t            root_subtree  = 1; // root itself included
+        if (!caches_walk_dfs(&walk_order, root_cache, &root_subtree, NULL)) {
+            free_caches_walk_order(&walk_order);
+            return;
+        }
+        
+        // Perform all passes
+        auxilary_dfs(&walk_order, root_cache, root_auxlr, 0);
+        width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
+        width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
+        height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
+        height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
+        position_dfs(&walk_order, root_cache, root_auxlr, 0);
+
+        free_caches_walk_order(&walk_order);
     }
 
-    helper_transform_pack trs = {
-        .trans        = lui_default_trans,
-        .pixel_width  = resolution_x,
-        .pixel_height = resolution_y
-    };
-
-    helper_rendering_walk_context rc = {
-        .last_used_index        = 0,
-
-        .measurements           = (helper_measurement*)(temp_arena->memory),
-        .temp_arena             = temp_arena,
-        .cmd_arena              = commands_arena,
-        .clip_arena             = clipboxs_arena,
-        .input_boxes_arena      = input_boxes_arena,
-
-        .instance               = 0x0,
-        .current_clipbox_index  = -1,
-    };
-
-    // save input boxes arena position
-    // since this arena is not completly rewritten each time, but may be 
-    // expanded in few calls, it is important to retore it's state in case of error
-    size_t input_boxes_arena_position_snapshot = input_boxes_arena ? input_boxes_arena->position : 0;
-
-    // be default returns 0 which is lui_return_ok
-    lui_return_flag flag = setjmp(rc.jmp_target);
-
-    // longjmp will not happen with lui_return_ok, therefore no loop in here
-    if (flag == lui_return_ok) render_dispatch(&rc, root, 0, trs);
-
-    // failure; restore input boxes state
-    if (flag != lui_return_ok) {
-        input_boxes_arena->position = input_boxes_arena_position_snapshot;
+    // Garbage collect dead cache entries
+    // If entry was not used in render, mark it free
+    // Do every 16 frames not to spend to much time on it
+    if (cache->frame_index % 16 == 0) {
+        cache_hashmap_garbage_collect(cache);
+        auxilary_hashmap_garbage_collect(cache);
     }
-
-    if (flag == lui_return_ok) {
-        stable_sort(
-            commands_arena->memory, 
-            commands_arena->position / sizeof(lui_draw_command),
-            sizeof(lui_draw_command),
-            helper_depth_compare_draw_commands
-        );
-
-        if (input_boxes_arena) stable_sort(
-            input_boxes_arena->memory, 
-            input_boxes_arena->position / sizeof(helper_input_box),
-            sizeof(helper_input_box),
-            helper_depth_compare_input_boxes
-        );
-    }
-
-    return flag;
 }
 
 // ===========================
-// Input
+// Rendering Common
 
-static inline int helper_is_point_in_box(lui_transform t, float x, float y) {
-    float det = t.m00 * t.m11 - t.m01 * t.m10;
-    if (det == 0.0f) return 0;
+#define INTERNAL_TEXTURES_LIMIT                 1024
 
-    float inv_det = 1.0f / det;
+#define INITIAL_INSTANCES_BUFFER_SIZE           (1024 * sizeof(gpu_instance))
+#define INITIAL_DRAW_ITEM_BUFFER_SIZE           (1024 * sizeof(gpu_draw_item))
+#define INITIAL_CLIPBOXES_BUFFER_SIZE           (16 * sizeof(gpu_clipbox))
+#define INITIAL_GLYPH_BUFFER_SIZE               (2024 * sizeof(gpu_glyph))
 
-    // inverse 2x2
-    float im00 =  t.m11 * inv_det;
-    float im01 = -t.m01 * inv_det;
-    float im10 = -t.m10 * inv_det;
-    float im11 =  t.m00 * inv_det;
+#define GLYPH_STRUCTURE_ALIGN                   4
 
-    // remove translation
-    x -= t.tx;
-    y -= t.ty;
+#define PARAMETERS_BUFFER_DESCRIPTOR_BINDING    0
+#define INSTANCES_BUFFER_DESCRIPTOR_BINDING     1
+#define DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING     2
+#define GLYPH_BUFFER_DESCRIPTOR_BINDING         3
+#define CLIPBOXES_BUFFER_DESCRIPTOR_BINDING     4
+#define SAMPLER_DESCRIPTOR_BINDING              5
+#define TEXTURES_ARRAY_DESCRIPTOR_BINDING       6
 
-    // world -> local
-    float lx = im00 * x + im01 * y;
-    float ly = im10 * x + im11 * y;
+typedef struct gpu_instance {
+    int item;
+    int glyph;
+} gpu_instance;
 
-    // local rect test
-    return (lx >= -1.0f && ly >= -1.0f && lx <=  1.0f && ly <=  1.0f);
+typedef struct gpu_draw_item {
+    lla_mat2x3  transform;
+    lgx_uv_2d   atlas_position;
+    int         texture_index;
+    int         clipbox_index;
+    float       r, g, b, a;
+    int         shader;
+} gpu_draw_item;
+
+typedef struct gpu_clipbox {
+    lla_mat2x3 transform;
+} gpu_clipbox;
+
+typedef struct gpu_glyph {
+    lgx_uv_2d   atlas_position;
+    float       off_x,  off_y;
+    float       size_x, size_y;
+} gpu_glyph;
+
+typedef struct gpu_parameters {
+    int         resolution_x;
+    int         resolution_y;
+} gpu_parameters;
+
+static inline lgx_buffer* create_ubo(lgx_hardware* hardware, uint64_t bytes) {
+    return lgx_create_buffer(hardware, &(lgx_buffer_create_info){
+        .size_bytes         = bytes,
+        .usage              = lgx_buffer_usage_uniform,
+        .memory_strategy    = lgx_memory_allocation_strategy_dedicated,
+        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+    });
 }
 
-void lui_input(
-    lui_arena*                  input_boxes_arena,
-    lui_arena*                  clipboxes_arena,
-    lui_injection_input_state*  input_state,
-    float                       delta_time
-) {
-    float cx = -2, cy = 2; // out of screen
-    lui_injection_query_cursor_position(input_state, NULL, NULL, &cx, &cy);
+static inline lgx_buffer* create_ssbo(lgx_hardware* hardware, uint64_t bytes) {
+    return lgx_create_buffer(hardware, &(lgx_buffer_create_info){
+        .size_bytes         = bytes,
+        .usage              = lgx_buffer_usage_storage,
+        .memory_strategy    = lgx_memory_allocation_strategy_dedicated,
+        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+    });
+}
 
-    uint32_t          inp_count  = input_boxes_arena->position / sizeof(helper_input_box);
-    helper_input_box* inp_memory = (helper_input_box*)input_boxes_arena->memory;
-    lui_transform*    clp_memory = (lui_transform*)clipboxes_arena->memory;
+// vec2 position, vec2 uv
+static const float quad_vertices_array[] = {
+    -1.0f, -1.0f, 0.0f, 0.0f,
+     1.0f, -1.0f, 1.0f, 0.0f,
+    -1.0f,  1.0f, 0.0f, 1.0f,
+     1.0f,  1.0f, 1.0f, 1.0f,
+};
 
-    if (!inp_count) return;
-
-    // walk from top box to deepest
-    for (uint32_t i = inp_count - 1; 1; i--) {
-        helper_input_box* box = &inp_memory[i];
-        if (!box->handler) continue; // nothing to call
-
-        int cursor_inside = 1;
-        cursor_inside &= helper_is_point_in_box(box->transform, cx, cy);
-        if (box->clipbox_index != -1) cursor_inside &= helper_is_point_in_box(clp_memory[box->clipbox_index], cx, cy);
-        
-        box->handler(box->data, input_state, cursor_inside, delta_time);
-
-        if (i == 0) break; // do not decrease
+static lgx_vertex_input_attribute_info vertex_attributes[] = {
+    {   // position : per vertex
+        .binding    = 0,
+        .location   = 0,
+        .offset     = 0,
+        .type       = lgx_data_type_vec2f32
+    },
+    {   // uv : per vertex
+        .binding    = 0,
+        .location   = 1,
+        .offset     = 2 * 4,
+        .type       = lgx_data_type_vec2f32
     }
+};
+
+static lgx_vertex_input_binding_info vertex_bindings[] = {
+    {
+        .binding    = 0,
+        .input_rate = lgx_vertex_attribute_input_rate_per_vertex,
+        .stride     = 4 * 4
+    }
+};
+
+static lgx_descriptor_binding descriptor_bindings[] = {
+    {   // the parameters buffer
+        .binding = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_vertex,
+        .type    = lgx_descriptor_binding_type_uniform_buffer
+    },
+    {   // the instances buffer
+        .binding = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_vertex,
+        .type    = lgx_descriptor_binding_type_storage_buffer
+    },
+    {   // the draw items buffer
+        .binding = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_vertex,
+        .type    = lgx_descriptor_binding_type_storage_buffer
+    },
+    {   // the glyphs buffer
+        .binding = GLYPH_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_vertex,
+        .type    = lgx_descriptor_binding_type_storage_buffer
+    },
+    {   // the clips buffer
+        .binding = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_pixel,
+        .type    = lgx_descriptor_binding_type_storage_buffer
+    },
+    {   // the sampler
+        .binding = SAMPLER_DESCRIPTOR_BINDING,
+        .count   = 1,
+        .stages  = lgx_shader_stage_pixel,
+        .type    = lgx_descriptor_binding_type_sampler,
+    },
+    {   // the textures
+        .binding = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
+        .count   = -1, // Needs to be set per hardware!
+        .stages  = lgx_shader_stage_pixel,
+        .type    = lgx_descriptor_binding_type_sampled_texture
+    }
+};
+
+// ===========================
+// Shared Object
+
+struct lui_shared {
+    lgx_hardware*                       owning_hardware;
+
+    lgx_buffer*                         vertex_buffer;
+    lgx_sampler*                        sampler;
+
+    uint32_t                            descriptor_textures_array_length;
+    lgx_descriptor_layout*              descriptor_layout;
+    lgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
+    lgx_pipeline*                       pipeline;
+
+    lpr_partitioner*                    glyph_buffer_partitioner;
+    lgx_buffer*                         glyph_buffer;
+};
+
+lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_info* info) {
+    lui_shared* shared = calloc(1, sizeof(lui_shared)); if (!shared) return NULL;
+    shared->owning_hardware = hardware;
+
+    // Vertex Buffer
+    shared->vertex_buffer = lgx_create_buffer(hardware, &(lgx_buffer_create_info){
+        .usage              = lgx_buffer_usage_vertex,
+        .size_bytes         = sizeof(quad_vertices_array),
+        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
+        .memory_strategy    = lgx_memory_allocation_strategy_dedicated
+    });
+    if (!shared->vertex_buffer) goto _fail;
+    lgx_buffer_sync_upload(shared->vertex_buffer, 0, quad_vertices_array, sizeof(quad_vertices_array));
+
+    // Query textures limit
+    uint32_t max_textures = lgx_hardware_query_limit(hardware, lgx_hardware_limit_max_descriptor_sampled_images);
+    shared->descriptor_textures_array_length = max_textures > INTERNAL_TEXTURES_LIMIT ? INTERNAL_TEXTURES_LIMIT : max_textures;
+
+    // Copy descriptor bindings info
+    uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(lgx_descriptor_binding);
+    lgx_descriptor_binding* bindings = malloc(bindings_count * sizeof(lgx_descriptor_binding)); 
+    if (!bindings) goto _fail; memcpy(bindings, descriptor_bindings, sizeof(descriptor_bindings));
+
+    // Overwrite textures limit
+    bindings[TEXTURES_ARRAY_DESCRIPTOR_BINDING].count = shared->descriptor_textures_array_length;
+
+    // Descriptor Layout
+    
+    shared->descriptor_layout = lgx_create_descriptor_layout(hardware, &(lgx_descriptor_layout_create_info){
+        .bindings_count = bindings_count,
+        .bindings       = bindings
+    }); free(bindings); if (!shared->descriptor_layout) goto _fail;
+
+    // Pipeline Descriptor Layout
+    uint32_t layouts_count = 1 + info->additional_pipeline_descriptors_layouts_count;
+    lgx_descriptor_layout** layouts = calloc(layouts_count, sizeof(lgx_descriptor_layout*));
+
+    layouts[0] = shared->descriptor_layout;
+    for (uint32_t i = 0; i < info->additional_pipeline_descriptors_layouts_count; i++) {
+        layouts[i + 1] = info->additional_pipeline_descriptors_layouts[i];
+    }
+
+    shared->pipeline_descriptor_layout = lgx_create_pipeline_descriptors_layout(hardware, &(lgx_pipeline_descriptors_layout_create_info){
+        .layouts_count  = layouts_count,
+        .layouts        = layouts
+    }); free(layouts); if (!shared->pipeline_descriptor_layout) goto _fail;
+
+    // Sampler
+    shared->sampler = lgx_create_sampler(hardware, &(lgx_sampler_create_info){
+        .mag_filter                 = lgx_sampler_filter_linear,
+        .min_filter                 = lgx_sampler_filter_linear,
+        .mipmap_filter              = lgx_sampler_filter_linear,
+
+        .x_coord_wrapping           = lgx_sampler_wrapping_repeat,
+        .y_coord_wrapping           = lgx_sampler_wrapping_repeat,
+        .z_coord_wrapping           = lgx_sampler_wrapping_repeat,
+        .unnormalized_coordinates   = 0,
+
+        .min_lod                    = 0,
+        .max_lod                    = 1,
+        .mip_lod_bias               = 0,
+    }); if (!shared->sampler) goto _fail;
+
+    // Glyphs buffer
+    shared->glyph_buffer = create_ssbo(hardware, INITIAL_GLYPH_BUFFER_SIZE);
+    if (!shared->glyph_buffer) goto _fail;
+
+    // Glyph buffer partitioner
+    shared->glyph_buffer_partitioner = lpr_create_partitioner(&(lpr_partitioner_create_info){
+        .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE,
+        .align_bytes  = GLYPH_STRUCTURE_ALIGN
+    }); if (!shared->glyph_buffer_partitioner) goto _fail;
+
+    // Pipeline Shaders
+    if (!info->pipeline_vertex_shader || !info->pipeline_pixel_shader) goto _fail;
+
+    // Pipeline
+    shared->pipeline = lgx_create_pipeline(shared->owning_hardware, &(lgx_pipeline_create_info){
+        .render_target_layout       = info->pipeline_render_target_layout,
+        .descriptor_layout          = shared->pipeline_descriptor_layout,
+        .vertex_layout = {
+            .attributes_count       = sizeof(vertex_attributes) / sizeof(lgx_vertex_input_attribute_info),
+            .attributes             = vertex_attributes,
+            .bindings_count         = sizeof(vertex_bindings) / sizeof(lgx_vertex_input_binding_info),
+            .bindings               = vertex_bindings,
+        },
+        .shader_stages = {
+            .vertex                 = info->pipeline_vertex_shader,
+            .pixel                  = info->pipeline_pixel_shader
+        },
+        .input_assembly = {
+            .topology               = lgx_primitive_topology_triangle_strip
+        },
+        .rasterizer = {
+            .scissor_enable         = 0,
+            .depth_clamp_enable     = 0,
+            .fill_mode              = lgx_fill_mode_solid,
+            .cull_mode              = lgx_cull_mode_none
+        },
+        .blend = {
+            .blend_enable           = 1,
+            .blend_op               = lgx_blend_op_add,
+            .src_factor             = lgx_blend_factor_src_alpha,
+            .dst_factor             = lgx_blend_factor_one_minus_src_alpha,
+        },
+        .depth_stencil = {
+            .depth_test_enable      = 0,
+            .depth_write_enable     = 0,
+            .stencil_test_enable    = 0
+        }
+    }); if (!shared->pipeline) goto _fail;
+
+    return shared;
+
+_fail:
+    lui_free_shared(shared);
+    return NULL;
+}
+
+void lui_free_shared(lui_shared* shared) {
+    if (!shared) return;
+    lgx_free_buffer(shared->vertex_buffer);
+    lgx_free_sampler(shared->sampler);
+    lgx_free_pipeline(shared->pipeline);
+    lgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
+    lgx_free_descriptor_layout(shared->descriptor_layout);
+    lgx_free_buffer(shared->glyph_buffer);
+    lpr_free_partitioner(shared->glyph_buffer_partitioner);
+    free(shared);
+}
+
+// ===========================
+// Frames
+
+typedef struct single_frame {
+    uint32_t                    instances_to_render;
+    lgx_buffer*                 parameters_buffer;
+    lgx_buffer*                 instances_buffer;
+    lgx_buffer*                 draw_items_buffer;
+    lgx_buffer*                 clipboxes_buffer;
+    lgx_descriptor*             descriptor;
+    int                         bound_1_recent;
+    lgx_texture**               descriptor_bound_textures_1;
+    lgx_texture**               descriptor_bound_textures_2;
+} single_frame;
+
+struct lui_frames {
+    lui_shared*                 owning_shared;
+    lgx_descriptor_allocator*   descriptor_allocator;
+    uint32_t                    frames_count;
+    single_frame*               frames;
+};
+
+void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_shared* shared, single_frame* frame) {
+    lgx_descriptor_write_info           writes[6];
+    lgx_descriptor_buffer_write_info    binfos[5];
+    lgx_descriptor_sampler_write_info   sinfos[1];
+
+    binfos[0] = (lgx_descriptor_buffer_write_info){
+        .buffer = frame->parameters_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(frame->parameters_buffer)
+    };
+
+    binfos[1] = (lgx_descriptor_buffer_write_info){
+        .buffer = frame->instances_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(frame->instances_buffer)
+    };
+
+    binfos[2] = (lgx_descriptor_buffer_write_info){
+        .buffer = frame->draw_items_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(frame->draw_items_buffer)
+    };
+
+    binfos[3] = (lgx_descriptor_buffer_write_info){
+        .buffer = shared->glyph_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(shared->glyph_buffer)
+    };
+
+    binfos[4] = (lgx_descriptor_buffer_write_info){
+        .buffer = frame->clipboxes_buffer,
+        .offset = 0,
+        .length = lgx_buffer_get_size_bytes(frame->clipboxes_buffer)
+    };
+
+    sinfos[0] = (lgx_descriptor_sampler_write_info){
+        .sampler = shared->sampler
+    };
+
+    writes[0] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_uniform_buffer,
+        .binding_index          = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[0]
+    };
+
+    writes[1] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[1]
+    };
+
+    writes[2] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[2]
+    };
+
+    writes[3] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[3]
+    };
+    
+    writes[4] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_index          = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_buffers      = &binfos[4]
+    };
+
+    writes[5] = (lgx_descriptor_write_info){
+        .descriptor             = frame->descriptor,
+        .binding_type           = lgx_descriptor_binding_type_sampler,
+        .binding_index          = SAMPLER_DESCRIPTOR_BINDING,
+        .array_element_index    = 0,
+        .array_elements_count   = 1,
+        .infos.for_samplers     = &sinfos[0]
+    };
+    
+    lgx_descriptors_write(hardware, 6, writes);
+}
+
+lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_info* info) {
+    lui_shared* shared = info->shared;
+
+    lui_frames* frames = calloc(1, sizeof(lui_frames)); 
+    if (!frames) return NULL;
+    
+    frames->owning_shared = shared;
+    
+    // create descriptor allocator
+    frames->descriptor_allocator = lgx_create_descriptor_allocator(hardware, &(lgx_descriptor_allocator_create_info){
+        .descriptor_layout          = shared->descriptor_layout,
+        .max_descriptors_allocated  = info->frames_in_flight_count
+    }); if (!frames->descriptor_allocator) goto _fail;
+
+    // create frames
+    frames->frames_count = info->frames_in_flight_count;
+    frames->frames = calloc(info->frames_in_flight_count, sizeof(single_frame));
+    if (!frames->frames) goto _fail;
+
+    // populate frames
+    for (uint32_t i = 0; i < info->frames_in_flight_count; i++) {
+        single_frame* frame = &frames->frames[i];
+        *frame = (single_frame){
+            .descriptor                  = lgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
+            .parameters_buffer           = create_ubo (hardware, sizeof(gpu_parameters)),
+            .instances_buffer            = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
+            .draw_items_buffer           = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
+            .clipboxes_buffer            = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE),
+            .descriptor_bound_textures_1 = calloc(shared->descriptor_textures_array_length, sizeof(lgx_texture*)),
+            .descriptor_bound_textures_2 = calloc(shared->descriptor_textures_array_length, sizeof(lgx_texture*))
+        };
+
+        if (!frame->descriptor || !frame->parameters_buffer || !frame->instances_buffer || !frame->draw_items_buffer || 
+            !frame->clipboxes_buffer || !frame->descriptor_bound_textures_1 || !frame->descriptor_bound_textures_2) goto _fail;
+        frame_descriptor_bind_buffers_and_sampler(hardware, shared, frame);
+    }
+
+    return frames;
+
+_fail:
+    lui_free_frames(frames);
+    return NULL;
+}
+
+void lui_free_frames(lui_frames* frames) {
+    if (!frames) return;
+
+    for (uint32_t i = 0; i < frames->frames_count; i++) {
+        single_frame* frame = &frames->frames[i];
+        lgx_free_buffer(frame->parameters_buffer);
+        lgx_free_buffer(frame->instances_buffer);
+        lgx_free_buffer(frame->draw_items_buffer);
+        lgx_free_buffer(frame->clipboxes_buffer);
+        free(frame->descriptor_bound_textures_1);
+        free(frame->descriptor_bound_textures_2);
+    }
+
+    // all per-frame descriptors freed with allocator
+    lgx_free_descriptor_allocator(frames->descriptor_allocator);
+    free(frames->frames);
+
+    free(frames);
+}
+
+// ===========================
+// Rendering Functions
+
+typedef struct texture_writes_dynamic_array {
+    lgx_descriptor*                             descriptor;
+    size_t                                      capacity;
+    size_t                                      position;
+    lgx_descriptor_write_info*                  writes;
+    lgx_descriptor_sampled_texture_write_info*  infos;
+} texture_writes_dynamic_array;
+
+static void free_texture_writes_dynamic_array(texture_writes_dynamic_array writes) {
+    free(writes.writes); free(writes.infos);
+}
+
+static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writes, lgx_texture* texture, uint32_t slot) {
+    if (writes->position + 1 > writes->capacity) {
+        size_t new_capacity = writes->capacity ? writes->capacity * 2 : 16;
+
+        lgx_descriptor_write_info* new_writes 
+            = realloc(writes->writes, new_capacity * sizeof(lgx_descriptor_write_info));
+
+        lgx_descriptor_sampled_texture_write_info* new_infos 
+            = realloc(writes->infos,  new_capacity * sizeof(lgx_descriptor_sampled_texture_write_info));
+
+        if (!new_writes || !new_infos) {
+            free(new_writes); free(new_infos);
+            return; // do not store write, no storage
+        }
+
+        writes->capacity = new_capacity;
+        writes->writes   = new_writes;
+        writes->infos    = new_infos;
+    }
+
+    writes->writes[writes->position] = (lgx_descriptor_write_info){
+        .descriptor                 = writes->descriptor,
+        .binding_type               = lgx_descriptor_binding_type_sampled_texture,
+        .binding_index              = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
+        .array_element_index        = slot,
+        .array_elements_count       = 1,
+        // cannot link info now, since infos can be reallocated
+    };
+
+    writes->infos[writes->position] = (lgx_descriptor_sampled_texture_write_info){
+        .sampled_texture = texture
+    };
+
+    writes->position++;
+}
+
+static int clear_write
+(uint32_t texture_slots_count, single_frame* frame) {
+    lgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
+    for (uint32_t i = 0; i < texture_slots_count; i++) write[i] = NULL;
+}
+
+static int push_texture
+(texture_writes_dynamic_array* writes, uint32_t texture_slots_count, single_frame* frame, lgx_texture* texture, int is_font) {
+    if (texture == NULL) return 0;
+
+    lgx_texture** recent = frame->bound_1_recent ? frame->descriptor_bound_textures_1 : frame->descriptor_bound_textures_2;
+    lgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
+
+    // start search at module of texture pointer,
+    // bit shift because pointers may be aligned, will often lead to same slot
+    uint64_t hash = ((size_t)texture >> 4) * 11400714819323198485llu;
+    uint64_t begin = hash % texture_slots_count;
+
+    // search for free slot
+    int itr = begin;
+    do {
+        // same texture already assigned in previous frame generation,
+        // or write alredy requested -> return
+        if (recent[itr] == texture || write[itr] == texture) {
+            write[itr] = texture; // ensure space reserved
+            if (is_font) return -itr - 1;
+            return itr + 1;
+        }
+        // free slot, assing
+        if (write[itr] == NULL) {
+            write[itr] = texture;
+            push_texture_writes_dynamic_array(writes, texture, (uint32_t)itr);
+            if (is_font) return -itr - 1;
+            return itr + 1;
+        }
+        // else continue search
+        itr = (itr + 1) % texture_slots_count;
+    } while(itr != begin);
+
+    // no empty slots left
+    return 0;
+}
+
+void lui_upload_cache(
+    lui_cache*          cache,
+    lui_shared*         shared,
+    lui_frames*         frames,
+    uint32_t            frame_idx,
+    lgx_command_list*   command_list,
+    lgx_hardware_queue* queue_for_uploads,
+    lgx_staging_memory* staging_memory,
+    uint64_t            staging_memory_region_offset,
+    uint64_t            staging_memory_region_size,
+    lgx_cpu_signal*     upload_finished_cpu,
+    lgx_gpu_signal*     upload_finished_gpu
+) {
+    lgx_hardware* hardware = shared->owning_hardware;
+    single_frame* frame    = &frames->frames[frame_idx];
+
+    // Prepare render parameters uniform
+
+    gpu_parameters parameters = {
+        .resolution_x = cache->resolution_x,
+        .resolution_y = cache->resolution_y
+    };
+
+    // Prepare texture descriptor update structure
+
+    texture_writes_dynamic_array texture_writes_array = (texture_writes_dynamic_array){
+        .descriptor = frame->descriptor
+    };
+    clear_write(shared->descriptor_textures_array_length, frame);
+
+    // Allocate upload regions descriptors array
+
+    size_t upload_regions_count    = cache->text_requests_count + 4;
+    size_t upload_regions_position = 0;
+    lgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(lgx_buffer_multi_upload_region));
+    if (!upload_regions) goto _cleanup;
+
+    // Prepare partitions for text draws
+
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        text_request              req  = cache->text_requests[i];
+        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+
+        aux->partitioner = shared->glyph_buffer_partitioner;
+
+        // always free owned partition to reduce fragmentation
+        if (aux->owned_glyph_buffer_partition) {
+            lpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
+            aux->owned_glyph_buffer_partition = NULL;
+        }
+
+        // new text is empty - creation of 0 bytes partition is forbidden
+        if (!req.glyphs_count) continue;
+
+        // request new partition
+        aux->owned_glyph_buffer_partition = lpr_partitioner_alloc_partition(
+            shared->glyph_buffer_partitioner,
+            req.glyphs_count * sizeof(gpu_glyph)
+        );
+
+        // failed to create partition - create bigger text buffer
+        if (!aux->owned_glyph_buffer_partition) {
+            // todo
+        }
+    }
+
+    // Generate draw regions for texts
+
+    for (size_t i = 0; i < cache->text_requests_count; i++) {
+        text_request              req  = cache->text_requests[i];
+        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+        lpr_partition*            prt = aux->owned_glyph_buffer_partition;
+        if (!prt) continue; // text empty, nothing to upload
+
+        upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+            .buffer         = shared->glyph_buffer,
+            .buffer_offset  = lpr_partition_query_offset(prt),
+            .source_data    = req.glyphs,
+            .source_bytes   = req.glyphs_count * sizeof(gpu_draw_item)
+        };
+    }
+
+    // Prepare draw items, draw instances, draw clipboxes
+
+    uint32_t        items_count; 
+    uint64_t        items_bytes;
+    gpu_draw_item*  items;
+
+    uint32_t        instances_count = 0;
+    uint64_t        instances_bytes = 0;
+    gpu_instance*   instances;
+
+    uint32_t        clipboxes_count; 
+    uint64_t        clipboxes_bytes;
+    gpu_clipbox*    clipboxes;
+    
+    // Generate GPU Items, findout instances count
+    items_count = cache->draw_requests_count;
+    items_bytes = cache->draw_requests_count * sizeof(gpu_draw_item);
+    items = malloc(items_bytes); if (!items) goto _cleanup;
+    for (uint32_t i = 0; i < items_count; i++) {
+        draw_request req = cache->draw_requests[i];
+
+        if (req.is_box_not_text) {
+            int texture_index = 0; lgx_uv_2d uv;
+            if (req.box_data.image) {
+                lgx_texture* texture; if (lui_injection_query_image(req.box_data.image, &texture, &uv)) {
+                    texture_index = push_texture(
+                        &texture_writes_array, shared->descriptor_textures_array_length, 
+                        frame, texture, 0
+                    );
+                }
+            }
+
+            items[i] = (gpu_draw_item){
+                .transform      = req.transform,
+                .clipbox_index  = req.clip_index,
+                .texture_index  = texture_index,
+                .atlas_position = uv,
+                .r              = (float)req.box_data.tint.r / 255.0f,
+                .g              = (float)req.box_data.tint.g / 255.0f,
+                .b              = (float)req.box_data.tint.b / 255.0f,
+                .a              = (float)req.box_data.tint.a / 255.0f,
+                .shader         = req.box_data.shader
+            };
+
+            instances_count += 1;  // single box
+        }
+        else {
+            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
+            text_type_auxilary_state* aux  = slot->state_ptr;
+            lpr_partition*            part = aux->owned_glyph_buffer_partition;
+            if (!part) continue;
+
+            lui_text_data text_data = *(const lui_text_data*)get_node_data(slot->key.node, slot->key.instance);
+            lfont* font; if (!lui_injection_query_font(text_data.font, &font)) continue;
+
+            int texture_index = push_texture(
+                &texture_writes_array, shared->descriptor_textures_array_length, 
+                frame, lfont_get_texture(font), 1
+            );
+
+            items[i] = (gpu_draw_item){
+                .transform      = req.transform,
+                .clipbox_index  = req.clip_index,
+                .texture_index  = texture_index,
+                .atlas_position = (lgx_uv_2d){0, 0, 1, 1},
+                .r              = (float)text_data.tint.r / 255.0f,
+                .g              = (float)text_data.tint.g / 255.0f,
+                .b              = (float)text_data.tint.b / 255.0f,
+                .a              = (float)text_data.tint.a / 255.0f,
+                .shader         = text_data.shader
+            };
+
+            instances_count += lpr_partition_query_size(part) / sizeof(gpu_glyph);
+        }
+    }
+
+    // Generate GPU Instances
+    instances_bytes = instances_count * sizeof(gpu_instance);
+    instances = malloc(instances_bytes); if (!instances) goto _cleanup;
+    uint32_t instance_idx = 0;
+    for (int i = 0; i < cache->draw_requests_count; i++) {
+        draw_request req = cache->draw_requests[i];
+        if (req.is_box_not_text) {
+            instances[instance_idx++] = (gpu_instance){
+                .item   = i,
+                .glyph  = -1
+            };
+        }
+        else {
+            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
+            text_type_auxilary_state* aux  = slot->state_ptr;
+            lpr_partition*            part = aux->owned_glyph_buffer_partition;
+            if (!part) continue;
+            
+            size_t first  = lpr_partition_query_offset(part) / sizeof(gpu_glyph);
+            size_t glyphs = lpr_partition_query_size(part) / sizeof(gpu_glyph);
+            for (size_t g = 0; g < glyphs; g++) {
+                instances[instance_idx++] = (gpu_instance){
+                    .item   = i,
+                    .glyph  = first + g
+                };
+            }
+        }
+    }
+
+    // Generate GPU Clipboxes
+    clipboxes_count = cache->clipbox_requests_count;
+    clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_draw_item);
+    clipboxes       = malloc(clipboxes_bytes); if (!clipboxes) goto _cleanup;
+    for (uint32_t i = 0; i < clipboxes_count; i++) {
+        clipbox_request req = cache->clipbox_requests[i];
+        clipboxes[i] = (gpu_clipbox){
+            .transform = req.transform
+        };
+    }
+
+    // Ensure Buffer Sizes
+    int rebind = 0;
+
+    // Items buffer
+    if (lgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
+        lgx_free_buffer(frame->draw_items_buffer);
+        frame->draw_items_buffer = create_ssbo(hardware, items_bytes);
+        rebind = 1;
+    }
+
+    // Instanced buffer
+    if (lgx_buffer_get_size_bytes(frame->instances_buffer) < instances_bytes) {
+        lgx_free_buffer(frame->instances_buffer);
+        frame->instances_buffer = create_ssbo(hardware, instances_bytes);
+        rebind = 1;
+    }
+
+    // Clipboxes buffer
+    if (lgx_buffer_get_size_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+        lgx_free_buffer(frame->clipboxes_buffer);
+        frame->clipboxes_buffer = create_ssbo(hardware, clipboxes_bytes);
+        rebind = 1;
+    }
+
+    // If resize failed return
+    if (!frame->draw_items_buffer || !frame->instances_buffer) return;
+    if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frames->owning_shared, frame);
+
+    // Upload
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->parameters_buffer,
+        .buffer_offset  = 0,
+        .source_data    = &parameters,
+        .source_bytes   = sizeof(gpu_parameters)
+    };
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->draw_items_buffer,
+        .buffer_offset  = 0,
+        .source_data    = items,
+        .source_bytes   = items_count * sizeof(gpu_draw_item)
+    };
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->clipboxes_buffer,
+        .buffer_offset  = 0,
+        .source_data    = clipboxes,
+        .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
+    };
+
+    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        .buffer         = frame->instances_buffer,
+        .buffer_offset  = 0,
+        .source_data    = instances,
+        .source_bytes   = instances_count * sizeof(gpu_instance)
+    };
+
+    // Write all buffers
+    lgx_buffer_multi_upload(
+        upload_regions,
+        upload_regions_position,
+        command_list, 
+        queue_for_uploads,
+        staging_memory,
+        staging_memory_region_offset,
+        staging_memory_region_size,
+        upload_finished_cpu,
+        upload_finished_gpu
+    );
+
+    // Walk and link texture descriptor writes
+    // Do it here, since earlier those could have been reallocated
+    for (size_t i = 0; i < texture_writes_array.position; i++) {
+        texture_writes_array.writes[i].infos.for_sampled_textures = &texture_writes_array.infos[i];
+    }
+
+    // Update textures descriptor    
+    lgx_descriptors_write(
+        hardware, texture_writes_array.position, texture_writes_array.writes
+    );
+
+    // Mark to render
+    frame->instances_to_render = instances_count;
+
+_cleanup:
+    // Free text requests
+    free_cached_text_requests(cache);
+
+    // Free allocated memory
+    free(items); free(clipboxes); free(instances); free(upload_regions);
+    free_texture_writes_dynamic_array(texture_writes_array);
+
+    // Toggle recent bound in frame
+    frame->bound_1_recent = !frame->bound_1_recent;
+}
+
+void lui_gcmd_render(
+    lgx_command_list*   target,
+    lui_frames*         frames,
+    uint32_t            frame_idx
+) {
+    single_frame* frame = &frames->frames[frame_idx % frames->frames_count];
+    if (frame->instances_to_render) {
+        lgx_gcmd_bind_graphics_pipeline(target, frames->owning_shared->pipeline);
+        lgx_gcmd_bind_graphics_pipeline_descriptors(
+            target, 
+            frames->owning_shared->pipeline_descriptor_layout, 
+            0, 1, &frame->descriptor
+        );
+        lgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frames->owning_shared->vertex_buffer, 0, 0);
+        lgx_gcmd_draw_vertices(target, 4, 0, frame->instances_to_render, 0);
+    }
+}
+
+// ===========================
+// Text layout generation
+
+void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
+    const lui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
+    lfont* font; if (!lui_injection_query_font(tdata->font, &font)) return;
+    const char* text = tdata->text;
+
+    // If text empty or font invalid
+    // Sent empty text request
+    if (!text || !font) {
+        text_request req = {
+            .owning_node  = slot->key,
+            .glyphs_count = 0,
+            .glyphs       = NULL,
+        };
+        text_request_cache_push(cache, req);
+        return; // overwrite current text buffer with empty text
+    }
+
+    // Count glyphs to allocate
+    size_t glyph_count = 0; size_t extra_lines_count = 0;
+    for (size_t i = 0; text[i] != '\0';) {
+        uint32_t cp; i += lfont_utf8_decode(text, i, &cp);
+        if (cp != '\n') glyph_count++; 
+        else extra_lines_count++;
+    }
+
+    // Allocate glyphs buffer
+    gpu_glyph* glyphs = glyph_count ? malloc(sizeof(gpu_glyph) * glyph_count) : NULL;
+    if (glyph_count && !glyphs) {
+        text_request req = { .owning_node = slot->key, .glyphs_count = 0, .glyphs = NULL };
+        text_request_cache_push(cache, req); return;
+    }
+
+    // Find font scale
+    const float font_scale = tdata->size / lfont_get_base_size(font);
+
+    // Populate glyphs buffer
+    const float ascent      = lfont_get_base_ascent(font)   * font_scale;
+    const float descent     = lfont_get_base_descent(font)  * font_scale;
+    const float line_gap    = lfont_get_base_line_gap(font) * font_scale;
+    const float line_height = ascent - descent + line_gap;
+
+    float    pen_x      = 0.0f;
+    float    pen_y      = 0.0f;
+    float    text_width = 0.0f; // max line width across all lines
+    size_t   glyph_idx  = 0;
+    uint32_t prev_cp    = 0;    // for kerning; 0 = no previous glyph
+
+    for (size_t itr = 0; text[itr] != '\0';) {
+        uint32_t cp;
+        itr += lfont_utf8_decode(text, itr, &cp);
+
+        // Handle newline
+        if (cp == '\n') {
+            if (pen_x > text_width) text_width = pen_x;
+            pen_x   = 0.0f;
+            pen_y  -= line_height;
+            prev_cp = 0; // reset kerning across lines
+            continue;
+        }
+
+        // Kerning between consecutive glyphs on the same line
+        if (prev_cp) pen_x += lfont_get_kerning(font, prev_cp, cp);
+
+        // Write glyph
+        const lfont_glyph g = lfont_get_glyph(font, cp);
+        glyphs[glyph_idx++] = (gpu_glyph){
+            .atlas_position = g.atlas_position,
+            .off_x          = pen_x + g.bearing_x * font_scale,
+            .off_y          = (extra_lines_count * line_height + pen_y) - g.bearing_y * font_scale,
+            .size_x         = g.size_x * font_scale,
+            .size_y         = g.size_y * font_scale,
+        };
+
+        // Advance
+        pen_x  += g.advance_x * font_scale;
+        prev_cp = cp;
+    }
+
+    // Account for final line (no trailing newline)
+    if (pen_x > text_width) text_width = pen_x;
+
+    // Total pixel height: baseline of last line + full single-line cap height
+    float text_height = -pen_y + ascent;
+
+    // Store text dimensions
+    aux->text_width  = text_width;
+    aux->text_height = text_height;
+
+    // Request text upload
+    text_request req = {
+        .owning_node  = slot->key,
+        .glyphs_count = glyph_count,
+        .glyphs       = glyphs,
+    };
+    text_request_cache_push(cache, req);
 }
 
 #endif // LIGHT_USER_INTERFACE_IMPL
