@@ -348,7 +348,7 @@ struct dshp_frames {
     single_frame*               frames;
 };
 
-dgx_buffer* create_buffer(dgx_hardware* hardware, uint64_t size_bytes, dgx_buffer_usage usage) {
+static dgx_buffer* create_buffer(dgx_hardware* hardware, uint64_t size_bytes, dgx_buffer_usage usage) {
     dgx_buffer_create_info vb_create_info = {
         .usage              = usage,
         .size_bytes         = size_bytes,
@@ -358,7 +358,7 @@ dgx_buffer* create_buffer(dgx_hardware* hardware, uint64_t size_bytes, dgx_buffe
     return dgx_create_buffer(hardware, &vb_create_info);
 }
 
-void link_frame_descriptor_with_instance_buffer(dgx_hardware* hardware, single_frame* frame) {
+static void link_frame_descriptor_with_instance_buffer(dgx_hardware* hardware, single_frame* frame) {
     dgx_descriptor_buffer_write_info binfo = {
         .buffer = frame->instances_buffer,
         .offset = 0,
@@ -462,7 +462,7 @@ void dshp_reset(dshp_context* context, int clear_geometry, int clear_state) {
 
 // returns bytes of data that can be copied
 // buffer at *buffer may be recreated due to call
-uint32_t ensure_buffer_size_pre_upload
+static uint32_t ensure_buffer_size_pre_upload
 (dgx_hardware* hardware, dgx_buffer** buffer, arena* a, dgx_buffer_usage buffer_usage, int* was_buffer_recreated) {
     *was_buffer_recreated = 0;
 
