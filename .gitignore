@@ -8,8 +8,8 @@
 !.gitattributes
 
 !include/
-!include/light/
-!include/light/**
+!include/demigurg/
+!include/demigurg/**
 
 !utility
 !utility/**

@@ -6,209 +6,209 @@ This file implements input system, allowing user to read input from mouses, keyb
 
 ----------------------------------------------------------------
 Code info:
-- lin prefix
-- LIGHT_INPUT_IMPL macro to build
+- din prefix
+- DEMIGURG_INPUT_IMPL macro to build
 - User must pick target OS system by using of the macros below:
-    - LIGHT_INPUT_LINUX
+    - DEMIGURG_INPUT_LINUX
 
 ----------------------------------------------------------------
 Depedencies:
 - each OS have own compilation requirements:
-    - LIGHT_INPUT_LINUX
+    - DEMIGURG_INPUT_LINUX
         - libevdev library installed
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
 */
 
-#ifndef LIGHT_INPUT_H
-#define LIGHT_INPUT_H
+#ifndef DEMIGURG_INPUT_H
+#define DEMIGURG_INPUT_H
 
 #include <stddef.h>
 
 // Library
 
-typedef struct lin_library lin_library;
+typedef struct din_library din_library;
 
-lin_library* lin_create_library();
-void lin_free_library(lin_library*);
+din_library* din_create_library();
+void din_free_library(din_library*);
 
 // Devices List
 
-typedef struct lin_devices_list lin_devices_list;
+typedef struct din_devices_list din_devices_list;
 
 // get OS visible devices at the moment
 // may return NULL if failed to access
-lin_devices_list* lin_library_get_devices_list(lin_library*);
-void lin_free_devices_list(lin_devices_list*);
+din_devices_list* din_library_get_devices_list(din_library*);
+void din_free_devices_list(din_devices_list*);
 
-typedef enum lin_device_type {
-    lin_device_unknown,
-    lin_device_mouse,
-    lin_device_keyboard,
-    lin_device_gamepad,
-} lin_device_type;
+typedef enum din_device_type {
+    din_device_unknown,
+    din_device_mouse,
+    din_device_keyboard,
+    din_device_gamepad,
+} din_device_type;
 
-size_t          lin_devices_list_get_size   (lin_devices_list*);
-lin_device_type lin_devices_list_query_type (lin_devices_list*, size_t dev_index);
-const char*     lin_devices_list_query_name (lin_devices_list*, size_t dev_index);
+size_t          din_devices_list_get_size   (din_devices_list*);
+din_device_type din_devices_list_query_type (din_devices_list*, size_t dev_index);
+const char*     din_devices_list_query_name (din_devices_list*, size_t dev_index);
 
 // Slot
 
-typedef struct lin_slot lin_slot;
+typedef struct din_slot din_slot;
 
-lin_slot* lin_create_slot(lin_library*);
-void lin_free_slot(lin_slot*);
+din_slot* din_create_slot(din_library*);
+void din_free_slot(din_slot*);
 
 // tries to connect to device, 1 at success, 0 at failure
-int  lin_slot_connect(lin_slot*, lin_devices_list*, size_t dev_index);
+int  din_slot_connect(din_slot*, din_devices_list*, size_t dev_index);
 
 // drops device connection
-void lin_slot_disconnect(lin_slot*);
+void din_slot_disconnect(din_slot*);
 
 // returns 1 if connected, 0 if never connected or lost connection
-int lin_slot_connected(lin_slot*);
+int din_slot_connected(din_slot*);
 
 // set conversion factor for translation mouse movement -> mouse axis
-void lin_slot_set_mouse_sensitivity(lin_slot*, float sensitivity);
+void din_slot_set_mouse_sensitivity(din_slot*, float sensitivity);
 
 // deadzone shall be between [0, 1]
 // 0 means no deadzone, 1 means binary state, either nothing or full press
-// if other value is set, till that value, lin_slot_query_input_state[axis] will return 0.0f
+// if other value is set, till that value, din_slot_query_input_state[axis] will return 0.0f
 // afterwards that limit, axis will interpolate towards full press
-void lin_slot_set_axis_deadzone(lin_slot*, unsigned int axis, float deadzone);
+void din_slot_set_axis_deadzone(din_slot*, unsigned int axis, float deadzone);
 
-typedef struct lin_input_state lin_input_state;
+typedef struct din_input_state din_input_state;
 // get current connected device input state
 // unconnected device always yields input state, with everything 0
-void lin_slot_query_input_state(lin_slot*, lin_input_state*);
+void din_slot_query_input_state(din_slot*, din_input_state*);
 
 // Input State
 
-typedef enum lin_button {
+typedef enum din_button {
     // Mouse (ms)
-    lin_btn_ms_left,
-    lin_btn_ms_right,
-    lin_btn_ms_middle,
-    lin_btn_ms_back,
-    lin_btn_ms_forward,
+    din_btn_ms_left,
+    din_btn_ms_right,
+    din_btn_ms_middle,
+    din_btn_ms_back,
+    din_btn_ms_forward,
     
     // Keyboard (kb)
-    lin_btn_kb_escape,
-    lin_btn_kb_tab,
-    lin_btn_kb_enter,
-    lin_btn_kb_space,
-    lin_btn_kb_backspace,
-    lin_btn_kb_delete,
+    din_btn_kb_escape,
+    din_btn_kb_tab,
+    din_btn_kb_enter,
+    din_btn_kb_space,
+    din_btn_kb_backspace,
+    din_btn_kb_delete,
 
-    lin_btn_kb_up,
-    lin_btn_kb_down,
-    lin_btn_kb_left,
-    lin_btn_kb_right,
+    din_btn_kb_up,
+    din_btn_kb_down,
+    din_btn_kb_left,
+    din_btn_kb_right,
 
-    lin_btn_kb_shift,
-    lin_btn_kb_ctrl,
-    lin_btn_kb_alt,
-    lin_btn_kb_super, // Windows / Command
+    din_btn_kb_shift,
+    din_btn_kb_ctrl,
+    din_btn_kb_alt,
+    din_btn_kb_super, // Windows / Command
 
-    lin_btn_kb_a,
-    lin_btn_kb_b,
-    lin_btn_kb_c,
-    lin_btn_kb_d,
-    lin_btn_kb_e,
-    lin_btn_kb_f,
-    lin_btn_kb_g,
-    lin_btn_kb_h,
-    lin_btn_kb_i,
-    lin_btn_kb_j,
-    lin_btn_kb_k,
-    lin_btn_kb_l,
-    lin_btn_kb_m,
-    lin_btn_kb_n,
-    lin_btn_kb_o,
-    lin_btn_kb_p,
-    lin_btn_kb_q,
-    lin_btn_kb_r,
-    lin_btn_kb_s,
-    lin_btn_kb_t,
-    lin_btn_kb_u,
-    lin_btn_kb_v,
-    lin_btn_kb_w,
-    lin_btn_kb_x,
-    lin_btn_kb_y,
-    lin_btn_kb_z,
+    din_btn_kb_a,
+    din_btn_kb_b,
+    din_btn_kb_c,
+    din_btn_kb_d,
+    din_btn_kb_e,
+    din_btn_kb_f,
+    din_btn_kb_g,
+    din_btn_kb_h,
+    din_btn_kb_i,
+    din_btn_kb_j,
+    din_btn_kb_k,
+    din_btn_kb_l,
+    din_btn_kb_m,
+    din_btn_kb_n,
+    din_btn_kb_o,
+    din_btn_kb_p,
+    din_btn_kb_q,
+    din_btn_kb_r,
+    din_btn_kb_s,
+    din_btn_kb_t,
+    din_btn_kb_u,
+    din_btn_kb_v,
+    din_btn_kb_w,
+    din_btn_kb_x,
+    din_btn_kb_y,
+    din_btn_kb_z,
 
-    lin_btn_kb_0,
-    lin_btn_kb_1,
-    lin_btn_kb_2,
-    lin_btn_kb_3,
-    lin_btn_kb_4,
-    lin_btn_kb_5,
-    lin_btn_kb_6,
-    lin_btn_kb_7,
-    lin_btn_kb_8,
-    lin_btn_kb_9,
+    din_btn_kb_0,
+    din_btn_kb_1,
+    din_btn_kb_2,
+    din_btn_kb_3,
+    din_btn_kb_4,
+    din_btn_kb_5,
+    din_btn_kb_6,
+    din_btn_kb_7,
+    din_btn_kb_8,
+    din_btn_kb_9,
 
     // GAMEPAD
 
     // face buttons
-    lin_btn_gp_north,
-    lin_btn_gp_east,
-    lin_btn_gp_south,
-    lin_btn_gp_west,
+    din_btn_gp_north,
+    din_btn_gp_east,
+    din_btn_gp_south,
+    din_btn_gp_west,
 
     // shoulder buttons
-    lin_btn_gp_lb,
-    lin_btn_gp_rb,
+    din_btn_gp_lb,
+    din_btn_gp_rb,
 
     // triggers as buttons
     //  some controllers does not use those - use in alternative to analog
-    lin_btn_gp_lt,
-    lin_btn_gp_rt,
+    din_btn_gp_lt,
+    din_btn_gp_rt,
 
     // sticks buttons
-    lin_btn_gp_l3,
-    lin_btn_gp_r3,
+    din_btn_gp_l3,
+    din_btn_gp_r3,
 
     // menu buttons
-    lin_btn_gp_start,
-    lin_btn_gp_select,
-    lin_btn_gp_home,
+    din_btn_gp_start,
+    din_btn_gp_select,
+    din_btn_gp_home,
 
     // dpad buttons
-    lin_btn_gp_dpad_up,
-    lin_btn_gp_dpad_right,
-    lin_btn_gp_dpad_down,
-    lin_btn_gp_dpad_left,
+    din_btn_gp_dpad_up,
+    din_btn_gp_dpad_right,
+    din_btn_gp_dpad_down,
+    din_btn_gp_dpad_left,
 
-    lin_btn_count,
-} lin_button;
+    din_btn_count,
+} din_button;
 
-typedef enum lin_axis {
+typedef enum din_axis {
     // Mouse
-    lin_axis_ms_x,
-    lin_axis_ms_y,
+    din_axis_ms_x,
+    din_axis_ms_y,
 
     // GAMEPAD
-    lin_axis_gp_lx,   // left  stick  X  -1..+1
-    lin_axis_gp_ly,   // left  stick  Y  -1..+1
-    lin_axis_gp_rx,   // right stick  X  -1..+1
-    lin_axis_gp_ry,   // right stick  Y  -1..+1
-    lin_axis_gp_lt,   // left  trigger    0..+1 
-    lin_axis_gp_rt,   // right trigger    0..+1 
+    din_axis_gp_lx,   // left  stick  X  -1..+1
+    din_axis_gp_ly,   // left  stick  Y  -1..+1
+    din_axis_gp_rx,   // right stick  X  -1..+1
+    din_axis_gp_ry,   // right stick  Y  -1..+1
+    din_axis_gp_lt,   // left  trigger    0..+1 
+    din_axis_gp_rt,   // right trigger    0..+1 
 
-    lin_axis_count,
-} lin_axis;
+    din_axis_count,
+} din_axis;
 
-typedef struct lin_input_state {
-    char  buttons[lin_btn_count];
-    float axes   [lin_axis_count];
-} lin_input_state;
+typedef struct din_input_state {
+    char  buttons[din_btn_count];
+    float axes   [din_axis_count];
+} din_input_state;
 
-#endif // LIGHT_INPUT_H
+#endif // DEMIGURG_INPUT_H
 
-#ifdef LIGHT_INPUT_IMPL
-#ifdef LIGHT_INPUT_LINUX
+#ifdef DEMIGURG_INPUT_IMPL
+#ifdef DEMIGURG_INPUT_LINUX
 
 /*
     The caller needs read access to /dev/input/event* devices.
@@ -216,7 +216,7 @@ typedef struct lin_input_state {
 */
 
 #include <libevdev/libevdev.h>
-#include <linux/input.h>
+#include <dinux/input.h>
 
 #include <dirent.h>
 #include <errno.h>
@@ -237,121 +237,121 @@ static const float mouse_inner_damping_factor     = 0.99;
     Mappings and Helpers
 */
 
-static const unsigned int button_mapping[lin_btn_count] = {
+static const unsigned int button_mapping[din_btn_count] = {
     // Mouse
-    [lin_btn_ms_left]       = BTN_LEFT,
-    [lin_btn_ms_right]      = BTN_RIGHT,
-    [lin_btn_ms_middle]     = BTN_MIDDLE,
-    [lin_btn_ms_back]       = BTN_SIDE,
-    [lin_btn_ms_forward]    = BTN_EXTRA,
+    [din_btn_ms_left]       = BTN_LEFT,
+    [din_btn_ms_right]      = BTN_RIGHT,
+    [din_btn_ms_middle]     = BTN_MIDDLE,
+    [din_btn_ms_back]       = BTN_SIDE,
+    [din_btn_ms_forward]    = BTN_EXTRA,
 
     // Keyboard
-    [lin_btn_kb_escape]     = KEY_ESC,
-    [lin_btn_kb_tab]        = KEY_TAB,
-    [lin_btn_kb_enter]      = KEY_ENTER,
-    [lin_btn_kb_space]      = KEY_SPACE,
-    [lin_btn_kb_backspace]  = KEY_BACKSPACE,
-    [lin_btn_kb_delete]     = KEY_DELETE,
-    [lin_btn_kb_up]         = KEY_UP,
-    [lin_btn_kb_down]       = KEY_DOWN,
-    [lin_btn_kb_left]       = KEY_LEFT,
-    [lin_btn_kb_right]      = KEY_RIGHT,
+    [din_btn_kb_escape]     = KEY_ESC,
+    [din_btn_kb_tab]        = KEY_TAB,
+    [din_btn_kb_enter]      = KEY_ENTER,
+    [din_btn_kb_space]      = KEY_SPACE,
+    [din_btn_kb_backspace]  = KEY_BACKSPACE,
+    [din_btn_kb_delete]     = KEY_DELETE,
+    [din_btn_kb_up]         = KEY_UP,
+    [din_btn_kb_down]       = KEY_DOWN,
+    [din_btn_kb_left]       = KEY_LEFT,
+    [din_btn_kb_right]      = KEY_RIGHT,
 
-    [lin_btn_kb_shift]      = KEY_LEFTSHIFT,
-    [lin_btn_kb_ctrl]       = KEY_LEFTCTRL,
-    [lin_btn_kb_alt]        = KEY_LEFTALT,
-    [lin_btn_kb_super]      = KEY_LEFTMETA,
+    [din_btn_kb_shift]      = KEY_LEFTSHIFT,
+    [din_btn_kb_ctrl]       = KEY_LEFTCTRL,
+    [din_btn_kb_alt]        = KEY_LEFTALT,
+    [din_btn_kb_super]      = KEY_LEFTMETA,
 
-    [lin_btn_kb_a]          = KEY_A,
-    [lin_btn_kb_b]          = KEY_B,
-    [lin_btn_kb_c]          = KEY_C,
-    [lin_btn_kb_d]          = KEY_D,
-    [lin_btn_kb_e]          = KEY_E,
-    [lin_btn_kb_f]          = KEY_F,
-    [lin_btn_kb_g]          = KEY_G,
-    [lin_btn_kb_h]          = KEY_H,
-    [lin_btn_kb_i]          = KEY_I,
-    [lin_btn_kb_j]          = KEY_J,
-    [lin_btn_kb_k]          = KEY_K,
-    [lin_btn_kb_l]          = KEY_L,
-    [lin_btn_kb_m]          = KEY_M,
-    [lin_btn_kb_n]          = KEY_N,
-    [lin_btn_kb_o]          = KEY_O,
-    [lin_btn_kb_p]          = KEY_P,
-    [lin_btn_kb_q]          = KEY_Q,
-    [lin_btn_kb_r]          = KEY_R,
-    [lin_btn_kb_s]          = KEY_S,
-    [lin_btn_kb_t]          = KEY_T,
-    [lin_btn_kb_u]          = KEY_U,
-    [lin_btn_kb_v]          = KEY_V,
-    [lin_btn_kb_w]          = KEY_W,
-    [lin_btn_kb_x]          = KEY_X,
-    [lin_btn_kb_y]          = KEY_Y,
-    [lin_btn_kb_z]          = KEY_Z,
+    [din_btn_kb_a]          = KEY_A,
+    [din_btn_kb_b]          = KEY_B,
+    [din_btn_kb_c]          = KEY_C,
+    [din_btn_kb_d]          = KEY_D,
+    [din_btn_kb_e]          = KEY_E,
+    [din_btn_kb_f]          = KEY_F,
+    [din_btn_kb_g]          = KEY_G,
+    [din_btn_kb_h]          = KEY_H,
+    [din_btn_kb_i]          = KEY_I,
+    [din_btn_kb_j]          = KEY_J,
+    [din_btn_kb_k]          = KEY_K,
+    [din_btn_kb_l]          = KEY_L,
+    [din_btn_kb_m]          = KEY_M,
+    [din_btn_kb_n]          = KEY_N,
+    [din_btn_kb_o]          = KEY_O,
+    [din_btn_kb_p]          = KEY_P,
+    [din_btn_kb_q]          = KEY_Q,
+    [din_btn_kb_r]          = KEY_R,
+    [din_btn_kb_s]          = KEY_S,
+    [din_btn_kb_t]          = KEY_T,
+    [din_btn_kb_u]          = KEY_U,
+    [din_btn_kb_v]          = KEY_V,
+    [din_btn_kb_w]          = KEY_W,
+    [din_btn_kb_x]          = KEY_X,
+    [din_btn_kb_y]          = KEY_Y,
+    [din_btn_kb_z]          = KEY_Z,
 
-    [lin_btn_kb_0]          = KEY_0,
-    [lin_btn_kb_1]          = KEY_1,
-    [lin_btn_kb_2]          = KEY_2,
-    [lin_btn_kb_3]          = KEY_3,
-    [lin_btn_kb_4]          = KEY_4,
-    [lin_btn_kb_5]          = KEY_5,
-    [lin_btn_kb_6]          = KEY_6,
-    [lin_btn_kb_7]          = KEY_7,
-    [lin_btn_kb_8]          = KEY_8,
-    [lin_btn_kb_9]          = KEY_9,
+    [din_btn_kb_0]          = KEY_0,
+    [din_btn_kb_1]          = KEY_1,
+    [din_btn_kb_2]          = KEY_2,
+    [din_btn_kb_3]          = KEY_3,
+    [din_btn_kb_4]          = KEY_4,
+    [din_btn_kb_5]          = KEY_5,
+    [din_btn_kb_6]          = KEY_6,
+    [din_btn_kb_7]          = KEY_7,
+    [din_btn_kb_8]          = KEY_8,
+    [din_btn_kb_9]          = KEY_9,
 
     // Gamepad
-    [lin_btn_gp_north]      = BTN_NORTH,
-    [lin_btn_gp_east]       = BTN_EAST,
-    [lin_btn_gp_south]      = BTN_SOUTH,
-    [lin_btn_gp_west]       = BTN_WEST,
+    [din_btn_gp_north]      = BTN_NORTH,
+    [din_btn_gp_east]       = BTN_EAST,
+    [din_btn_gp_south]      = BTN_SOUTH,
+    [din_btn_gp_west]       = BTN_WEST,
 
-    [lin_btn_gp_lb]         = BTN_TL,
-    [lin_btn_gp_rb]         = BTN_TR,
-    [lin_btn_gp_lt]         = BTN_TL2,
-    [lin_btn_gp_rt]         = BTN_TR2,
+    [din_btn_gp_lb]         = BTN_TL,
+    [din_btn_gp_rb]         = BTN_TR,
+    [din_btn_gp_lt]         = BTN_TL2,
+    [din_btn_gp_rt]         = BTN_TR2,
 
-    [lin_btn_gp_l3]         = BTN_THUMBL,
-    [lin_btn_gp_r3]         = BTN_THUMBR,
+    [din_btn_gp_l3]         = BTN_THUMBL,
+    [din_btn_gp_r3]         = BTN_THUMBR,
 
-    [lin_btn_gp_start]      = BTN_START,
-    [lin_btn_gp_select]     = BTN_SELECT,
-    [lin_btn_gp_home]       = BTN_MODE,
+    [din_btn_gp_start]      = BTN_START,
+    [din_btn_gp_select]     = BTN_SELECT,
+    [din_btn_gp_home]       = BTN_MODE,
 
-    [lin_btn_gp_dpad_up]    = BTN_DPAD_UP,
-    [lin_btn_gp_dpad_down]  = BTN_DPAD_DOWN,
-    [lin_btn_gp_dpad_left]  = BTN_DPAD_LEFT,
-    [lin_btn_gp_dpad_right] = BTN_DPAD_RIGHT,
+    [din_btn_gp_dpad_up]    = BTN_DPAD_UP,
+    [din_btn_gp_dpad_down]  = BTN_DPAD_DOWN,
+    [din_btn_gp_dpad_left]  = BTN_DPAD_LEFT,
+    [din_btn_gp_dpad_right] = BTN_DPAD_RIGHT,
 };
 
 // Some controllers expose HAT0 axes instead of BTN_DPAD buttons
-typedef struct { lin_button btn; unsigned int code; unsigned int pressed_when_positve; } dpad_axis_map;
+typedef struct { din_button btn; unsigned int code; unsigned int pressed_when_positve; } dpad_axis_map;
 static const dpad_axis_map dpad_key_abs_hat_fallback_mapping[] = {
-    { lin_btn_gp_dpad_up,    ABS_HAT0Y, 0 },
-    { lin_btn_gp_dpad_down,  ABS_HAT0Y, 1 },
-    { lin_btn_gp_dpad_left,  ABS_HAT0X, 0 },
-    { lin_btn_gp_dpad_right, ABS_HAT0X, 1 }
+    { din_btn_gp_dpad_up,    ABS_HAT0Y, 0 },
+    { din_btn_gp_dpad_down,  ABS_HAT0Y, 1 },
+    { din_btn_gp_dpad_left,  ABS_HAT0X, 0 },
+    { din_btn_gp_dpad_right, ABS_HAT0X, 1 }
 };
 
 // Right-hand modifier companions (OR-ed with left-hand counterpart)
-typedef struct { lin_button btn; unsigned int right_code; } modifier_pair;
+typedef struct { din_button btn; unsigned int right_code; } modifier_pair;
 static const modifier_pair modifier_pairs_mapping[] = {
-    { lin_btn_kb_shift, KEY_RIGHTSHIFT },
-    { lin_btn_kb_ctrl,  KEY_RIGHTCTRL  },
-    { lin_btn_kb_alt,   KEY_RIGHTALT   },
-    { lin_btn_kb_super, KEY_RIGHTMETA  }
+    { din_btn_kb_shift, KEY_RIGHTSHIFT },
+    { din_btn_kb_ctrl,  KEY_RIGHTCTRL  },
+    { din_btn_kb_alt,   KEY_RIGHTALT   },
+    { din_btn_kb_super, KEY_RIGHTMETA  }
 };
 
-// Axis mapping: lin_axis to EV_ABS code
-typedef struct { lin_axis axis; unsigned int code; } axis_mapping_entry;
-static const axis_mapping_entry axis_mapping[lin_axis_count] = {
+// Axis mapping: din_axis to EV_ABS code
+typedef struct { din_axis axis; unsigned int code; } axis_mapping_entry;
+static const axis_mapping_entry axis_mapping[din_axis_count] = {
     // Gamepad
-    { lin_axis_gp_lx, ABS_X  },
-    { lin_axis_gp_ly, ABS_Y  },
-    { lin_axis_gp_rx, ABS_RX },
-    { lin_axis_gp_ry, ABS_RY },
-    { lin_axis_gp_lt, ABS_Z  },
-    { lin_axis_gp_rt, ABS_RZ },
+    { din_axis_gp_lx, ABS_X  },
+    { din_axis_gp_ly, ABS_Y  },
+    { din_axis_gp_rx, ABS_RX },
+    { din_axis_gp_ry, ABS_RY },
+    { din_axis_gp_lt, ABS_Z  },
+    { din_axis_gp_rt, ABS_RZ },
 };
 
 static float apply_deadzone(float v, float deadzone) {
@@ -380,38 +380,38 @@ static float normalize_abs(const struct input_absinfo* info, int raw, float dead
     }
 }
 
-static lin_device_type classify_device(struct libevdev* dev) {
+static din_device_type classify_device(struct libevdev* dev) {
     // Gamepad: has at least one face button from the gamepad cluster
     if (libevdev_has_event_code(dev, EV_KEY, BTN_SOUTH) ||
         libevdev_has_event_code(dev, EV_KEY, BTN_GAMEPAD))
-        return lin_device_gamepad;
+        return din_device_gamepad;
 
     // Mouse: relative pointer movement + primary click
     if (libevdev_has_event_code(dev, EV_KEY, BTN_LEFT) &&
         libevdev_has_event_code(dev, EV_REL, REL_X))
-        return lin_device_mouse;
+        return din_device_mouse;
 
     // Keyboard: alphanumeric keys present
     if (libevdev_has_event_code(dev, EV_KEY, KEY_A) &&
         libevdev_has_event_code(dev, EV_KEY, KEY_SPACE))
-        return lin_device_keyboard;
+        return din_device_keyboard;
 
-    return lin_device_unknown;
+    return din_device_unknown;
 }
 
 /*
     Library
 */
 
-struct lin_library {
+struct din_library {
     int _placeholder;
 };
 
-lin_library* lin_create_library(void) {
-    return calloc(1, sizeof(lin_library));
+din_library* din_create_library(void) {
+    return calloc(1, sizeof(din_library));
 }
 
-void lin_free_library(lin_library* lib) {
+void din_free_library(din_library* lib) {
     free(lib);
 }
 
@@ -422,19 +422,19 @@ void lin_free_library(lin_library* lib) {
 typedef struct {
     char            path[256];
     char            name[256];
-    lin_device_type type;
+    din_device_type type;
 } device_info;
 
-struct lin_devices_list {
+struct din_devices_list {
     device_info*    entries;
     size_t          count;
     size_t          capacity;
 };
 
-lin_devices_list* lin_library_get_devices_list(lin_library* lib) {
+din_devices_list* din_library_get_devices_list(din_library* lib) {
     (void)lib;
 
-    lin_devices_list* list = calloc(1, sizeof(*list));
+    din_devices_list* list = calloc(1, sizeof(*list));
     if (!list) return NULL;
 
     list->capacity = 16;
@@ -489,22 +489,22 @@ lin_devices_list* lin_library_get_devices_list(lin_library* lib) {
     return list;
 }
 
-void lin_free_devices_list(lin_devices_list* list) {
+void din_free_devices_list(din_devices_list* list) {
     if (!list) return;
     free(list->entries);
     free(list);
 }
 
-size_t lin_devices_list_get_size(lin_devices_list* list) {
+size_t din_devices_list_get_size(din_devices_list* list) {
     return list->count;
 }
 
-lin_device_type lin_devices_list_query_type(lin_devices_list* list, size_t idx) {
-    if (idx >= list->count) return lin_device_unknown;
+din_device_type din_devices_list_query_type(din_devices_list* list, size_t idx) {
+    if (idx >= list->count) return din_device_unknown;
     return list->entries[idx].type;
 }
 
-const char* lin_devices_list_query_name(lin_devices_list* list, size_t idx) {
+const char* din_devices_list_query_name(din_devices_list* list, size_t idx) {
     if (idx >= list->count) return NULL;
     return list->entries[idx].name;
 }
@@ -513,22 +513,22 @@ const char* lin_devices_list_query_name(lin_devices_list* list, size_t idx) {
     Slot
 */
 
-struct lin_slot {
+struct din_slot {
     struct libevdev*    dev;
     int                 connected;
     int                 fd;
     float               mouse_sensitivity;
-    float               axis_deadzone[lin_axis_count];
+    float               axis_deadzone[din_axis_count];
 
     // process variables
     float mouse_dx;
     float mouse_dy;
 };
 
-lin_slot* lin_create_slot(lin_library* lib) {
+din_slot* din_create_slot(din_library* lib) {
     (void)lib;
 
-    lin_slot* slot = calloc(1, sizeof(*slot));
+    din_slot* slot = calloc(1, sizeof(*slot));
     if (!slot) return NULL;
 
     slot->fd                = -1;
@@ -537,21 +537,21 @@ lin_slot* lin_create_slot(lin_library* lib) {
     return slot;
 }
 
-void lin_free_slot(lin_slot* slot) {
+void din_free_slot(din_slot* slot) {
     if (!slot) return;
-    lin_slot_disconnect(slot);
+    din_slot_disconnect(slot);
     free(slot);
 }
 
-void lin_slot_disconnect(lin_slot* slot) {
+void din_slot_disconnect(din_slot* slot) {
     if (slot->dev) { libevdev_free(slot->dev); slot->dev = NULL; }
     if (slot->fd >= 0) { close(slot->fd); slot->fd = -1; }
     slot->connected = 0;
 }
 
-int lin_slot_connect(lin_slot* slot, lin_devices_list* list, size_t idx) {
+int din_slot_connect(din_slot* slot, din_devices_list* list, size_t idx) {
     if (idx >= list->count) return 0;
-    lin_slot_disconnect(slot); // drop any existing slot first
+    din_slot_disconnect(slot); // drop any existing slot first
 
     const char* path = list->entries[idx].path;
     int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
@@ -573,15 +573,15 @@ int lin_slot_connect(lin_slot* slot, lin_devices_list* list, size_t idx) {
     return 1;
 }
 
-int lin_slot_connected(lin_slot* slot) {
+int din_slot_connected(din_slot* slot) {
     return slot->connected;
 }
 
-void lin_slot_set_mouse_sensitivity(lin_slot* slot, float sensitivity) {
+void din_slot_set_mouse_sensitivity(din_slot* slot, float sensitivity) {
     slot->mouse_sensitivity = sensitivity;
 }
 
-void lin_slot_set_axis_deadzone(lin_slot* slot, unsigned int axis, float deadzone) {
+void din_slot_set_axis_deadzone(din_slot* slot, unsigned int axis, float deadzone) {
     if (deadzone < 0.0f) deadzone = 0.0f;
     if (deadzone > 1.0f) deadzone = 1.0f;
     slot->axis_deadzone[axis] = deadzone;
@@ -594,7 +594,7 @@ void lin_slot_set_axis_deadzone(lin_slot* slot, unsigned int axis, float deadzon
 // Drain all pending events so libevdev's internal state mirror is current.
 //  Returns 0 on success, -ENODEV if the device was physically removed.
 // Also pull mouse position delta
-static int drain_events(lin_slot* slot, struct libevdev* dev) {
+static int drain_events(din_slot* slot, struct libevdev* dev) {
     struct input_event ev; int rc;
 
     for (;;) {
@@ -616,8 +616,8 @@ static int drain_events(lin_slot* slot, struct libevdev* dev) {
     }
 }
 
-void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
-    *st = (lin_input_state){0}; // 0 init
+void din_slot_query_input_state(din_slot* slot, din_input_state* st) {
+    *st = (din_input_state){0}; // 0 init
     if (!slot || !slot->connected || !slot->dev) return;
 
     struct libevdev* dev = slot->dev;
@@ -629,7 +629,7 @@ void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
     }
 
     // Buttons
-    for (int i = 0; i < lin_btn_count; i++) {
+    for (int i = 0; i < din_btn_count; i++) {
         const unsigned int code = button_mapping[i];
         if (libevdev_has_event_code(dev, EV_KEY, code)) st->buttons[i] = libevdev_get_event_value(dev, EV_KEY, code);
     }
@@ -648,7 +648,7 @@ void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
 
     // OR in right-hand modifier keys so either side registers as pressed
     for (size_t i = 0; i < sizeof(modifier_pairs_mapping) / sizeof(*modifier_pairs_mapping); i++) {
-        lin_button btn      = modifier_pairs_mapping[i].btn;
+        din_button btn      = modifier_pairs_mapping[i].btn;
         unsigned int rcode  = modifier_pairs_mapping[i].right_code;
 
         if (!st->buttons[btn] && libevdev_has_event_code(dev, EV_KEY, rcode)) 
@@ -656,7 +656,7 @@ void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
     }
 
     // Axes
-    for (int i = 0; i < lin_axis_count; i++) {
+    for (int i = 0; i < din_axis_count; i++) {
         unsigned int code = axis_mapping[i].code;
         if (libevdev_has_event_code(dev, EV_ABS, code)) {
             int raw = libevdev_get_event_value(dev, EV_ABS, code);
@@ -666,9 +666,9 @@ void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
 
     // Mouse Axes
     float*   delta_var[] = { &slot->mouse_dx,   &slot->mouse_dy };
-    lin_axis axes[]      = { lin_axis_ms_x,     lin_axis_ms_y   };
+    din_axis axes[]      = { din_axis_ms_x,     din_axis_ms_y   };
     for (int i = 0; i < 2; i++) {
-        lin_axis axis = axes[i];
+        din_axis axis = axes[i];
 
         st->axes[axis] = *delta_var[i] * mouse_inner_sensitivity_factor * slot->mouse_sensitivity;
         if (st->axes[axis] > 1.0f)  st->axes[axis] = 1.0f;
@@ -679,6 +679,6 @@ void lin_slot_query_input_state(lin_slot* slot, lin_input_state* st) {
     }
 }
 #else
-    #error No OS info provided for light input!
+    #error No OS info provided for demigurg input!
 #endif // OS IF
-#endif // LIGHT_INPUT_IMPL
+#endif // DEMIGURG_INPUT_IMPL

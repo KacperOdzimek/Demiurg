@@ -6,16 +6,16 @@ This interface allows user to write api independent low-level graphics systems.
 
 ----------------------------------------------------------------
 Code info:
-- lgx prefix
-- LIGHT_GRAPHICS_IMPL macro to build
+- dgx prefix
+- DEMIGURG_GRAPHICS_IMPL macro to build
 - user must select graphics api at build using one of the macros below:
-    - LIGHT_GRAPHICS_VULKAN
-- add LIGHT_GRAPHICS_VALIDATE macro-flag pre implementation to enable validation and error logging
+    - DEMIGURG_GRAPHICS_VULKAN
+- add DEMIGURG_GRAPHICS_VALIDATE macro-flag pre implementation to enable validation and error logging
 
 ----------------------------------------------------------------
 Depedencies:
 - Each of native APIs have they own compilation requirements:
-- LIGHT_GRAPHICS_VULKAN: - (todo)
+- DEMIGURG_GRAPHICS_VULKAN: - (todo)
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
@@ -26,13 +26,13 @@ Possible Optimizations and TODOs:
 - (Vulkan) non blocking swapchain recreation, render layout preservation
 */
 
-#ifndef LIGHT_GRAPHICS_H
-#define LIGHT_GRAPHICS_H
+#ifndef DEMIGURG_GRAPHICS_H
+#define DEMIGURG_GRAPHICS_H
 
 // ==========================
 // Compile Flags
 
-// #define LIGHT_GRAPHICS_VALIDATE - enables validation layers
+// #define DEMIGURG_GRAPHICS_VALIDATE - enables validation layers
 
 // ==========================
 // Depedencies
@@ -42,250 +42,250 @@ Possible Optimizations and TODOs:
 // ==========================
 // Enumerations
 
-typedef enum lgx_hardware_type {
-    lgx_hardware_type_dont_mind = 0,
-    lgx_hardware_type_discrete,
-    lgx_hardware_type_integrated,
-} lgx_hardware_type;
+typedef enum dgx_hardware_type {
+    dgx_hardware_type_dont_mind = 0,
+    dgx_hardware_type_discrete,
+    dgx_hardware_type_integrated,
+} dgx_hardware_type;
 
-typedef enum lgx_hardware_queue_type {
-    lgx_hardware_queue_type_graphics,
-    lgx_hardware_queue_type_transfer,
-    lgx_hardware_queue_type_compute,
-    lgx_hardware_queue_type_transfer_compute,
-} lgx_hardware_queue_type;
+typedef enum dgx_hardware_queue_type {
+    dgx_hardware_queue_type_graphics,
+    dgx_hardware_queue_type_transfer,
+    dgx_hardware_queue_type_compute,
+    dgx_hardware_queue_type_transfer_compute,
+} dgx_hardware_queue_type;
 
-typedef enum lgx_hardware_limit {
+typedef enum dgx_hardware_limit {
     // Textures
 
-    lgx_hardware_limit_max_texture_dimension_1d,
-    lgx_hardware_limit_max_texture_dimension_2d,
-    lgx_hardware_limit_max_texture_dimension_3d,
-    lgx_hardware_limit_max_texture_dimension_cube,
-    lgx_hardware_limit_max_texture_array_layers,
+    dgx_hardware_limit_max_texture_dimension_1d,
+    dgx_hardware_limit_max_texture_dimension_2d,
+    dgx_hardware_limit_max_texture_dimension_3d,
+    dgx_hardware_limit_max_texture_dimension_cube,
+    dgx_hardware_limit_max_texture_array_layers,
 
     // Descriptors
 
-    lgx_hardware_limit_max_descriptor_per_pipeline,
+    dgx_hardware_limit_max_descriptor_per_pipeline,
 
     // Per-stage descriptor limits
-    lgx_hardware_limit_max_descriptor_uniform_buffers_per_stage,
-    lgx_hardware_limit_max_descriptor_storage_buffers_per_stage,
-    lgx_hardware_limit_max_descriptor_sampled_images_per_stage,
-    lgx_hardware_limit_max_descriptor_samplers_per_stage,
+    dgx_hardware_limit_max_descriptor_uniform_buffers_per_stage,
+    dgx_hardware_limit_max_descriptor_storage_buffers_per_stage,
+    dgx_hardware_limit_max_descriptor_sampled_images_per_stage,
+    dgx_hardware_limit_max_descriptor_samplers_per_stage,
 
     // Descriptor set layout limits
-    lgx_hardware_limit_max_descriptor_uniform_buffers,
-    lgx_hardware_limit_max_descriptor_storage_buffers,
-    lgx_hardware_limit_max_descriptor_sampled_images,
-    lgx_hardware_limit_max_descriptor_samplers,
+    dgx_hardware_limit_max_descriptor_uniform_buffers,
+    dgx_hardware_limit_max_descriptor_storage_buffers,
+    dgx_hardware_limit_max_descriptor_sampled_images,
+    dgx_hardware_limit_max_descriptor_samplers,
 
     // Bound buffer size limits
-    lgx_hardware_limit_max_descriptor_bound_uniform_buffer_length,
-    lgx_hardware_limit_max_descriptor_bound_storage_buffer_length,
+    dgx_hardware_limit_max_descriptor_bound_uniform_buffer_length,
+    dgx_hardware_limit_max_descriptor_bound_storage_buffer_length,
 
     // Vertex Input
 
-    lgx_hardware_limit_max_vertex_input_attributes,
-    lgx_hardware_limit_max_vertex_input_bindings,
-    lgx_hardware_limit_max_vertex_input_attribute_offset,
-} lgx_hardware_limit;
+    dgx_hardware_limit_max_vertex_input_attributes,
+    dgx_hardware_limit_max_vertex_input_bindings,
+    dgx_hardware_limit_max_vertex_input_attribute_offset,
+} dgx_hardware_limit;
 
-typedef enum lgx_data_type {
-    lgx_data_type_int32,
-    lgx_data_type_vec2i32,
-    lgx_data_type_vec3i32,
-    lgx_data_type_vec4i32,
+typedef enum dgx_data_type {
+    dgx_data_type_int32,
+    dgx_data_type_vec2i32,
+    dgx_data_type_vec3i32,
+    dgx_data_type_vec4i32,
 
-    lgx_data_type_float32,
-    lgx_data_type_vec2f32,
-    lgx_data_type_vec3f32,
-    lgx_data_type_vec4f32,
-} lgx_data_type;
+    dgx_data_type_float32,
+    dgx_data_type_vec2f32,
+    dgx_data_type_vec3f32,
+    dgx_data_type_vec4f32,
+} dgx_data_type;
 
-typedef enum lgx_vertex_attribute_input_rate {
-    lgx_vertex_attribute_input_rate_per_vertex,
-    lgx_vertex_attribute_input_rate_per_instance
-} lgx_vertex_attribute_input_rate;
+typedef enum dgx_vertex_attribute_input_rate {
+    dgx_vertex_attribute_input_rate_per_vertex,
+    dgx_vertex_attribute_input_rate_per_instance
+} dgx_vertex_attribute_input_rate;
 
-typedef enum lgx_shader_stages_bitmask {
-    lgx_shader_stage_vertex     = 1,
-    lgx_shader_stage_pixel      = 2,
-    lgx_shader_stage_geometry   = 4,
-    lgx_shader_stage_compute    = 8
-} lgx_shader_stages_bitmask;
+typedef enum dgx_shader_stages_bitmask {
+    dgx_shader_stage_vertex     = 1,
+    dgx_shader_stage_pixel      = 2,
+    dgx_shader_stage_geometry   = 4,
+    dgx_shader_stage_compute    = 8
+} dgx_shader_stages_bitmask;
 
-typedef enum lgx_memory_allocation_strategy {
-    lgx_memory_allocation_strategy_paged,
-    lgx_memory_allocation_strategy_dedicated
-} lgx_memory_allocation_strategy;
+typedef enum dgx_memory_allocation_strategy {
+    dgx_memory_allocation_strategy_paged,
+    dgx_memory_allocation_strategy_dedicated
+} dgx_memory_allocation_strategy;
 
-typedef enum lgx_memory_access {
-    lgx_memory_access_gpu_only,
-    lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read,
-    lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-    lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read_and_write
-} lgx_memory_access;
+typedef enum dgx_memory_access {
+    dgx_memory_access_gpu_only,
+    dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read,
+    dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
+    dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read_and_write
+} dgx_memory_access;
 
-typedef enum lgx_buffer_usage {
-    lgx_buffer_usage_vertex,
-    lgx_buffer_usage_index,
-    lgx_buffer_usage_uniform,
-    lgx_buffer_usage_storage
-} lgx_buffer_usage;
+typedef enum dgx_buffer_usage {
+    dgx_buffer_usage_vertex,
+    dgx_buffer_usage_index,
+    dgx_buffer_usage_uniform,
+    dgx_buffer_usage_storage
+} dgx_buffer_usage;
 
-typedef enum lgx_texture_usage {
-    lgx_texture_usage_sampled,
-    lgx_texture_usage_color_attachment,
-    lgx_texture_usage_depth_stencil_attachment,
-    lgx_texture_usage_storage,
-} lgx_texture_usage;
+typedef enum dgx_texture_usage {
+    dgx_texture_usage_sampled,
+    dgx_texture_usage_color_attachment,
+    dgx_texture_usage_depth_stencil_attachment,
+    dgx_texture_usage_storage,
+} dgx_texture_usage;
 
-typedef enum lgx_sampler_filter {
-    lgx_sampler_filter_nearest,
-    lgx_sampler_filter_linear,
-} lgx_sampler_filter;
+typedef enum dgx_sampler_filter {
+    dgx_sampler_filter_nearest,
+    dgx_sampler_filter_linear,
+} dgx_sampler_filter;
 
-typedef enum lgx_sampler_wrapping {
-    lgx_sampler_wrapping_repeat,
-    lgx_sampler_wrapping_repeat_mirrored,
-    lgx_sampler_wrapping_repeat_clamp_coordinates,
-    lgx_sampler_wrapping_repeat_clamp_texture
-} lgx_sampler_wrapping;
+typedef enum dgx_sampler_wrapping {
+    dgx_sampler_wrapping_repeat,
+    dgx_sampler_wrapping_repeat_mirrored,
+    dgx_sampler_wrapping_repeat_clamp_coordinates,
+    dgx_sampler_wrapping_repeat_clamp_texture
+} dgx_sampler_wrapping;
 
-typedef enum lgx_texture_type {
-    lgx_texture_type_1d,
-    lgx_texture_type_2d,
-    lgx_texture_type_3d,
-    lgx_texture_type_cubemap,
-} lgx_texture_type;
+typedef enum dgx_texture_type {
+    dgx_texture_type_1d,
+    dgx_texture_type_2d,
+    dgx_texture_type_3d,
+    dgx_texture_type_cubemap,
+} dgx_texture_type;
 
-typedef enum lgx_texture_format {
-    lgx_texture_format_undefined = 0,
+typedef enum dgx_texture_format {
+    dgx_texture_format_undefined = 0,
 
     // 8-bit
-    lgx_texture_format_r8_unorm,
-    lgx_texture_format_rg8_unorm,
-    lgx_texture_format_rgba8_unorm,
-    lgx_texture_format_rgba8_srgb,
-    lgx_texture_format_bgra8_unorm,
-    lgx_texture_format_bgra8_srgb,
+    dgx_texture_format_r8_unorm,
+    dgx_texture_format_rg8_unorm,
+    dgx_texture_format_rgba8_unorm,
+    dgx_texture_format_rgba8_srgb,
+    dgx_texture_format_bgra8_unorm,
+    dgx_texture_format_bgra8_srgb,
 
     // 16-bit float
-    lgx_texture_format_r16_float,
-    lgx_texture_format_rg16_float,
-    lgx_texture_format_rgba16_float,
+    dgx_texture_format_r16_float,
+    dgx_texture_format_rg16_float,
+    dgx_texture_format_rgba16_float,
 
     // 32-bit float
-    lgx_texture_format_r32_float,
-    lgx_texture_format_rg32_float,
-    lgx_texture_format_rgba32_float,
+    dgx_texture_format_r32_float,
+    dgx_texture_format_rg32_float,
+    dgx_texture_format_rgba32_float,
 
     // Depth / stencil
-    lgx_texture_format_depth16_unorm,
-    lgx_texture_format_depth24_unorm_stencil8,
-    lgx_texture_format_depth32_float,
-} lgx_texture_format;
+    dgx_texture_format_depth16_unorm,
+    dgx_texture_format_depth24_unorm_stencil8,
+    dgx_texture_format_depth32_float,
+} dgx_texture_format;
 
-typedef enum lgx_descriptor_binding_type {
-    lgx_descriptor_binding_type_uniform_buffer,
-    lgx_descriptor_binding_type_storage_buffer,
-    lgx_descriptor_binding_type_sampled_texture,
-    lgx_descriptor_binding_type_sampler,
-} lgx_descriptor_binding_type;
+typedef enum dgx_descriptor_binding_type {
+    dgx_descriptor_binding_type_uniform_buffer,
+    dgx_descriptor_binding_type_storage_buffer,
+    dgx_descriptor_binding_type_sampled_texture,
+    dgx_descriptor_binding_type_sampler,
+} dgx_descriptor_binding_type;
 
-typedef enum lgx_load_op {
-    lgx_load_op_load,       // keep previous contents
-    lgx_load_op_clear,      // clear at start
-    lgx_load_op_dont_care   // undefined (fast)
-} lgx_load_op;
+typedef enum dgx_load_op {
+    dgx_load_op_load,       // keep previous contents
+    dgx_load_op_clear,      // clear at start
+    dgx_load_op_dont_care   // undefined (fast)
+} dgx_load_op;
 
-typedef enum lgx_store_op {
-    lgx_store_op_store,     // keep result
-    lgx_store_op_dont_care  // discard after rendering
-} lgx_store_op;
+typedef enum dgx_store_op {
+    dgx_store_op_store,     // keep result
+    dgx_store_op_dont_care  // discard after rendering
+} dgx_store_op;
 
-typedef enum lgx_primitive_topology {
-    lgx_primitive_topology_point_list,
-    lgx_primitive_topology_line_list,
-    lgx_primitive_topology_line_strip,
-    lgx_primitive_topology_triangle_list,
-    lgx_primitive_topology_triangle_strip
-} lgx_primitive_topology;
+typedef enum dgx_primitive_topology {
+    dgx_primitive_topology_point_list,
+    dgx_primitive_topology_line_list,
+    dgx_primitive_topology_line_strip,
+    dgx_primitive_topology_triangle_list,
+    dgx_primitive_topology_triangle_strip
+} dgx_primitive_topology;
 
-typedef enum lgx_cull_mode {
-    lgx_cull_mode_none,
-    lgx_cull_mode_front,
-    lgx_cull_mode_back,
-    lgx_cull_mode_front_and_back
-} lgx_cull_mode;
+typedef enum dgx_cull_mode {
+    dgx_cull_mode_none,
+    dgx_cull_mode_front,
+    dgx_cull_mode_back,
+    dgx_cull_mode_front_and_back
+} dgx_cull_mode;
 
-typedef enum lgx_fill_mode {
-    lgx_fill_mode_solid,
-    lgx_fill_mode_wireframe
-} lgx_fill_mode;
+typedef enum dgx_fill_mode {
+    dgx_fill_mode_solid,
+    dgx_fill_mode_wireframe
+} dgx_fill_mode;
 
-typedef enum lgx_blend_factor {
-    lgx_blend_factor_zero = 0,
-    lgx_blend_factor_one,
+typedef enum dgx_blend_factor {
+    dgx_blend_factor_zero = 0,
+    dgx_blend_factor_one,
 
-    lgx_blend_factor_src_color,
-    lgx_blend_factor_one_minus_src_color,
+    dgx_blend_factor_src_color,
+    dgx_blend_factor_one_minus_src_color,
 
-    lgx_blend_factor_dst_color,
-    lgx_blend_factor_one_minus_dst_color,
+    dgx_blend_factor_dst_color,
+    dgx_blend_factor_one_minus_dst_color,
 
-    lgx_blend_factor_src_alpha,
-    lgx_blend_factor_one_minus_src_alpha,
+    dgx_blend_factor_src_alpha,
+    dgx_blend_factor_one_minus_src_alpha,
 
-    lgx_blend_factor_dst_alpha,
-    lgx_blend_factor_one_minus_dst_alpha,
+    dgx_blend_factor_dst_alpha,
+    dgx_blend_factor_one_minus_dst_alpha,
 
-    lgx_blend_factor_constant_color,
-    lgx_blend_factor_one_minus_constant_color,
+    dgx_blend_factor_constant_color,
+    dgx_blend_factor_one_minus_constant_color,
 
-    lgx_blend_factor_constant_alpha,
-    lgx_blend_factor_one_minus_constant_alpha,
+    dgx_blend_factor_constant_alpha,
+    dgx_blend_factor_one_minus_constant_alpha,
 
-    lgx_blend_factor_src_alpha_saturate
-} lgx_blend_factor;
+    dgx_blend_factor_src_alpha_saturate
+} dgx_blend_factor;
 
-typedef enum lgx_blend_op {
-    lgx_blend_op_add = 0,
-    lgx_blend_op_subtract,
-    lgx_blend_op_reverse_subtract,
-    lgx_blend_op_min,
-    lgx_blend_op_max
-} lgx_blend_op;
+typedef enum dgx_blend_op {
+    dgx_blend_op_add = 0,
+    dgx_blend_op_subtract,
+    dgx_blend_op_reverse_subtract,
+    dgx_blend_op_min,
+    dgx_blend_op_max
+} dgx_blend_op;
 
 // ===========================
 // Utility Structs
 
-typedef struct lgx_color {
+typedef struct dgx_color {
     float r, g, b, a;
-} lgx_color;
+} dgx_color;
 
-typedef struct lgx_uv_2d {
+typedef struct dgx_uv_2d {
     float min_x, min_y;
     float max_x, max_y;
-} lgx_uv_2d;
+} dgx_uv_2d;
 
 // ===========================
 // Library
 
-typedef struct lgx_library_create_info {
+typedef struct dgx_library_create_info {
     int platform_code_enabled;
-} lgx_library_create_info;
+} dgx_library_create_info;
 
-typedef struct lgx_library lgx_library;
+typedef struct dgx_library dgx_library;
 
-lgx_library* lgx_create_library(const lgx_library_create_info*);
-void lgx_free_library(lgx_library*);
+dgx_library* dgx_create_library(const dgx_library_create_info*);
+void dgx_free_library(dgx_library*);
 
 // ===========================
 // Hardware
 
-typedef struct lgx_hardware_create_info {
+typedef struct dgx_hardware_create_info {
     // Requirements
 
     int require_presentation_queue;
@@ -293,65 +293,65 @@ typedef struct lgx_hardware_create_info {
 
     // Desires
 
-    lgx_hardware_type   desired_hardware_type;
+    dgx_hardware_type   desired_hardware_type;
     uint32_t            desired_graphics_queues;
     uint32_t            desired_transfer_compute_queues;
     uint32_t            desired_transfer_queues;
     uint32_t            desired_compute_queues;
-} lgx_hardware_create_info;
+} dgx_hardware_create_info;
 
-typedef struct lgx_hardware lgx_hardware;
-typedef struct lgx_hardware_queue lgx_hardware_queue;
+typedef struct dgx_hardware dgx_hardware;
+typedef struct dgx_hardware_queue dgx_hardware_queue;
 
-lgx_hardware* lgx_create_hardware(
-    lgx_library*                    library, 
-    const lgx_hardware_create_info* info
+dgx_hardware* dgx_create_hardware(
+    dgx_library*                    library, 
+    const dgx_hardware_create_info* info
 );
-void lgx_free_hardware(lgx_hardware*);
+void dgx_free_hardware(dgx_hardware*);
 
-uint32_t lgx_hardware_query_queues_count(lgx_hardware*, lgx_hardware_queue_type type);
-void     lgx_hardware_query_queues(lgx_hardware*, lgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, lgx_hardware_queue** queues);
-uint64_t lgx_hardware_query_limit(lgx_hardware*, lgx_hardware_limit limit);
+uint32_t dgx_hardware_query_queues_count(dgx_hardware*, dgx_hardware_queue_type type);
+void     dgx_hardware_query_queues(dgx_hardware*, dgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, dgx_hardware_queue** queues);
+uint64_t dgx_hardware_query_limit(dgx_hardware*, dgx_hardware_limit limit);
 
 // Wait till all hardware queues have no work at all
 // For synchronization
-void lgx_hardware_wait_idle(lgx_hardware*);
+void dgx_hardware_wait_idle(dgx_hardware*);
 
 // ===========================
 // Cpu Signal
 
-typedef struct lgx_cpu_signal_create_info {
+typedef struct dgx_cpu_signal_create_info {
     int initialy_signaled;
-} lgx_cpu_signal_create_info;
+} dgx_cpu_signal_create_info;
 
 // cpu object for syncing with gpu queues
 // (fence)
-typedef struct lgx_cpu_signal lgx_cpu_signal;
+typedef struct dgx_cpu_signal dgx_cpu_signal;
 
-lgx_cpu_signal* lgx_create_cpu_signal(lgx_hardware*, const lgx_cpu_signal_create_info* info);
-void lgx_free_cpu_signal(lgx_cpu_signal*);
+dgx_cpu_signal* dgx_create_cpu_signal(dgx_hardware*, const dgx_cpu_signal_create_info* info);
+void dgx_free_cpu_signal(dgx_cpu_signal*);
 
-int  lgx_cpu_signal_signaled(lgx_cpu_signal*);
-void lgx_cpu_signal_wait    (lgx_cpu_signal*);
-void lgx_cpu_signal_reset   (lgx_cpu_signal*);
+int  dgx_cpu_signal_signaled(dgx_cpu_signal*);
+void dgx_cpu_signal_wait    (dgx_cpu_signal*);
+void dgx_cpu_signal_reset   (dgx_cpu_signal*);
 
 // ===========================
 // Gpu Signal
 
 // gpu object for syncing between gpu queues
 // (semaphore)
-typedef struct lgx_gpu_signal lgx_gpu_signal;
+typedef struct dgx_gpu_signal dgx_gpu_signal;
 
-lgx_gpu_signal* lgx_create_gpu_signal(lgx_hardware*);
-void lgx_free_gpu_signal(lgx_gpu_signal*);
+dgx_gpu_signal* dgx_create_gpu_signal(dgx_hardware*);
+void dgx_free_gpu_signal(dgx_gpu_signal*);
 
 // ===========================
 // Window
 
-struct lgx_window;
-typedef void(*lgx_window_render_targets_recreated_callback)(struct lgx_window* window, int render_target_layout_changed);
+struct dgx_window;
+typedef void(*dgx_window_render_targets_recreated_callback)(struct dgx_window* window, int render_target_layout_changed);
 
-typedef struct lgx_window_create_info {
+typedef struct dgx_window_create_info {
     const char* title;
     uint32_t    width;
     uint32_t    height;
@@ -359,119 +359,119 @@ typedef struct lgx_window_create_info {
     // desired amount of frames you are willing to work 
     // at in the same time, "frames in flight"
     // actual frames count may be lower than desired, due to
-    // driver limitiations - query with lgx_window_get_render_targets_count
+    // driver limitiations - query with dgx_window_get_render_targets_count
     uint32_t desired_render_targets;
 
     // called when, due to recreation of swapchain
     // render target layout and render targets gets recreated
     // render targets count may change also
     // may be NULL
-    lgx_window_render_targets_recreated_callback render_target_recreated_callback;
-} lgx_window_create_info;
+    dgx_window_render_targets_recreated_callback render_target_recreated_callback;
+} dgx_window_create_info;
 
-typedef struct lgx_window lgx_window;
+typedef struct dgx_window dgx_window;
 
-lgx_window* lgx_create_window(lgx_hardware*, const lgx_window_create_info*);
-void lgx_free_window(lgx_window*);
+dgx_window* dgx_create_window(dgx_hardware*, const dgx_window_create_info*);
+void dgx_free_window(dgx_window*);
 
-void    lgx_window_update_input(lgx_window*);
-int     lgx_window_query_shall_close(lgx_window*);
-void    lgx_window_query_is_focused(lgx_window*, int* is);
-void    lgx_window_query_cursor_pos(lgx_window*, uint32_t* xpos, uint32_t* ypos);
-void    lgx_window_query_input(lgx_window*, int* left_pressed, int* right_pressed, float* scroll);
+void    dgx_window_update_input(dgx_window*);
+int     dgx_window_query_shall_close(dgx_window*);
+void    dgx_window_query_is_focused(dgx_window*, int* is);
+void    dgx_window_query_cursor_pos(dgx_window*, uint32_t* xpos, uint32_t* ypos);
+void    dgx_window_query_input(dgx_window*, int* left_pressed, int* right_pressed, float* scroll);
 
-void    lgx_window_get_size(lgx_window*, uint32_t* width, uint32_t* height);
+void    dgx_window_get_size(dgx_window*, uint32_t* width, uint32_t* height);
 
-uint32_t lgx_window_get_render_targets_count(lgx_window*);
-uint32_t lgx_window_acquire_next_render_target_index(lgx_window* window, lgx_gpu_signal* can_render_signal);
-void     lgx_window_enqueue_render_target_present(lgx_window* window, uint32_t index, uint32_t wait_signals_count, lgx_gpu_signal** wait_signals);
+uint32_t dgx_window_get_render_targets_count(dgx_window*);
+uint32_t dgx_window_acquire_next_render_target_index(dgx_window* window, dgx_gpu_signal* can_render_signal);
+void     dgx_window_enqueue_render_target_present(dgx_window* window, uint32_t index, uint32_t wait_signals_count, dgx_gpu_signal** wait_signals);
 
-struct lgx_render_target*        lgx_window_get_render_target(lgx_window*, uint32_t target_index);
-struct lgx_render_target_layout* lgx_window_get_render_target_layout(lgx_window*);
+struct dgx_render_target*        dgx_window_get_render_target(dgx_window*, uint32_t target_index);
+struct dgx_render_target_layout* dgx_window_get_render_target_layout(dgx_window*);
 
 // ===========================
 // Command Lists
 
-typedef struct lgx_command_lists_allocator_create_info {
-    lgx_hardware_queue_type target_queue_type;
+typedef struct dgx_command_lists_allocator_create_info {
+    dgx_hardware_queue_type target_queue_type;
     int                     often_recorded;
-} lgx_command_lists_allocator_create_info;
+} dgx_command_lists_allocator_create_info;
 
-typedef struct lgx_command_lists_allocator lgx_command_lists_allocator;
-typedef struct lgx_command_list lgx_command_list;
+typedef struct dgx_command_lists_allocator dgx_command_lists_allocator;
+typedef struct dgx_command_list dgx_command_list;
 
-lgx_command_lists_allocator* lgx_create_command_lists_allocator(lgx_hardware*, const lgx_command_lists_allocator_create_info*);
-void lgx_free_command_lists_allocator(lgx_command_lists_allocator*);
+dgx_command_lists_allocator* dgx_create_command_lists_allocator(dgx_hardware*, const dgx_command_lists_allocator_create_info*);
+void dgx_free_command_lists_allocator(dgx_command_lists_allocator*);
 
-lgx_command_list* lgx_command_lists_allocator_alloc_command_list(lgx_command_lists_allocator*);
-void lgx_command_lists_allocator_free_command_list(lgx_command_list*);
+dgx_command_list* dgx_command_lists_allocator_alloc_command_list(dgx_command_lists_allocator*);
+void dgx_command_lists_allocator_free_command_list(dgx_command_list*);
 
-void lgx_begin_command_list_recording(lgx_command_list*);
-void lgx_finish_command_list_recording(lgx_command_list*);
+void dgx_begin_command_list_recording(dgx_command_list*);
+void dgx_finish_command_list_recording(dgx_command_list*);
 
-typedef struct lgx_submit_info {
+typedef struct dgx_submit_info {
     uint32_t            command_lists_count;
-    lgx_command_list**  command_lists;
+    dgx_command_list**  command_lists;
 
     uint32_t            wait_gpu_signals_count;
-    lgx_gpu_signal**    wait_gpu_signals;
+    dgx_gpu_signal**    wait_gpu_signals;
 
     uint32_t            signal_gpu_signals_count;
-    lgx_gpu_signal**    signal_gpu_signals;
+    dgx_gpu_signal**    signal_gpu_signals;
 
-    lgx_cpu_signal*     cpu_signal;
-} lgx_submit_info;
+    dgx_cpu_signal*     cpu_signal;
+} dgx_submit_info;
 
-void lgx_submit_command_list(
-    lgx_hardware_queue*     queue,
-    const lgx_submit_info*  info
+void dgx_submit_command_list(
+    dgx_hardware_queue*     queue,
+    const dgx_submit_info*  info
 );
 
 // ==========================
 // Staging Memory
 
-typedef struct lgx_staging_memory_create_info {
+typedef struct dgx_staging_memory_create_info {
     uint64_t    size_bytes;
-} lgx_staging_memory_create_info;
+} dgx_staging_memory_create_info;
 
-typedef struct lgx_staging_memory lgx_staging_memory;
+typedef struct dgx_staging_memory dgx_staging_memory;
 
-lgx_staging_memory* lgx_create_staging_memory(lgx_hardware*, const lgx_staging_memory_create_info*);
-void lgx_free_staging_memory(lgx_staging_memory*);
+dgx_staging_memory* dgx_create_staging_memory(dgx_hardware*, const dgx_staging_memory_create_info*);
+void dgx_free_staging_memory(dgx_staging_memory*);
 
-void* lgx_staging_memory_map(lgx_staging_memory*, uint64_t region_offset, uint64_t region_size);
-void lgx_staging_memory_unmap(lgx_staging_memory*);
+void* dgx_staging_memory_map(dgx_staging_memory*, uint64_t region_offset, uint64_t region_size);
+void dgx_staging_memory_unmap(dgx_staging_memory*);
 
 // ==========================
 // Buffer
 
-typedef struct lgx_buffer_create_info {
+typedef struct dgx_buffer_create_info {
     uint64_t                        size_bytes;
-    lgx_buffer_usage                usage;
-    lgx_memory_allocation_strategy  memory_strategy;
-    lgx_memory_access               memory_access;
-} lgx_buffer_create_info;
+    dgx_buffer_usage                usage;
+    dgx_memory_allocation_strategy  memory_strategy;
+    dgx_memory_access               memory_access;
+} dgx_buffer_create_info;
 
-typedef struct lgx_buffer lgx_buffer;
+typedef struct dgx_buffer dgx_buffer;
 
-lgx_buffer* lgx_create_buffer(lgx_hardware*, const lgx_buffer_create_info* info);
-void lgx_free_buffer(lgx_buffer*);
+dgx_buffer* dgx_create_buffer(dgx_hardware*, const dgx_buffer_create_info* info);
+void dgx_free_buffer(dgx_buffer*);
 
-uint64_t lgx_buffer_get_size_bytes(lgx_buffer*);
+uint64_t dgx_buffer_get_size_bytes(dgx_buffer*);
 
 // Very inefficient way of writing to buffer
 // User should target async uploads with staging memory
 // This function creates all objects required to perform write:
 // staging memory, command list allocator, ... 
 // It is really heavy. Non zero at success
-int lgx_buffer_sync_upload(lgx_buffer*, uint64_t buffer_offset, const void* data, uint64_t data_size_bytes);
+int dgx_buffer_sync_upload(dgx_buffer*, uint64_t buffer_offset, const void* data, uint64_t data_size_bytes);
 
-typedef struct lgx_buffer_multi_upload_region {
+typedef struct dgx_buffer_multi_upload_region {
     void*       source_data;
     uint64_t    source_bytes;
     uint64_t    buffer_offset;
-    lgx_buffer* buffer;
-} lgx_buffer_multi_upload_region;
+    dgx_buffer* buffer;
+} dgx_buffer_multi_upload_region;
 
 // Usefull utility function, which  uploads N regions from CPU memory to N GPU buffers 
 // using a shared staging window. The window may be smaller than the
@@ -480,404 +480,404 @@ typedef struct lgx_buffer_multi_upload_region {
 // CPU signal may be NULL, in case of multiple batches function will create own
 // If multiple batches were sent, returns a combined data size
 // Else returns 0
-uint64_t lgx_buffer_multi_upload(
-    lgx_buffer_multi_upload_region* regions,
+uint64_t dgx_buffer_multi_upload(
+    dgx_buffer_multi_upload_region* regions,
     uint32_t                        region_count,
-    lgx_command_list*               command_list,
-    lgx_hardware_queue*             queue_for_uploads,
-    lgx_staging_memory*             staging_memory,
+    dgx_command_list*               command_list,
+    dgx_hardware_queue*             queue_for_uploads,
+    dgx_staging_memory*             staging_memory,
     uint64_t                        staging_memory_region_offset,
     uint64_t                        staging_memory_region_size,
-    lgx_cpu_signal*                 upload_finished_cpu,
-    lgx_gpu_signal*                 upload_finished_gpu
+    dgx_cpu_signal*                 upload_finished_cpu,
+    dgx_gpu_signal*                 upload_finished_gpu
 );
 
 // ==========================
 // Sampler
 
-typedef struct lgx_sampler_create_info {
-    lgx_sampler_filter      mag_filter;
-    lgx_sampler_filter      min_filter;
-    lgx_sampler_filter      mipmap_filter;
+typedef struct dgx_sampler_create_info {
+    dgx_sampler_filter      mag_filter;
+    dgx_sampler_filter      min_filter;
+    dgx_sampler_filter      mipmap_filter;
 
-    lgx_sampler_wrapping    x_coord_wrapping;
-    lgx_sampler_wrapping    y_coord_wrapping;
-    lgx_sampler_wrapping    z_coord_wrapping;
+    dgx_sampler_wrapping    x_coord_wrapping;
+    dgx_sampler_wrapping    y_coord_wrapping;
+    dgx_sampler_wrapping    z_coord_wrapping;
     int                     unnormalized_coordinates;
 
     float                   min_lod, max_lod;
     float                   mip_lod_bias;
-} lgx_sampler_create_info;
+} dgx_sampler_create_info;
 
-typedef struct lgx_sampler lgx_sampler;
+typedef struct dgx_sampler dgx_sampler;
 
-lgx_sampler* lgx_create_sampler(lgx_hardware*, const lgx_sampler_create_info* info);
-void lgx_free_sampler(lgx_sampler*);
+dgx_sampler* dgx_create_sampler(dgx_hardware*, const dgx_sampler_create_info* info);
+void dgx_free_sampler(dgx_sampler*);
 
 // ==========================
 // Texture
 
-typedef struct lgx_texture_dimensions {
+typedef struct dgx_texture_dimensions {
     uint32_t x;
     uint32_t y;
     uint32_t z;
-} lgx_texture_dimensions;
+} dgx_texture_dimensions;
 
-typedef struct lgx_texture_create_info {
-    lgx_texture_type                type;
-    lgx_texture_usage               usage;
-    lgx_texture_format              format;
-    lgx_texture_dimensions          dimensions;
+typedef struct dgx_texture_create_info {
+    dgx_texture_type                type;
+    dgx_texture_usage               usage;
+    dgx_texture_format              format;
+    dgx_texture_dimensions          dimensions;
     uint32_t                        array_length;
     //uint32_t                      sample_count;
     uint32_t                        mipmap_layers;
-    lgx_memory_allocation_strategy  memory_strategy;
-    lgx_memory_access               memory_access;
-} lgx_texture_create_info;
+    dgx_memory_allocation_strategy  memory_strategy;
+    dgx_memory_access               memory_access;
+} dgx_texture_create_info;
 
-typedef struct lgx_texture lgx_texture;
+typedef struct dgx_texture dgx_texture;
 
-lgx_texture* lgx_create_texture(lgx_hardware*, const lgx_texture_create_info* info);
-void lgx_free_texture(lgx_texture* texture);
+dgx_texture* dgx_create_texture(dgx_hardware*, const dgx_texture_create_info* info);
+void dgx_free_texture(dgx_texture* texture);
 
-lgx_texture_dimensions lgx_texture_get_dimensions(lgx_texture*);
+dgx_texture_dimensions dgx_texture_get_dimensions(dgx_texture*);
 
 // Very inefficient way of writing to texture
 // User should target async uploads with staging memory
 // This function creates all objects required to perform write:
 // staging memory, command list allocator, ... 
 // It is really heavy. Non zero at success
-int lgx_texture_sync_upload(lgx_texture*, lgx_texture_dimensions texture_offset, const void* data, lgx_texture_dimensions write_dimensions);
+int dgx_texture_sync_upload(dgx_texture*, dgx_texture_dimensions texture_offset, const void* data, dgx_texture_dimensions write_dimensions);
 
 // ===========================
 // Render Target Layout
 
-typedef struct lgx_render_target_layout_attachment {
-    lgx_texture_format  format;
+typedef struct dgx_render_target_layout_attachment {
+    dgx_texture_format  format;
     uint32_t            sample_count;
-    lgx_load_op         load_op;
-    lgx_store_op        store_op;
-} lgx_render_target_layout_attachment;
+    dgx_load_op         load_op;
+    dgx_store_op        store_op;
+} dgx_render_target_layout_attachment;
 
-typedef struct lgx_render_target_layout_create_info {
+typedef struct dgx_render_target_layout_create_info {
     uint32_t                                color_attachments_count;
-    lgx_render_target_layout_attachment*    color_attachments;
-    lgx_render_target_layout_attachment*    depth_stencil_attachment; // nullable
-} lgx_render_target_layout_create_info;
+    dgx_render_target_layout_attachment*    color_attachments;
+    dgx_render_target_layout_attachment*    depth_stencil_attachment; // nullable
+} dgx_render_target_layout_create_info;
 
-typedef struct lgx_render_target_layout lgx_render_target_layout;
+typedef struct dgx_render_target_layout dgx_render_target_layout;
 
-lgx_render_target_layout* lgx_create_render_target_layout(lgx_hardware*, const lgx_render_target_layout_create_info* info);
-void lgx_free_render_target_layout(lgx_render_target_layout*);
+dgx_render_target_layout* dgx_create_render_target_layout(dgx_hardware*, const dgx_render_target_layout_create_info* info);
+void dgx_free_render_target_layout(dgx_render_target_layout*);
 
 // ===========================
 // Render Target
 
-typedef struct lgx_render_target_attachment {
-    lgx_texture*                    texture;
-} lgx_render_target_attachment;
+typedef struct dgx_render_target_attachment {
+    dgx_texture*                    texture;
+} dgx_render_target_attachment;
 
-typedef struct lgx_render_target_create_info {
-    lgx_render_target_layout*       render_target_layout;
+typedef struct dgx_render_target_create_info {
+    dgx_render_target_layout*       render_target_layout;
     uint32_t                        color_attachments_count;
-    lgx_render_target_attachment*   color_attachments;
-    lgx_render_target_attachment*   depth_stencil_attachment; // nullable
-} lgx_render_target_create_info;
+    dgx_render_target_attachment*   color_attachments;
+    dgx_render_target_attachment*   depth_stencil_attachment; // nullable
+} dgx_render_target_create_info;
 
-typedef struct lgx_render_target lgx_render_target;
+typedef struct dgx_render_target dgx_render_target;
 
-lgx_render_target* lgx_create_render_target(lgx_hardware*, const lgx_render_target_create_info* info);
-void lgx_free_render_target(lgx_render_target*);
+dgx_render_target* dgx_create_render_target(dgx_hardware*, const dgx_render_target_create_info* info);
+void dgx_free_render_target(dgx_render_target*);
 
 // ===========================
 // Descriptor Layout
 
-typedef struct lgx_descriptor_binding {
+typedef struct dgx_descriptor_binding {
     uint32_t                    binding;
-    lgx_descriptor_binding_type type;
+    dgx_descriptor_binding_type type;
     uint32_t                    count;
-    lgx_shader_stages_bitmask   stages;
-} lgx_descriptor_binding;
+    dgx_shader_stages_bitmask   stages;
+} dgx_descriptor_binding;
 
-typedef struct lgx_descriptor_layout_create_info {
+typedef struct dgx_descriptor_layout_create_info {
     uint32_t                    bindings_count;
-    lgx_descriptor_binding*     bindings;
-} lgx_descriptor_layout_create_info;
+    dgx_descriptor_binding*     bindings;
+} dgx_descriptor_layout_create_info;
 
-typedef struct lgx_descriptor_layout lgx_descriptor_layout;
+typedef struct dgx_descriptor_layout dgx_descriptor_layout;
 
-lgx_descriptor_layout* lgx_create_descriptor_layout(lgx_hardware*, const lgx_descriptor_layout_create_info*);
-void lgx_free_descriptor_layout(lgx_descriptor_layout*);
+dgx_descriptor_layout* dgx_create_descriptor_layout(dgx_hardware*, const dgx_descriptor_layout_create_info*);
+void dgx_free_descriptor_layout(dgx_descriptor_layout*);
 
 // ===========================
 // Descriptors Allocator
 
-typedef struct lgx_descriptor_allocator_create_info {
-    lgx_descriptor_layout*  descriptor_layout;
+typedef struct dgx_descriptor_allocator_create_info {
+    dgx_descriptor_layout*  descriptor_layout;
     uint32_t                max_descriptors_allocated;
-} lgx_descriptor_allocator_create_info;
+} dgx_descriptor_allocator_create_info;
 
-typedef struct lgx_descriptor_allocator lgx_descriptor_allocator;
-typedef struct lgx_descriptor lgx_descriptor;
+typedef struct dgx_descriptor_allocator dgx_descriptor_allocator;
+typedef struct dgx_descriptor dgx_descriptor;
 
-lgx_descriptor_allocator* lgx_create_descriptor_allocator(lgx_hardware*, const lgx_descriptor_allocator_create_info*);
-void lgx_free_descriptor_allocator(lgx_descriptor_allocator*);
+dgx_descriptor_allocator* dgx_create_descriptor_allocator(dgx_hardware*, const dgx_descriptor_allocator_create_info*);
+void dgx_free_descriptor_allocator(dgx_descriptor_allocator*);
 
-lgx_descriptor* lgx_descriptor_allocator_alloc_descriptor(lgx_descriptor_allocator*);
-void lgx_descriptor_allocator_free_descriptor(lgx_descriptor*);
+dgx_descriptor* dgx_descriptor_allocator_alloc_descriptor(dgx_descriptor_allocator*);
+void dgx_descriptor_allocator_free_descriptor(dgx_descriptor*);
 
-typedef struct lgx_descriptor_buffer_write_info {
-    lgx_buffer*     buffer;
+typedef struct dgx_descriptor_buffer_write_info {
+    dgx_buffer*     buffer;
     uint32_t        offset;
     uint32_t        length;
-} lgx_descriptor_buffer_write_info;
+} dgx_descriptor_buffer_write_info;
 
-typedef struct lgx_descriptor_sampler_write_info {
-    lgx_sampler*    sampler;
-} lgx_descriptor_sampler_write_info;
+typedef struct dgx_descriptor_sampler_write_info {
+    dgx_sampler*    sampler;
+} dgx_descriptor_sampler_write_info;
 
-typedef struct lgx_descriptor_sampled_texture_write_info {
-    lgx_texture*    sampled_texture;
-} lgx_descriptor_sampled_texture_write_info;
+typedef struct dgx_descriptor_sampled_texture_write_info {
+    dgx_texture*    sampled_texture;
+} dgx_descriptor_sampled_texture_write_info;
 
-typedef struct lgx_descriptor_write_info {
-    lgx_descriptor*             descriptor;
-    lgx_descriptor_binding_type binding_type;
+typedef struct dgx_descriptor_write_info {
+    dgx_descriptor*             descriptor;
+    dgx_descriptor_binding_type binding_type;
     uint32_t                    binding_index;
     uint32_t                    array_element_index;
     uint32_t                    array_elements_count;
     union {
-        lgx_descriptor_buffer_write_info*           for_buffers;
-        lgx_descriptor_sampler_write_info*          for_samplers;
-        lgx_descriptor_sampled_texture_write_info*  for_sampled_textures;
+        dgx_descriptor_buffer_write_info*           for_buffers;
+        dgx_descriptor_sampler_write_info*          for_samplers;
+        dgx_descriptor_sampled_texture_write_info*  for_sampled_textures;
     } infos;
-} lgx_descriptor_write_info;
+} dgx_descriptor_write_info;
 
-void lgx_descriptors_write(lgx_hardware*, uint32_t writes_count, lgx_descriptor_write_info* write_infos);
+void dgx_descriptors_write(dgx_hardware*, uint32_t writes_count, dgx_descriptor_write_info* write_infos);
 
 // ===========================
 // Pipeline Descriptors Layout
 
-typedef struct lgx_pipeline_descriptors_layout_create_info {
+typedef struct dgx_pipeline_descriptors_layout_create_info {
     uint32_t                layouts_count;
-    lgx_descriptor_layout** layouts;
-} lgx_pipeline_descriptors_layout_create_info;
+    dgx_descriptor_layout** layouts;
+} dgx_pipeline_descriptors_layout_create_info;
 
-typedef struct lgx_pipeline_descriptors_layout lgx_pipeline_descriptors_layout;
+typedef struct dgx_pipeline_descriptors_layout dgx_pipeline_descriptors_layout;
 
-lgx_pipeline_descriptors_layout* lgx_create_pipeline_descriptors_layout(lgx_hardware*, const lgx_pipeline_descriptors_layout_create_info* info);
-void lgx_free_pipeline_descriptors_layout(lgx_pipeline_descriptors_layout*);
+dgx_pipeline_descriptors_layout* dgx_create_pipeline_descriptors_layout(dgx_hardware*, const dgx_pipeline_descriptors_layout_create_info* info);
+void dgx_free_pipeline_descriptors_layout(dgx_pipeline_descriptors_layout*);
 
 // ===========================
 // Shader
 
-typedef struct lgx_shader_create_info {
+typedef struct dgx_shader_create_info {
     const char* source_code;
     uint32_t    source_size;
-} lgx_shader_create_info;
+} dgx_shader_create_info;
 
-typedef struct lgx_shader lgx_shader;
+typedef struct dgx_shader dgx_shader;
 
-lgx_shader* lgx_create_shader(lgx_hardware*, const lgx_shader_create_info* info);
-void lgx_free_shader(lgx_shader* shader);
+dgx_shader* dgx_create_shader(dgx_hardware*, const dgx_shader_create_info* info);
+void dgx_free_shader(dgx_shader* shader);
 
 // ===========================
 // Graphics Pipeline
 
-typedef struct lgx_vertex_input_binding_info {
+typedef struct dgx_vertex_input_binding_info {
     uint32_t                            binding;
     uint32_t                            stride;
-    lgx_vertex_attribute_input_rate     input_rate;
-} lgx_vertex_input_binding_info;
+    dgx_vertex_attribute_input_rate     input_rate;
+} dgx_vertex_input_binding_info;
 
-typedef struct lgx_vertex_input_attribute_info {
+typedef struct dgx_vertex_input_attribute_info {
     uint32_t                            binding;
     uint32_t                            location;
-    lgx_data_type                       type;
+    dgx_data_type                       type;
     uint32_t                            offset;
-} lgx_vertex_input_attribute_info;
+} dgx_vertex_input_attribute_info;
 
-typedef struct lgx_pipeline_vertex_layout {
+typedef struct dgx_pipeline_vertex_layout {
     uint32_t                            bindings_count;
-    lgx_vertex_input_binding_info*      bindings;
+    dgx_vertex_input_binding_info*      bindings;
     uint32_t                            attributes_count;
-    lgx_vertex_input_attribute_info*    attributes;
-} lgx_pipeline_vertex_layout;
+    dgx_vertex_input_attribute_info*    attributes;
+} dgx_pipeline_vertex_layout;
 
-typedef struct lgx_pipeline_input_assembly {
-    lgx_primitive_topology              topology;
-} lgx_pipeline_input_assembly;
+typedef struct dgx_pipeline_input_assembly {
+    dgx_primitive_topology              topology;
+} dgx_pipeline_input_assembly;
 
-typedef struct lgx_pipeline_rasterizer_state {
-    lgx_cull_mode                       cull_mode;
-    lgx_fill_mode                       fill_mode;
+typedef struct dgx_pipeline_rasterizer_state {
+    dgx_cull_mode                       cull_mode;
+    dgx_fill_mode                       fill_mode;
     int                                 depth_clamp_enable;
     int                                 scissor_enable;
-} lgx_pipeline_rasterizer_state;
+} dgx_pipeline_rasterizer_state;
 
-typedef struct lgx_pipeline_shader_stages {
-    lgx_shader*                         vertex;
-    lgx_shader*                         geometry;
-    lgx_shader*                         pixel;
-} lgx_pipeline_shader_stages;
+typedef struct dgx_pipeline_shader_stages {
+    dgx_shader*                         vertex;
+    dgx_shader*                         geometry;
+    dgx_shader*                         pixel;
+} dgx_pipeline_shader_stages;
 
-typedef struct lgx_pipeline_blend_state {
+typedef struct dgx_pipeline_blend_state {
     int                                 blend_enable;
-    lgx_blend_op                        blend_op;
-    lgx_blend_factor                    src_factor;
-    lgx_blend_factor                    dst_factor;
-} lgx_pipeline_blend_state;
+    dgx_blend_op                        blend_op;
+    dgx_blend_factor                    src_factor;
+    dgx_blend_factor                    dst_factor;
+} dgx_pipeline_blend_state;
 
-typedef struct lgx_pipeline_depth_stencil_state {
+typedef struct dgx_pipeline_depth_stencil_state {
     int                                 depth_test_enable;
     int                                 depth_write_enable;
     int                                 stencil_test_enable;
-} lgx_pipeline_depth_stencil_state;
+} dgx_pipeline_depth_stencil_state;
 
-typedef struct lgx_pipeline_create_info {
-    lgx_render_target_layout*           render_target_layout;
-    lgx_pipeline_descriptors_layout*    descriptor_layout;
-    lgx_pipeline_vertex_layout          vertex_layout;
-    lgx_pipeline_shader_stages          shader_stages;
-    lgx_pipeline_input_assembly         input_assembly;
-    lgx_pipeline_rasterizer_state       rasterizer;
-    lgx_pipeline_blend_state            blend;
-    lgx_pipeline_depth_stencil_state    depth_stencil;
-} lgx_pipeline_create_info;
+typedef struct dgx_pipeline_create_info {
+    dgx_render_target_layout*           render_target_layout;
+    dgx_pipeline_descriptors_layout*    descriptor_layout;
+    dgx_pipeline_vertex_layout          vertex_layout;
+    dgx_pipeline_shader_stages          shader_stages;
+    dgx_pipeline_input_assembly         input_assembly;
+    dgx_pipeline_rasterizer_state       rasterizer;
+    dgx_pipeline_blend_state            blend;
+    dgx_pipeline_depth_stencil_state    depth_stencil;
+} dgx_pipeline_create_info;
 
-typedef struct lgx_pipeline lgx_pipeline;
+typedef struct dgx_pipeline dgx_pipeline;
 
-lgx_pipeline* lgx_create_pipeline(lgx_hardware*, const lgx_pipeline_create_info* info);
-void lgx_free_pipeline(lgx_pipeline* pipeline);
+dgx_pipeline* dgx_create_pipeline(dgx_hardware*, const dgx_pipeline_create_info* info);
+void dgx_free_pipeline(dgx_pipeline* pipeline);
 
 // ===========================
 // Generic Commands  (cmd)
 
-typedef enum lgx_buffer_sync_point {
-    lgx_buffer_sync_point_this_command,
+typedef enum dgx_buffer_sync_point {
+    dgx_buffer_sync_point_this_command,
 
     // transfer
-    lgx_buffer_sync_point_transfer_source,
-    lgx_buffer_sync_point_transfer_destination,
+    dgx_buffer_sync_point_transfer_source,
+    dgx_buffer_sync_point_transfer_destination,
 
     // compute
-    lgx_buffer_sync_point_compute_read,
-    lgx_buffer_sync_point_compute_write,
+    dgx_buffer_sync_point_compute_read,
+    dgx_buffer_sync_point_compute_write,
 
     // graphics shader stages
-    lgx_buffer_sync_point_vertex_shader_read,
-    lgx_buffer_sync_point_fragment_shader_read,
+    dgx_buffer_sync_point_vertex_shader_read,
+    dgx_buffer_sync_point_fragment_shader_read,
 
     // fixed-function input
-    lgx_buffer_sync_point_vertex_buffer,
-    lgx_buffer_sync_point_index_buffer,
-} lgx_buffer_sync_point;
+    dgx_buffer_sync_point_vertex_buffer,
+    dgx_buffer_sync_point_index_buffer,
+} dgx_buffer_sync_point;
 
-void lgx_cmd_sync_buffers(
-    lgx_command_list*       target,
+void dgx_cmd_sync_buffers(
+    dgx_command_list*       target,
 
-    lgx_buffer_sync_point   previous_use,
-    lgx_buffer_sync_point   next_use,
+    dgx_buffer_sync_point   previous_use,
+    dgx_buffer_sync_point   next_use,
 
     uint32_t                buffers_count,
-    lgx_buffer**            buffers
+    dgx_buffer**            buffers
 );
 
-typedef enum lgx_texture_sync_point {
-    lgx_texture_sync_point_this_command,
+typedef enum dgx_texture_sync_point {
+    dgx_texture_sync_point_this_command,
 
     // transfer
-    lgx_texture_sync_point_transfer_source,
-    lgx_texture_sync_point_transfer_destination,
+    dgx_texture_sync_point_transfer_source,
+    dgx_texture_sync_point_transfer_destination,
 
     // compute
-    lgx_texture_sync_point_compute_read,
-    lgx_texture_sync_point_compute_write,
+    dgx_texture_sync_point_compute_read,
+    dgx_texture_sync_point_compute_write,
 
     // shader sampling
-    lgx_texture_sync_point_vertex_shader_read,
-    lgx_texture_sync_point_fragment_shader_read,
+    dgx_texture_sync_point_vertex_shader_read,
+    dgx_texture_sync_point_fragment_shader_read,
 
     // attachments
-    lgx_texture_sync_point_color_attachment,
-    lgx_texture_sync_point_depth_attachment,
-} lgx_texture_sync_point;
+    dgx_texture_sync_point_color_attachment,
+    dgx_texture_sync_point_depth_attachment,
+} dgx_texture_sync_point;
 
-void lgx_cmd_sync_textures(
-    lgx_command_list*       target,
+void dgx_cmd_sync_textures(
+    dgx_command_list*       target,
 
-    lgx_texture_sync_point  previous_use,
-    lgx_texture_sync_point  next_use,
+    dgx_texture_sync_point  previous_use,
+    dgx_texture_sync_point  next_use,
 
     uint32_t                textures_count,
-    lgx_texture**           textures
+    dgx_texture**           textures
 );
 
-void lgx_cmd_copy_staging_memory_to_buffer(
-    lgx_command_list*       target,
-    lgx_staging_memory*     staging_memory,
-    lgx_buffer*             target_buffer,
+void dgx_cmd_copy_staging_memory_to_buffer(
+    dgx_command_list*       target,
+    dgx_staging_memory*     staging_memory,
+    dgx_buffer*             target_buffer,
     uint32_t                staging_memory_region_offset,
     uint32_t                buffer_write_region_offset,
     uint32_t                buffer_write_region_size
 );
 
-void lgx_cmd_copy_staging_memory_to_texture(
-    lgx_command_list*       target,
-    lgx_staging_memory*     staging_memory,
-    lgx_texture*            target_texture,
+void dgx_cmd_copy_staging_memory_to_texture(
+    dgx_command_list*       target,
+    dgx_staging_memory*     staging_memory,
+    dgx_texture*            target_texture,
     uint32_t                staging_memory_region_offset,
-    lgx_texture_dimensions  texture_write_region_offset,
-    lgx_texture_dimensions  texture_write_region_size
+    dgx_texture_dimensions  texture_write_region_offset,
+    dgx_texture_dimensions  texture_write_region_size
 );
 
 // ===========================
 // Graphics Commands (gcmd)
 
-typedef struct lgx_gcmd_begin_render_target_write_info {
-    lgx_render_target*  render_target;
+typedef struct dgx_gcmd_begin_render_target_write_info {
+    dgx_render_target*  render_target;
     uint32_t            clear_colors_count;
-    lgx_color*          clear_colors;
-} lgx_gcmd_begin_render_target_write_info;
+    dgx_color*          clear_colors;
+} dgx_gcmd_begin_render_target_write_info;
 
-void lgx_gcmd_begin_render_target_write(
-    lgx_command_list*   target,
-    lgx_gcmd_begin_render_target_write_info* info
+void dgx_gcmd_begin_render_target_write(
+    dgx_command_list*   target,
+    dgx_gcmd_begin_render_target_write_info* info
 );
 
-void lgx_gcmd_end_render_target_write(
-    lgx_command_list*   target
+void dgx_gcmd_end_render_target_write(
+    dgx_command_list*   target
 );
 
-void lgx_gcmd_bind_graphics_pipeline(
-    lgx_command_list*   target,
-    lgx_pipeline*       pipeline
+void dgx_gcmd_bind_graphics_pipeline(
+    dgx_command_list*   target,
+    dgx_pipeline*       pipeline
 );
 
-void lgx_gcmd_bind_graphics_pipeline_vertex_buffer(
-    lgx_command_list*   target,
-    lgx_buffer*         buffer,
+void dgx_gcmd_bind_graphics_pipeline_vertex_buffer(
+    dgx_command_list*   target,
+    dgx_buffer*         buffer,
     uint32_t            offset,
     uint32_t            binding
 );
 
-void lgx_gcmd_bind_graphics_pipeline_index_buffer(
-    lgx_command_list*   target,
-    lgx_buffer*         buffer,
+void dgx_gcmd_bind_graphics_pipeline_index_buffer(
+    dgx_command_list*   target,
+    dgx_buffer*         buffer,
     uint32_t            offset,
     int                 uint32_not_uint16
 );
 
-void lgx_gcmd_bind_graphics_pipeline_descriptors(
-    lgx_command_list*                   target,
-    lgx_pipeline_descriptors_layout*    layout,
+void dgx_gcmd_bind_graphics_pipeline_descriptors(
+    dgx_command_list*                   target,
+    dgx_pipeline_descriptors_layout*    layout,
     uint32_t                            first_descriptor_index,
     uint32_t                            descriptors_count,
-    lgx_descriptor**                    descriptors
+    dgx_descriptor**                    descriptors
 );
 
-void lgx_gcmd_draw_vertices(
-    lgx_command_list*   target,
+void dgx_gcmd_draw_vertices(
+    dgx_command_list*   target,
 
     uint32_t            vertices_count,
     uint32_t            vertices_buffer_offset_index,
@@ -886,8 +886,8 @@ void lgx_gcmd_draw_vertices(
     uint32_t            instances_id_values_offset
 );
 
-void lgx_gcmd_draw_indexed(
-    lgx_command_list*   target,
+void dgx_gcmd_draw_indexed(
+    dgx_command_list*   target,
 
     uint32_t            indices_count,
     uint32_t            indicies_buffer_offset_index,
@@ -897,16 +897,16 @@ void lgx_gcmd_draw_indexed(
     uint32_t            instances_id_values_offset
 );
 
-void lgx_gcmd_set_scissors(
-    lgx_command_list*   target,
+void dgx_gcmd_set_scissors(
+    dgx_command_list*   target,
     float               root_x,  
     float               root_y,
     float               width,   
     float               height
 );
 
-void lgx_gcmd_set_viewport(
-    lgx_command_list*   target,
+void dgx_gcmd_set_viewport(
+    dgx_command_list*   target,
     float               root_x,  
     float               root_y,
     float               width,   
@@ -915,10 +915,10 @@ void lgx_gcmd_set_viewport(
 
 #endif
 
-#ifdef LIGHT_GRAPHICS_IMPL
+#ifdef DEMIGURG_GRAPHICS_IMPL
 
 // Vulkan Implementation
-#ifdef LIGHT_GRAPHICS_VULKAN
+#ifdef DEMIGURG_GRAPHICS_VULKAN
 
 #define GLFW_INCLUDE_VULKAN
 #include <vulkan/vulkan.h>
@@ -1011,7 +1011,7 @@ static inline void* tlom_alloc(uint32_t* iterator, uint32_t block) {
 // ===========================
 // Structures Definitions
 
-struct lgx_library {
+struct dgx_library {
     // Vulkan
     VkInstance  instance;
 
@@ -1019,7 +1019,7 @@ struct lgx_library {
     int platform_enabled;
 };
 
-struct lgx_hardware_queue {
+struct dgx_hardware_queue {
     VkQueue     handle;
     uint32_t    family_index;
     uint32_t    queue_index;
@@ -1028,8 +1028,8 @@ struct lgx_hardware_queue {
 typedef struct hardware_dedicated_memory    hardware_dedicated_memory;
 typedef struct hardware_paged_memory        hardware_paged_memory;
 
-struct lgx_hardware {
-    lgx_library*                        owning_library;
+struct dgx_hardware {
+    dgx_library*                        owning_library;
 
     // devices
 
@@ -1045,18 +1045,18 @@ struct lgx_hardware {
     // queues
 
     uint32_t                            graphics_queues_count;
-    lgx_hardware_queue*                 graphics_queues;
+    dgx_hardware_queue*                 graphics_queues;
 
     uint32_t                            transfer_queues_count;
-    lgx_hardware_queue*                 transfer_queues;
+    dgx_hardware_queue*                 transfer_queues;
 
     uint32_t                            compute_queues_count;
-    lgx_hardware_queue*                 compute_queues;
+    dgx_hardware_queue*                 compute_queues;
 
     uint32_t                            trs_cmp_queues_count;
-    lgx_hardware_queue*                 trs_cmp_queues;
+    dgx_hardware_queue*                 trs_cmp_queues;
 
-    lgx_hardware_queue*                 presentation_queue;
+    dgx_hardware_queue*                 presentation_queue;
 };
 
 typedef struct swapchain_bundle {
@@ -1064,17 +1064,17 @@ typedef struct swapchain_bundle {
     uint32_t                    height;
 
     VkSwapchainKHR              swapchain;
-    lgx_render_target_layout*   render_target_layout;
+    dgx_render_target_layout*   render_target_layout;
 
     uint32_t                    images_count;
     VkImage*                    images;
     VkImageView*                images_views;
-    lgx_render_target**         render_targets;
+    dgx_render_target**         render_targets;
 } swapchain_bundle;
 
-struct lgx_window {
+struct dgx_window {
     // Constant once created
-    lgx_hardware*       owning_hardware;
+    dgx_hardware*       owning_hardware;
     uint32_t            desired_render_targets;
     GLFWwindow*         platform_window;
     VkSurfaceKHR        surface;
@@ -1084,7 +1084,7 @@ struct lgx_window {
 
     // Also constant, may be null
 
-    lgx_window_render_targets_recreated_callback recreate_callback;
+    dgx_window_render_targets_recreated_callback recreate_callback;
 
     // Changing
     swapchain_bundle    current_swapchain;
@@ -1095,75 +1095,75 @@ struct lgx_window {
 
 typedef struct command_lists_block command_lists_block;
 
-struct lgx_command_list {
-    lgx_command_lists_allocator*    owning_allocator;
+struct dgx_command_list {
+    dgx_command_lists_allocator*    owning_allocator;
     VkCommandBuffer                 command_buffer;
     uint8_t                         in_block_index;
 };
 
-struct lgx_command_lists_allocator {
-    const lgx_hardware*     owning_hardware;
+struct dgx_command_lists_allocator {
+    const dgx_hardware*     owning_hardware;
     VkCommandPool           command_pool;
     command_lists_block*    front_block;
 };
 
-struct lgx_staging_memory {
-    lgx_hardware*   owning_hardware;
+struct dgx_staging_memory {
+    dgx_hardware*   owning_hardware;
     VkBuffer        buffer;
     VkDeviceMemory  memory;
 };
 
-struct lgx_cpu_signal {
-    lgx_hardware*   owning_hardware;
+struct dgx_cpu_signal {
+    dgx_hardware*   owning_hardware;
     VkFence         fence;
 };
 
-struct lgx_gpu_signal {
-    lgx_hardware*   owning_hardware;
+struct dgx_gpu_signal {
+    dgx_hardware*   owning_hardware;
     VkSemaphore     semaphore;
 };
 
-struct lgx_shader {
-    lgx_hardware*   owning_hardware;
+struct dgx_shader {
+    dgx_hardware*   owning_hardware;
     VkShaderModule  module;
 };
 
-struct lgx_buffer {
-    lgx_hardware*   owning_hardware;
+struct dgx_buffer {
+    dgx_hardware*   owning_hardware;
     VkBuffer        buffer;
     VkDeviceMemory  memory;
     uint32_t        size_bytes;
 };
 
-struct lgx_sampler {
-    lgx_hardware*   owning_hardware;
+struct dgx_sampler {
+    dgx_hardware*   owning_hardware;
     VkSampler       sampler;
 };
 
-struct lgx_texture {
-    lgx_hardware*           owning_hardware;
+struct dgx_texture {
+    dgx_hardware*           owning_hardware;
     uint32_t                bytes_per_pixel;
-    lgx_texture_dimensions  dimensions;
+    dgx_texture_dimensions  dimensions;
     VkImage                 image;
     VkImageView             view;
     VkDeviceMemory          memory;
 };
 
-struct lgx_render_target_layout {
-    lgx_hardware*   owning_hardware;
+struct dgx_render_target_layout {
+    dgx_hardware*   owning_hardware;
     VkRenderPass    renderpass;
 };
 
-struct lgx_render_target {
-    lgx_hardware*                   owning_hardware;
-    const lgx_render_target_layout* layout;
+struct dgx_render_target {
+    dgx_hardware*                   owning_hardware;
+    const dgx_render_target_layout* layout;
     VkFramebuffer                   framebuffer;
     uint32_t                        width;
     uint32_t                        height;
 };
 
-struct lgx_descriptor_layout {
-    lgx_hardware*           owning_hardware;
+struct dgx_descriptor_layout {
+    dgx_hardware*           owning_hardware;
     VkDescriptorSetLayout   dsc_set_layout;
 
     uint32_t sampler_bindings;
@@ -1172,27 +1172,27 @@ struct lgx_descriptor_layout {
     uint32_t uniform_buffers_bindings;
 };
 
-struct lgx_descriptor_allocator {
-    lgx_hardware*               owning_hardware;
-    lgx_descriptor_layout*      target_layout;
+struct dgx_descriptor_allocator {
+    dgx_hardware*               owning_hardware;
+    dgx_descriptor_layout*      target_layout;
     uint32_t                    max_descriptors;
     VkDescriptorPool            vk_pool;
-    lgx_descriptor*             lgx_pool;
+    dgx_descriptor*             dgx_pool;
 };
 
-struct lgx_descriptor {
-    lgx_descriptor_allocator*   owning_allocator;
+struct dgx_descriptor {
+    dgx_descriptor_allocator*   owning_allocator;
     VkDescriptorSet             dsc_set;
     uint8_t                     alive;
 };
 
-struct lgx_pipeline_descriptors_layout {
-    lgx_hardware*       owning_hardware;
+struct dgx_pipeline_descriptors_layout {
+    dgx_hardware*       owning_hardware;
     VkPipelineLayout    layout;
 };
 
-struct lgx_pipeline {
-    lgx_hardware*       owning_hardware;
+struct dgx_pipeline {
+    dgx_hardware*       owning_hardware;
     VkPipeline          pipeline;
 };
 
@@ -1201,8 +1201,8 @@ struct lgx_pipeline {
 
 // 1 at success
 int try_allocate_hardware_memory(
-    lgx_hardware*                   hardware,
-    lgx_memory_allocation_strategy  strategy,
+    dgx_hardware*                   hardware,
+    dgx_memory_allocation_strategy  strategy,
     VkMemoryRequirements            memory_requirements,
     VkDeviceMemory*                 result_memory,
     uint32_t*                       result_offset
@@ -1290,321 +1290,321 @@ static inline uint32_t vk_format_pixel_size(VkFormat format) {
 // ===========================
 // Enumerations Conversion
 
-static inline VkFormat lgx_to_vk_format(lgx_data_type type) {
+static inline VkFormat dgx_to_vk_format(dgx_data_type type) {
     switch (type) {
-        case lgx_data_type_int32:     return VK_FORMAT_R32_SINT;
-        case lgx_data_type_vec2i32:   return VK_FORMAT_R32G32_SINT;
-        case lgx_data_type_vec3i32:   return VK_FORMAT_R32G32B32_SINT;
-        case lgx_data_type_vec4i32:   return VK_FORMAT_R32G32B32A32_SINT;
+        case dgx_data_type_int32:     return VK_FORMAT_R32_SINT;
+        case dgx_data_type_vec2i32:   return VK_FORMAT_R32G32_SINT;
+        case dgx_data_type_vec3i32:   return VK_FORMAT_R32G32B32_SINT;
+        case dgx_data_type_vec4i32:   return VK_FORMAT_R32G32B32A32_SINT;
 
-        case lgx_data_type_float32:   return VK_FORMAT_R32_SFLOAT;
-        case lgx_data_type_vec2f32:   return VK_FORMAT_R32G32_SFLOAT;
-        case lgx_data_type_vec3f32:   return VK_FORMAT_R32G32B32_SFLOAT;
-        case lgx_data_type_vec4f32:   return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case dgx_data_type_float32:   return VK_FORMAT_R32_SFLOAT;
+        case dgx_data_type_vec2f32:   return VK_FORMAT_R32G32_SFLOAT;
+        case dgx_data_type_vec3f32:   return VK_FORMAT_R32G32B32_SFLOAT;
+        case dgx_data_type_vec4f32:   return VK_FORMAT_R32G32B32A32_SFLOAT;
 
-        default: assert(0 && "Invalid lgx_data_type!");
+        default: assert(0 && "Invalid dgx_data_type!");
     }
 
     return VK_FORMAT_UNDEFINED;
 }
 
-static inline VkVertexInputRate lgx_to_vk_vertex_input_rate(lgx_vertex_attribute_input_rate rate) {
+static inline VkVertexInputRate dgx_to_vk_vertex_input_rate(dgx_vertex_attribute_input_rate rate) {
     switch (rate) {
-        case lgx_vertex_attribute_input_rate_per_vertex:    return VK_VERTEX_INPUT_RATE_VERTEX;
-        case lgx_vertex_attribute_input_rate_per_instance:  return VK_VERTEX_INPUT_RATE_INSTANCE;
-        default: assert(0 && "Invalid lgx_vertex_attribute_input_rate!");
+        case dgx_vertex_attribute_input_rate_per_vertex:    return VK_VERTEX_INPUT_RATE_VERTEX;
+        case dgx_vertex_attribute_input_rate_per_instance:  return VK_VERTEX_INPUT_RATE_INSTANCE;
+        default: assert(0 && "Invalid dgx_vertex_attribute_input_rate!");
     }
 
     return VK_VERTEX_INPUT_RATE_VERTEX;
 }
 
-static inline VkShaderStageFlags lgx_to_vk_shader_stage(lgx_shader_stages_bitmask stages) {
+static inline VkShaderStageFlags dgx_to_vk_shader_stage(dgx_shader_stages_bitmask stages) {
     VkShaderStageFlags flags = 0;
 
-    if (stages & lgx_shader_stage_vertex)   flags |= VK_SHADER_STAGE_VERTEX_BIT;
-    if (stages & lgx_shader_stage_geometry) flags |= VK_SHADER_STAGE_GEOMETRY_BIT; 
-    if (stages & lgx_shader_stage_pixel)    flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
-    if (stages & lgx_shader_stage_compute)  flags |= VK_SHADER_STAGE_COMPUTE_BIT;
+    if (stages & dgx_shader_stage_vertex)   flags |= VK_SHADER_STAGE_VERTEX_BIT;
+    if (stages & dgx_shader_stage_geometry) flags |= VK_SHADER_STAGE_GEOMETRY_BIT; 
+    if (stages & dgx_shader_stage_pixel)    flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    if (stages & dgx_shader_stage_compute)  flags |= VK_SHADER_STAGE_COMPUTE_BIT;
 
-    assert(flags && "Invalid lgx_shader_stage!");
+    assert(flags && "Invalid dgx_shader_stage!");
     return flags;
 }
 
-static inline VkBufferUsageFlags lgx_memory_access_to_vk_buffer_usage(lgx_memory_access access) {
+static inline VkBufferUsageFlags dgx_memory_access_to_vk_buffer_usage(dgx_memory_access access) {
     switch (access) {
-    case lgx_memory_access_gpu_only: 
+    case dgx_memory_access_gpu_only: 
         return 0;
 
-    case lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read: 
+    case dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read: 
         return VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
-    case lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write:
+    case dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write:
         return VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-    case lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read_and_write:
+    case dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read_and_write:
         return VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-    default: assert(0 && "Invalid lgx_memory_access!");
+    default: assert(0 && "Invalid dgx_memory_access!");
     }
 
     return 0;
 }
 
-static inline VkBufferUsageFlags lgx_buffer_usage_to_vk_buffer_usage(lgx_buffer_usage usage) {
+static inline VkBufferUsageFlags dgx_buffer_usage_to_vk_buffer_usage(dgx_buffer_usage usage) {
     switch (usage) {
-        case lgx_buffer_usage_vertex:   return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        case lgx_buffer_usage_index:    return VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        case lgx_buffer_usage_uniform:  return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        case lgx_buffer_usage_storage:  return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        default: assert(0 && "invalid lgx_buffer_usage");
+        case dgx_buffer_usage_vertex:   return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        case dgx_buffer_usage_index:    return VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        case dgx_buffer_usage_uniform:  return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        case dgx_buffer_usage_storage:  return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        default: assert(0 && "invalid dgx_buffer_usage");
     }
 
     return 0;
 }
 
-static inline VkImageUsageFlags lgx_memory_access_to_vk_image_usage(lgx_memory_access access) {
+static inline VkImageUsageFlags dgx_memory_access_to_vk_image_usage(dgx_memory_access access) {
     switch (access) {
-    case lgx_memory_access_gpu_only: 
+    case dgx_memory_access_gpu_only: 
         return 0;
 
-    case lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read: 
+    case dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read: 
         return VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
-    case lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write:
+    case dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write:
         return VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-    case lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read_and_write:
+    case dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_read_and_write:
         return VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-    default: assert(0 && "Invalid lgx_memory_access!");
+    default: assert(0 && "Invalid dgx_memory_access!");
     }
 
     return 0;
 }
 
-static inline VkImageUsageFlags lgx_texture_usage_to_vk_image_usage(lgx_texture_usage usage) {
+static inline VkImageUsageFlags dgx_texture_usage_to_vk_image_usage(dgx_texture_usage usage) {
     switch (usage) {
-    case lgx_texture_usage_sampled:                     return VK_IMAGE_USAGE_SAMPLED_BIT;
-    case lgx_texture_usage_color_attachment:            return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    case lgx_texture_usage_depth_stencil_attachment:    return VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    case lgx_texture_usage_storage:                     return VK_IMAGE_USAGE_STORAGE_BIT;
-    default: assert(0 && "Invalid lgx_texture_usage!");
+    case dgx_texture_usage_sampled:                     return VK_IMAGE_USAGE_SAMPLED_BIT;
+    case dgx_texture_usage_color_attachment:            return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    case dgx_texture_usage_depth_stencil_attachment:    return VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    case dgx_texture_usage_storage:                     return VK_IMAGE_USAGE_STORAGE_BIT;
+    default: assert(0 && "Invalid dgx_texture_usage!");
     }
 
     return 0;
 }
 
-static inline VkFilter lgx_to_vk_filter(lgx_sampler_filter filter) {
+static inline VkFilter dgx_to_vk_filter(dgx_sampler_filter filter) {
     switch (filter) {
-    case lgx_sampler_filter_nearest:    return VK_FILTER_NEAREST;
-    case lgx_sampler_filter_linear:     return VK_FILTER_LINEAR;
-    default: assert(0 && "Invalid lgx_sampler_filter!");
+    case dgx_sampler_filter_nearest:    return VK_FILTER_NEAREST;
+    case dgx_sampler_filter_linear:     return VK_FILTER_LINEAR;
+    default: assert(0 && "Invalid dgx_sampler_filter!");
     }
 
     return 0;
 }
 
-static inline VkSamplerMipmapMode lgx_to_vk_mipmap_mode(lgx_sampler_filter filter) {
+static inline VkSamplerMipmapMode dgx_to_vk_mipmap_mode(dgx_sampler_filter filter) {
     switch (filter) {
-    case lgx_sampler_filter_nearest:    return VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    case lgx_sampler_filter_linear:     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    default: assert(0 && "Invalid lgx_sampler_filter!");
+    case dgx_sampler_filter_nearest:    return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    case dgx_sampler_filter_linear:     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    default: assert(0 && "Invalid dgx_sampler_filter!");
     }
 
     return 0;
 }
 
-static inline VkSamplerAddressMode lgx_to_vk_sampler_wrapping(lgx_sampler_wrapping wrapping) {
+static inline VkSamplerAddressMode dgx_to_vk_sampler_wrapping(dgx_sampler_wrapping wrapping) {
     switch (wrapping) {
-        case lgx_sampler_wrapping_repeat:                   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        case lgx_sampler_wrapping_repeat_mirrored:          return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-        case lgx_sampler_wrapping_repeat_clamp_coordinates: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        case lgx_sampler_wrapping_repeat_clamp_texture:     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        default: assert(0 && "Invalid lgx_sampler_wrapping!");
+        case dgx_sampler_wrapping_repeat:                   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case dgx_sampler_wrapping_repeat_mirrored:          return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+        case dgx_sampler_wrapping_repeat_clamp_coordinates: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case dgx_sampler_wrapping_repeat_clamp_texture:     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        default: assert(0 && "Invalid dgx_sampler_wrapping!");
     }
 
     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
-static inline VkImageType lgx_texture_type_to_vk_image_type(lgx_texture_type type) {
+static inline VkImageType dgx_texture_type_to_vk_image_type(dgx_texture_type type) {
     switch (type) {
-        case lgx_texture_type_1d:       return VK_IMAGE_TYPE_1D;
-        case lgx_texture_type_2d:       return VK_IMAGE_TYPE_2D;
-        case lgx_texture_type_cubemap:  return VK_IMAGE_TYPE_2D;
-        case lgx_texture_type_3d:       return VK_IMAGE_TYPE_3D;
-        default: assert(0 && "Invalid lgx_texture_type");
+        case dgx_texture_type_1d:       return VK_IMAGE_TYPE_1D;
+        case dgx_texture_type_2d:       return VK_IMAGE_TYPE_2D;
+        case dgx_texture_type_cubemap:  return VK_IMAGE_TYPE_2D;
+        case dgx_texture_type_3d:       return VK_IMAGE_TYPE_3D;
+        default: assert(0 && "Invalid dgx_texture_type");
     }
 
     return VK_IMAGE_TYPE_2D;
 }
 
-static inline VkImageViewType lgx_texture_type_to_vk_image_view_type(lgx_texture_type type, uint32_t array_length) {
-    if (type == lgx_texture_type_1d) {
+static inline VkImageViewType dgx_texture_type_to_vk_image_view_type(dgx_texture_type type, uint32_t array_length) {
+    if (type == dgx_texture_type_1d) {
         if (array_length > 1) return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
         return VK_IMAGE_VIEW_TYPE_1D;
     }
 
-    if (type == lgx_texture_type_2d) {
+    if (type == dgx_texture_type_2d) {
         if (array_length > 1) return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         return VK_IMAGE_VIEW_TYPE_2D;
     }
 
-    if (type == lgx_texture_type_3d) {
+    if (type == dgx_texture_type_3d) {
         return VK_IMAGE_VIEW_TYPE_3D;
     }
 
-    if (type == lgx_texture_type_cubemap) {
+    if (type == dgx_texture_type_cubemap) {
         if (array_length > 1) return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
         return VK_IMAGE_VIEW_TYPE_CUBE;
     }
 
-    assert(0 && "Invalid lgx_texture_type");
+    assert(0 && "Invalid dgx_texture_type");
     return VK_IMAGE_VIEW_TYPE_2D;
 }
 
-static inline VkFormat lgx_to_vk_texture_format(lgx_texture_format format) {
+static inline VkFormat dgx_to_vk_texture_format(dgx_texture_format format) {
     switch (format) {
-        case lgx_texture_format_undefined:              return VK_FORMAT_UNDEFINED;
+        case dgx_texture_format_undefined:              return VK_FORMAT_UNDEFINED;
 
-        case lgx_texture_format_r8_unorm:               return VK_FORMAT_R8_UNORM;
-        case lgx_texture_format_rg8_unorm:              return VK_FORMAT_R8G8_UNORM;
-        case lgx_texture_format_rgba8_unorm:            return VK_FORMAT_R8G8B8A8_UNORM;
-        case lgx_texture_format_rgba8_srgb:             return VK_FORMAT_R8G8B8A8_SRGB;
-        case lgx_texture_format_bgra8_unorm:            return VK_FORMAT_B8G8R8A8_UNORM;
-        case lgx_texture_format_bgra8_srgb:             return VK_FORMAT_B8G8R8A8_SRGB;
+        case dgx_texture_format_r8_unorm:               return VK_FORMAT_R8_UNORM;
+        case dgx_texture_format_rg8_unorm:              return VK_FORMAT_R8G8_UNORM;
+        case dgx_texture_format_rgba8_unorm:            return VK_FORMAT_R8G8B8A8_UNORM;
+        case dgx_texture_format_rgba8_srgb:             return VK_FORMAT_R8G8B8A8_SRGB;
+        case dgx_texture_format_bgra8_unorm:            return VK_FORMAT_B8G8R8A8_UNORM;
+        case dgx_texture_format_bgra8_srgb:             return VK_FORMAT_B8G8R8A8_SRGB;
 
-        case lgx_texture_format_r16_float:              return VK_FORMAT_R16_SFLOAT;
-        case lgx_texture_format_rg16_float:             return VK_FORMAT_R16G16_SFLOAT;
-        case lgx_texture_format_rgba16_float:           return VK_FORMAT_R16G16B16A16_SFLOAT;
+        case dgx_texture_format_r16_float:              return VK_FORMAT_R16_SFLOAT;
+        case dgx_texture_format_rg16_float:             return VK_FORMAT_R16G16_SFLOAT;
+        case dgx_texture_format_rgba16_float:           return VK_FORMAT_R16G16B16A16_SFLOAT;
 
-        case lgx_texture_format_r32_float:              return VK_FORMAT_R32_SFLOAT;
-        case lgx_texture_format_rg32_float:             return VK_FORMAT_R32G32_SFLOAT;
-        case lgx_texture_format_rgba32_float:           return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case dgx_texture_format_r32_float:              return VK_FORMAT_R32_SFLOAT;
+        case dgx_texture_format_rg32_float:             return VK_FORMAT_R32G32_SFLOAT;
+        case dgx_texture_format_rgba32_float:           return VK_FORMAT_R32G32B32A32_SFLOAT;
 
-        case lgx_texture_format_depth16_unorm:          return VK_FORMAT_D16_UNORM;
-        case lgx_texture_format_depth24_unorm_stencil8: return VK_FORMAT_D24_UNORM_S8_UINT;
-        case lgx_texture_format_depth32_float:          return VK_FORMAT_D32_SFLOAT;
+        case dgx_texture_format_depth16_unorm:          return VK_FORMAT_D16_UNORM;
+        case dgx_texture_format_depth24_unorm_stencil8: return VK_FORMAT_D24_UNORM_S8_UINT;
+        case dgx_texture_format_depth32_float:          return VK_FORMAT_D32_SFLOAT;
 
-        default: assert(0 && "Invalid lgx_texture_format!");
+        default: assert(0 && "Invalid dgx_texture_format!");
     }
 
     return VK_FORMAT_UNDEFINED;
 }
 
-static inline VkDescriptorType lgx_to_vk_descriptor_type(lgx_descriptor_binding_type type) {
+static inline VkDescriptorType dgx_to_vk_descriptor_type(dgx_descriptor_binding_type type) {
     switch (type) {
-        case lgx_descriptor_binding_type_sampler:           return VK_DESCRIPTOR_TYPE_SAMPLER;
-        case lgx_descriptor_binding_type_sampled_texture:   return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        case lgx_descriptor_binding_type_uniform_buffer:    return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case lgx_descriptor_binding_type_storage_buffer:    return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        default: assert(0 && "Invalid lgx_descriptor_type!");
+        case dgx_descriptor_binding_type_sampler:           return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case dgx_descriptor_binding_type_sampled_texture:   return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        case dgx_descriptor_binding_type_uniform_buffer:    return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case dgx_descriptor_binding_type_storage_buffer:    return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        default: assert(0 && "Invalid dgx_descriptor_type!");
     }
 
     return VK_DESCRIPTOR_TYPE_MAX_ENUM;
 }
 
-static inline VkAttachmentLoadOp lgx_to_vk_load_op(lgx_load_op op) {
+static inline VkAttachmentLoadOp dgx_to_vk_load_op(dgx_load_op op) {
     switch (op) {
-        case lgx_load_op_load:       return VK_ATTACHMENT_LOAD_OP_LOAD;
-        case lgx_load_op_clear:      return VK_ATTACHMENT_LOAD_OP_CLEAR;
-        case lgx_load_op_dont_care:  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        default: assert(0 && "Invalid lgx_load_op!");
+        case dgx_load_op_load:       return VK_ATTACHMENT_LOAD_OP_LOAD;
+        case dgx_load_op_clear:      return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        case dgx_load_op_dont_care:  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        default: assert(0 && "Invalid dgx_load_op!");
     }
 
     return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 }
 
-static inline VkAttachmentStoreOp lgx_to_vk_store_op(lgx_store_op op) {
+static inline VkAttachmentStoreOp dgx_to_vk_store_op(dgx_store_op op) {
     switch (op) {
-        case lgx_store_op_store:     return VK_ATTACHMENT_STORE_OP_STORE;
-        case lgx_store_op_dont_care: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        default: assert(0 && "Invalid lgx_store_op!");
+        case dgx_store_op_store:     return VK_ATTACHMENT_STORE_OP_STORE;
+        case dgx_store_op_dont_care: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        default: assert(0 && "Invalid dgx_store_op!");
     }
 
     return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
-static inline VkPrimitiveTopology lgx_to_vk_primitive_topology(lgx_primitive_topology topology) {
+static inline VkPrimitiveTopology dgx_to_vk_primitive_topology(dgx_primitive_topology topology) {
     switch (topology) {
-        case lgx_primitive_topology_point_list:     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-        case lgx_primitive_topology_line_list:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-        case lgx_primitive_topology_line_strip:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-        case lgx_primitive_topology_triangle_list:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        case lgx_primitive_topology_triangle_strip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-        default: assert(0 && "Invalid lgx_primitive_topology!");
+        case dgx_primitive_topology_point_list:     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+        case dgx_primitive_topology_line_list:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+        case dgx_primitive_topology_line_strip:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+        case dgx_primitive_topology_triangle_list:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        case dgx_primitive_topology_triangle_strip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        default: assert(0 && "Invalid dgx_primitive_topology!");
     }
 
     return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 }
 
-static inline VkCullModeFlags lgx_to_vk_cull_mode(lgx_cull_mode mode) {
+static inline VkCullModeFlags dgx_to_vk_cull_mode(dgx_cull_mode mode) {
     switch (mode) {
-        case lgx_cull_mode_none:            return VK_CULL_MODE_NONE;
-        case lgx_cull_mode_front:           return VK_CULL_MODE_FRONT_BIT;
-        case lgx_cull_mode_back:            return VK_CULL_MODE_BACK_BIT;
-        case lgx_cull_mode_front_and_back:  return VK_CULL_MODE_FRONT_AND_BACK;
-        default: assert(0 && "Invalid lgx_cull_mode!");
+        case dgx_cull_mode_none:            return VK_CULL_MODE_NONE;
+        case dgx_cull_mode_front:           return VK_CULL_MODE_FRONT_BIT;
+        case dgx_cull_mode_back:            return VK_CULL_MODE_BACK_BIT;
+        case dgx_cull_mode_front_and_back:  return VK_CULL_MODE_FRONT_AND_BACK;
+        default: assert(0 && "Invalid dgx_cull_mode!");
     }
 
     return VK_CULL_MODE_NONE;
 }
 
-static inline VkPolygonMode lgx_to_vk_fill_mode(lgx_fill_mode mode) {
+static inline VkPolygonMode dgx_to_vk_fill_mode(dgx_fill_mode mode) {
     switch (mode) {
-        case lgx_fill_mode_solid:       return VK_POLYGON_MODE_FILL;
-        case lgx_fill_mode_wireframe:   return VK_POLYGON_MODE_LINE;
-        default: assert(0 && "Invalid lgx_fill_mode!");
+        case dgx_fill_mode_solid:       return VK_POLYGON_MODE_FILL;
+        case dgx_fill_mode_wireframe:   return VK_POLYGON_MODE_LINE;
+        default: assert(0 && "Invalid dgx_fill_mode!");
     }
 
     return VK_POLYGON_MODE_FILL;
 }
 
-static inline VkBlendFactor lgx_to_vk_blend_factor(lgx_blend_factor factor) {
+static inline VkBlendFactor dgx_to_vk_blend_factor(dgx_blend_factor factor) {
     switch (factor) {
-        case lgx_blend_factor_zero:                     return VK_BLEND_FACTOR_ZERO;
-        case lgx_blend_factor_one:                      return VK_BLEND_FACTOR_ONE;
+        case dgx_blend_factor_zero:                     return VK_BLEND_FACTOR_ZERO;
+        case dgx_blend_factor_one:                      return VK_BLEND_FACTOR_ONE;
 
-        case lgx_blend_factor_src_color:                return VK_BLEND_FACTOR_SRC_COLOR;
-        case lgx_blend_factor_one_minus_src_color:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+        case dgx_blend_factor_src_color:                return VK_BLEND_FACTOR_SRC_COLOR;
+        case dgx_blend_factor_one_minus_src_color:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
 
-        case lgx_blend_factor_dst_color:                return VK_BLEND_FACTOR_DST_COLOR;
-        case lgx_blend_factor_one_minus_dst_color:      return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+        case dgx_blend_factor_dst_color:                return VK_BLEND_FACTOR_DST_COLOR;
+        case dgx_blend_factor_one_minus_dst_color:      return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
 
-        case lgx_blend_factor_src_alpha:                return VK_BLEND_FACTOR_SRC_ALPHA;
-        case lgx_blend_factor_one_minus_src_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        case dgx_blend_factor_src_alpha:                return VK_BLEND_FACTOR_SRC_ALPHA;
+        case dgx_blend_factor_one_minus_src_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 
-        case lgx_blend_factor_dst_alpha:                return VK_BLEND_FACTOR_DST_ALPHA;
-        case lgx_blend_factor_one_minus_dst_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+        case dgx_blend_factor_dst_alpha:                return VK_BLEND_FACTOR_DST_ALPHA;
+        case dgx_blend_factor_one_minus_dst_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
 
-        case lgx_blend_factor_constant_color:           return VK_BLEND_FACTOR_CONSTANT_COLOR;
-        case lgx_blend_factor_one_minus_constant_color: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
+        case dgx_blend_factor_constant_color:           return VK_BLEND_FACTOR_CONSTANT_COLOR;
+        case dgx_blend_factor_one_minus_constant_color: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
 
-        case lgx_blend_factor_constant_alpha:           return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-        case lgx_blend_factor_one_minus_constant_alpha: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
+        case dgx_blend_factor_constant_alpha:           return VK_BLEND_FACTOR_CONSTANT_ALPHA;
+        case dgx_blend_factor_one_minus_constant_alpha: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
 
-        case lgx_blend_factor_src_alpha_saturate:       return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
-        default: assert(0 && "Invalid lgx_blend_factor!");
+        case dgx_blend_factor_src_alpha_saturate:       return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+        default: assert(0 && "Invalid dgx_blend_factor!");
     }
 
     return VK_BLEND_FACTOR_ZERO;
 }
 
-static inline VkBlendOp lgx_to_vk_blend_op(lgx_blend_op op) {
+static inline VkBlendOp dgx_to_vk_blend_op(dgx_blend_op op) {
     switch (op) {
-        case lgx_blend_op_add:              return VK_BLEND_OP_ADD;
-        case lgx_blend_op_subtract:         return VK_BLEND_OP_SUBTRACT;
-        case lgx_blend_op_reverse_subtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
-        case lgx_blend_op_min:              return VK_BLEND_OP_MIN;
-        case lgx_blend_op_max:              return VK_BLEND_OP_MAX;
-        default: assert(0 && "Invalid lgx_blend_op!");
+        case dgx_blend_op_add:              return VK_BLEND_OP_ADD;
+        case dgx_blend_op_subtract:         return VK_BLEND_OP_SUBTRACT;
+        case dgx_blend_op_reverse_subtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
+        case dgx_blend_op_min:              return VK_BLEND_OP_MIN;
+        case dgx_blend_op_max:              return VK_BLEND_OP_MAX;
+        default: assert(0 && "Invalid dgx_blend_op!");
     }
 
     return VK_BLEND_OP_ADD;
 }
 
-static inline void lgx_translate_buffer_usage(
-    lgx_buffer_sync_point   prev,
-    lgx_buffer_sync_point   next,
+static inline void dgx_translate_buffer_usage(
+    dgx_buffer_sync_point   prev,
+    dgx_buffer_sync_point   next,
     VkPipelineStageFlags*   srcStage,
     VkPipelineStageFlags*   dstStage,
     VkAccessFlags*          srcAccess,
@@ -1612,108 +1612,108 @@ static inline void lgx_translate_buffer_usage(
 ) {
     // previous usage
     switch (prev) {
-        case lgx_buffer_sync_point_this_command:
+        case dgx_buffer_sync_point_this_command:
             *srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             *srcAccess = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             break;
 
-        case lgx_buffer_sync_point_transfer_source:
+        case dgx_buffer_sync_point_transfer_source:
             *srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_transfer_destination:
+        case dgx_buffer_sync_point_transfer_destination:
             *srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
             break;
 
-        case lgx_buffer_sync_point_compute_read:
+        case dgx_buffer_sync_point_compute_read:
             *srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_compute_write:
+        case dgx_buffer_sync_point_compute_write:
             *srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_WRITE_BIT;
             break;
 
-        case lgx_buffer_sync_point_vertex_shader_read:
+        case dgx_buffer_sync_point_vertex_shader_read:
             *srcStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_fragment_shader_read:
+        case dgx_buffer_sync_point_fragment_shader_read:
             *srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_vertex_buffer:
+        case dgx_buffer_sync_point_vertex_buffer:
             *srcStage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
             *srcAccess = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_index_buffer:
+        case dgx_buffer_sync_point_index_buffer:
             *srcStage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
             *srcAccess = VK_ACCESS_INDEX_READ_BIT;
             break;
 
-        default: assert(0 && "Invalid lgx_buffer_sync_point!");
+        default: assert(0 && "Invalid dgx_buffer_sync_point!");
     }
 
     // next usage
     switch (next) {
-        case lgx_buffer_sync_point_this_command:
+        case dgx_buffer_sync_point_this_command:
             *srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             *srcAccess = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             break;
 
-        case lgx_buffer_sync_point_transfer_source:
+        case dgx_buffer_sync_point_transfer_source:
             *dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *dstAccess = VK_ACCESS_TRANSFER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_transfer_destination:
+        case dgx_buffer_sync_point_transfer_destination:
             *dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *dstAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
             break;
 
-        case lgx_buffer_sync_point_compute_read:
+        case dgx_buffer_sync_point_compute_read:
             *dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_compute_write:
+        case dgx_buffer_sync_point_compute_write:
             *dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_WRITE_BIT;
             break;
 
-        case lgx_buffer_sync_point_vertex_shader_read:
+        case dgx_buffer_sync_point_vertex_shader_read:
             *dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_fragment_shader_read:
+        case dgx_buffer_sync_point_fragment_shader_read:
             *dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_vertex_buffer:
+        case dgx_buffer_sync_point_vertex_buffer:
             *dstStage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
             *dstAccess = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
             break;
 
-        case lgx_buffer_sync_point_index_buffer:
+        case dgx_buffer_sync_point_index_buffer:
             *dstStage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
             *dstAccess = VK_ACCESS_INDEX_READ_BIT;
             break;
 
-        default: assert(0 && "Invalid lgx_buffer_sync_point!");
+        default: assert(0 && "Invalid dgx_buffer_sync_point!");
     }
 }
 
-static inline void lgx_translate_texture_usage(
-    lgx_texture_sync_point  prev,
-    lgx_texture_sync_point  next,
+static inline void dgx_translate_texture_usage(
+    dgx_texture_sync_point  prev,
+    dgx_texture_sync_point  next,
     VkPipelineStageFlags*   srcStage,
     VkPipelineStageFlags*   dstStage,
     VkAccessFlags*          srcAccess,
@@ -1723,55 +1723,55 @@ static inline void lgx_translate_texture_usage(
 ) {
     // previous usage
     switch (prev) {
-        case lgx_texture_sync_point_this_command:
+        case dgx_texture_sync_point_this_command:
             *srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             *srcAccess = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             break;
 
-        case lgx_texture_sync_point_transfer_source:
+        case dgx_texture_sync_point_transfer_source:
             *srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_transfer_destination:
+        case dgx_texture_sync_point_transfer_destination:
             *srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_compute_read:
+        case dgx_texture_sync_point_compute_read:
             *srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_READ_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_GENERAL;
             break;
 
-        case lgx_texture_sync_point_compute_write:
+        case dgx_texture_sync_point_compute_write:
             *srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_WRITE_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_GENERAL;
             break;
 
-        case lgx_texture_sync_point_vertex_shader_read:
+        case dgx_texture_sync_point_vertex_shader_read:
             *srcStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_READ_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_fragment_shader_read:
+        case dgx_texture_sync_point_fragment_shader_read:
             *srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             *srcAccess = VK_ACCESS_SHADER_READ_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_color_attachment:
+        case dgx_texture_sync_point_color_attachment:
             *srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             *srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_depth_attachment:
+        case dgx_texture_sync_point_depth_attachment:
             *srcStage =
                 VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -1780,60 +1780,60 @@ static inline void lgx_translate_texture_usage(
             *oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             break;
 
-        default: assert(0 && "Invalid lgx_texture_sync_point!");
+        default: assert(0 && "Invalid dgx_texture_sync_point!");
     }
 
     // next usage
     switch (next) {
-        case lgx_texture_sync_point_this_command:
+        case dgx_texture_sync_point_this_command:
             *srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             *srcAccess = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             *oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             break;
 
-        case lgx_texture_sync_point_transfer_source:
+        case dgx_texture_sync_point_transfer_source:
             *dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *dstAccess = VK_ACCESS_TRANSFER_READ_BIT;
             *newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_transfer_destination:
+        case dgx_texture_sync_point_transfer_destination:
             *dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             *dstAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
             *newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_compute_read:
+        case dgx_texture_sync_point_compute_read:
             *dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_READ_BIT;
             *newLayout = VK_IMAGE_LAYOUT_GENERAL;
             break;
 
-        case lgx_texture_sync_point_compute_write:
+        case dgx_texture_sync_point_compute_write:
             *dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_WRITE_BIT;
             *newLayout = VK_IMAGE_LAYOUT_GENERAL;
             break;
 
-        case lgx_texture_sync_point_vertex_shader_read:
+        case dgx_texture_sync_point_vertex_shader_read:
             *dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_READ_BIT;
             *newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_fragment_shader_read:
+        case dgx_texture_sync_point_fragment_shader_read:
             *dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             *dstAccess = VK_ACCESS_SHADER_READ_BIT;
             *newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_color_attachment:
+        case dgx_texture_sync_point_color_attachment:
             *dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             *dstAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             *newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             break;
 
-        case lgx_texture_sync_point_depth_attachment:
+        case dgx_texture_sync_point_depth_attachment:
             *dstStage =
                 VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -1842,18 +1842,18 @@ static inline void lgx_translate_texture_usage(
             *newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             break;
 
-        default: assert(0 && "Invalid lgx_texture_sync_point!");
+        default: assert(0 && "Invalid dgx_texture_sync_point!");
     }
 }
 
 
 /* ===== buffer.c ===== */
 
-lgx_buffer* lgx_create_buffer(lgx_hardware* hardware, const lgx_buffer_create_info* info) {
+dgx_buffer* dgx_create_buffer(dgx_hardware* hardware, const dgx_buffer_create_info* info) {
     VkBufferCreateInfo buffer_info = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size        = info->size_bytes,
-        .usage       = lgx_buffer_usage_to_vk_buffer_usage(info->usage) | lgx_memory_access_to_vk_buffer_usage(info->memory_access),
+        .usage       = dgx_buffer_usage_to_vk_buffer_usage(info->usage) | dgx_memory_access_to_vk_buffer_usage(info->memory_access),
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE
     };
 
@@ -1880,8 +1880,8 @@ lgx_buffer* lgx_create_buffer(lgx_hardware* hardware, const lgx_buffer_create_in
 
     vkBindBufferMemory(hardware->logical_device, vkbuffer, given_memory, given_offset);
 
-    lgx_buffer* buffer = malloc(sizeof(lgx_buffer));
-    *buffer = (lgx_buffer){
+    dgx_buffer* buffer = malloc(sizeof(dgx_buffer));
+    *buffer = (dgx_buffer){
         .owning_hardware    = hardware,
         .buffer             = vkbuffer,
         .memory             = given_memory,
@@ -1891,65 +1891,65 @@ lgx_buffer* lgx_create_buffer(lgx_hardware* hardware, const lgx_buffer_create_in
     return buffer;
 }
 
-void lgx_free_buffer(lgx_buffer* buffer) {
+void dgx_free_buffer(dgx_buffer* buffer) {
     if (!buffer) return;
     vkDestroyBuffer(buffer->owning_hardware->logical_device, buffer->buffer, 0);
     vkFreeMemory(buffer->owning_hardware->logical_device, buffer->memory, 0); // todo if paged
     free(buffer);
 }
 
-uint64_t lgx_buffer_get_size_bytes(lgx_buffer* buffer) {
+uint64_t dgx_buffer_get_size_bytes(dgx_buffer* buffer) {
     return buffer->size_bytes;
 }
 
-int lgx_buffer_sync_upload(lgx_buffer* buffer, uint64_t buffer_offset, const void* data, uint64_t data_size_bytes) {
+int dgx_buffer_sync_upload(dgx_buffer* buffer, uint64_t buffer_offset, const void* data, uint64_t data_size_bytes) {
     // temporary objects:
-    lgx_staging_memory*             staging_memory = NULL;
-    lgx_command_lists_allocator*    allocator = NULL;
-    lgx_command_list*               list = NULL;
-    lgx_cpu_signal*                 signal = NULL;
-    lgx_hardware_queue*             queue = NULL;
+    dgx_staging_memory*             staging_memory = NULL;
+    dgx_command_lists_allocator*    allocator = NULL;
+    dgx_command_list*               list = NULL;
+    dgx_cpu_signal*                 signal = NULL;
+    dgx_hardware_queue*             queue = NULL;
     int success = 1;
 
-    lgx_staging_memory_create_info staging_info = {
+    dgx_staging_memory_create_info staging_info = {
         .size_bytes = data_size_bytes
     };
-    staging_memory = lgx_create_staging_memory(buffer->owning_hardware, &staging_info);
+    staging_memory = dgx_create_staging_memory(buffer->owning_hardware, &staging_info);
     if (!staging_memory) { success = 0; goto _cleanup; }
 
-    void* mapped = lgx_staging_memory_map(staging_memory, 0, staging_info.size_bytes);
+    void* mapped = dgx_staging_memory_map(staging_memory, 0, staging_info.size_bytes);
     if (!mapped) { success = 0; goto _cleanup; }
         memcpy(mapped, data, data_size_bytes);
-    lgx_staging_memory_unmap(staging_memory);
+    dgx_staging_memory_unmap(staging_memory);
 
     // command allocator
-    lgx_command_lists_allocator_create_info alloc_info = {
-        .target_queue_type = lgx_hardware_queue_type_graphics,
+    dgx_command_lists_allocator_create_info alloc_info = {
+        .target_queue_type = dgx_hardware_queue_type_graphics,
         .often_recorded = 0
     };
-    allocator = lgx_create_command_lists_allocator(buffer->owning_hardware, &alloc_info);
+    allocator = dgx_create_command_lists_allocator(buffer->owning_hardware, &alloc_info);
     if (!allocator) { success = 0; goto _cleanup; }
 
     // command list
-    list = lgx_command_lists_allocator_alloc_command_list(allocator);
+    list = dgx_command_lists_allocator_alloc_command_list(allocator);
     if (!list) { success = 0; goto _cleanup; }
 
-    lgx_begin_command_list_recording(list);
-    lgx_cmd_copy_staging_memory_to_buffer(
+    dgx_begin_command_list_recording(list);
+    dgx_cmd_copy_staging_memory_to_buffer(
         list, staging_memory, buffer,
         0, buffer_offset, data_size_bytes
     );
-    lgx_finish_command_list_recording(list);
+    dgx_finish_command_list_recording(list);
 
     // queue
-    lgx_hardware_query_queues(buffer->owning_hardware, lgx_hardware_queue_type_graphics, 0, 1, &queue);
+    dgx_hardware_query_queues(buffer->owning_hardware, dgx_hardware_queue_type_graphics, 0, 1, &queue);
 
     // submit
-    lgx_cpu_signal_create_info signal_info = {.initialy_signaled = 0};
-    signal = lgx_create_cpu_signal(buffer->owning_hardware, &signal_info);
+    dgx_cpu_signal_create_info signal_info = {.initialy_signaled = 0};
+    signal = dgx_create_cpu_signal(buffer->owning_hardware, &signal_info);
     if (!signal) { success = 0; goto _cleanup; }
 
-    lgx_submit_info submit_info = {
+    dgx_submit_info submit_info = {
         .command_lists_count        = 1,
         .command_lists              = &list,
         .wait_gpu_signals_count     = 0,
@@ -1958,27 +1958,27 @@ int lgx_buffer_sync_upload(lgx_buffer* buffer, uint64_t buffer_offset, const voi
         .cpu_signal                 = signal
     };
 
-    lgx_submit_command_list(queue, &submit_info);
-    lgx_cpu_signal_wait(signal);
+    dgx_submit_command_list(queue, &submit_info);
+    dgx_cpu_signal_wait(signal);
 
     // cleanup
 _cleanup:
-    lgx_free_cpu_signal(signal);
-    lgx_free_command_lists_allocator(allocator);
-    lgx_free_staging_memory(staging_memory);
+    dgx_free_cpu_signal(signal);
+    dgx_free_command_lists_allocator(allocator);
+    dgx_free_staging_memory(staging_memory);
     return success;
 }
 
-uint64_t lgx_buffer_multi_upload(
-    lgx_buffer_multi_upload_region* regions,
+uint64_t dgx_buffer_multi_upload(
+    dgx_buffer_multi_upload_region* regions,
     uint32_t                        region_count,
-    lgx_command_list*               command_list,
-    lgx_hardware_queue*             queue_for_uploads,
-    lgx_staging_memory*             staging_memory,
+    dgx_command_list*               command_list,
+    dgx_hardware_queue*             queue_for_uploads,
+    dgx_staging_memory*             staging_memory,
     uint64_t                        staging_memory_region_offset,
     uint64_t                        staging_memory_region_size,
-    lgx_cpu_signal*                 upload_finished_cpu,
-    lgx_gpu_signal*                 upload_finished_gpu
+    dgx_cpu_signal*                 upload_finished_cpu,
+    dgx_gpu_signal*                 upload_finished_gpu
 ) {
     if (region_count == 0) return 0;
     int provided_cpu_signal = (upload_finished_cpu != NULL);
@@ -1994,7 +1994,7 @@ uint64_t lgx_buffer_multi_upload(
     int has_remaining = 1;
     while (has_remaining) {
         // Write staging buffer
-        char* mapped = lgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
+        char* mapped = dgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
         uint64_t staging_used = 0;
 
         for (uint32_t r = 0; r < region_count; r++) {
@@ -2011,13 +2011,13 @@ uint64_t lgx_buffer_multi_upload(
             }
         }
 
-        lgx_staging_memory_unmap(staging_memory);
+        dgx_staging_memory_unmap(staging_memory);
 
         // Reocrd command lists
-        lgx_begin_command_list_recording(command_list);
+        dgx_begin_command_list_recording(command_list);
         for (uint32_t r = 0; r < region_count; r++) {
             if (batch_bytes[r] == 0) continue;
-            lgx_cmd_copy_staging_memory_to_buffer(
+            dgx_cmd_copy_staging_memory_to_buffer(
                 command_list,
                 staging_memory,
                 regions[r].buffer,
@@ -2027,7 +2027,7 @@ uint64_t lgx_buffer_multi_upload(
             );
             all_bytes += batch_bytes[r];
         }
-        lgx_finish_command_list_recording(command_list);
+        dgx_finish_command_list_recording(command_list);
 
         // Advance positions
         for (uint32_t r = 0; r < region_count; r++)
@@ -2047,32 +2047,32 @@ uint64_t lgx_buffer_multi_upload(
 
         // ensure cpu signal exist if multiple batch are to be sent
         if (!is_final_batch && upload_finished_cpu == NULL) {
-            upload_finished_cpu = lgx_create_cpu_signal(staging_memory->owning_hardware, &(lgx_cpu_signal_create_info){ 
+            upload_finished_cpu = dgx_create_cpu_signal(staging_memory->owning_hardware, &(dgx_cpu_signal_create_info){ 
                 .initialy_signaled = 0 
             });
         }
 
         // submit
-        lgx_submit_info submit = {
+        dgx_submit_info submit = {
             .command_lists_count      = 1,
             .command_lists            = &command_list,
             .cpu_signal               = upload_finished_cpu,
             .signal_gpu_signals_count = (is_final_batch && upload_finished_gpu != NULL) ? 1 : 0,
             .signal_gpu_signals       = &upload_finished_gpu,
         };
-        lgx_submit_command_list(queue_for_uploads, &submit);
+        dgx_submit_command_list(queue_for_uploads, &submit);
 
         // sync upload
         if (!is_final_batch) {
-            lgx_cpu_signal_wait(upload_finished_cpu);
-            lgx_cpu_signal_reset(upload_finished_cpu);
+            dgx_cpu_signal_wait(upload_finished_cpu);
+            dgx_cpu_signal_reset(upload_finished_cpu);
         }
     }
 
     // free cpu signal if owned
     if (!provided_cpu_signal && upload_finished_cpu != NULL) {
-        lgx_cpu_signal_wait(upload_finished_cpu);
-        lgx_free_cpu_signal(upload_finished_cpu);
+        dgx_cpu_signal_wait(upload_finished_cpu);
+        dgx_free_cpu_signal(upload_finished_cpu);
     }
 
     free(copy_positions);
@@ -2092,31 +2092,31 @@ struct command_lists_block {
     uint8_t                 free_count;
     uint8_t                 used_count;
     uint8_t                 free_indices[block_capacity];
-    lgx_command_list        lists       [block_capacity];
+    dgx_command_list        lists       [block_capacity];
 };
 
-static inline uint32_t command_pool_family_index_from_create_info(lgx_hardware* hardware, const lgx_command_lists_allocator_create_info* info) {
+static inline uint32_t command_pool_family_index_from_create_info(dgx_hardware* hardware, const dgx_command_lists_allocator_create_info* info) {
     // If you stumbled on memory error here, you probably tried to create command_lists_allocator
     // for a family of queues that is no available on this hardware - it is prohibited to do so.
     switch (info->target_queue_type) {
-    case lgx_hardware_queue_type_graphics:          return hardware->graphics_queues[0].family_index;
-    case lgx_hardware_queue_type_transfer:          return hardware->transfer_queues[0].family_index;
-    case lgx_hardware_queue_type_compute:           return hardware->compute_queues[0].family_index;
-    case lgx_hardware_queue_type_transfer_compute:  return hardware->trs_cmp_queues[0].family_index;
+    case dgx_hardware_queue_type_graphics:          return hardware->graphics_queues[0].family_index;
+    case dgx_hardware_queue_type_transfer:          return hardware->transfer_queues[0].family_index;
+    case dgx_hardware_queue_type_compute:           return hardware->compute_queues[0].family_index;
+    case dgx_hardware_queue_type_transfer_compute:  return hardware->trs_cmp_queues[0].family_index;
     }
 
-    assert(0 && "Invalid lgx_hardware_queue_type!");
+    assert(0 && "Invalid dgx_hardware_queue_type!");
     return VK_IMAGE_VIEW_TYPE_2D;
 }
 
-static inline VkCommandPoolCreateFlags command_pool_flags_from_create_info(const lgx_command_lists_allocator_create_info* info) {
+static inline VkCommandPoolCreateFlags command_pool_flags_from_create_info(const dgx_command_lists_allocator_create_info* info) {
     VkCommandPoolCreateFlags flag = 0;
     flag |= (info->often_recorded ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0);
     flag |= VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     return flag;
 }
 
-lgx_command_lists_allocator* lgx_create_command_lists_allocator(lgx_hardware* hardware, const lgx_command_lists_allocator_create_info* info) {
+dgx_command_lists_allocator* dgx_create_command_lists_allocator(dgx_hardware* hardware, const dgx_command_lists_allocator_create_info* info) {
     VkCommandPoolCreateInfo command_pool_create_info = {
         .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .queueFamilyIndex = command_pool_family_index_from_create_info(hardware, info),
@@ -2128,8 +2128,8 @@ lgx_command_lists_allocator* lgx_create_command_lists_allocator(lgx_hardware* ha
         return 0x0; // failed to create command pool
     }
 
-    lgx_command_lists_allocator* allocator = calloc(1, sizeof(lgx_command_lists_allocator));
-    *(allocator) = (lgx_command_lists_allocator){
+    dgx_command_lists_allocator* allocator = calloc(1, sizeof(dgx_command_lists_allocator));
+    *(allocator) = (dgx_command_lists_allocator){
         .owning_hardware    = hardware,
         .command_pool       = command_pool,
         .front_block        = 0x0
@@ -2138,7 +2138,7 @@ lgx_command_lists_allocator* lgx_create_command_lists_allocator(lgx_hardware* ha
     return allocator;
 }
 
-void lgx_free_command_lists_allocator(lgx_command_lists_allocator* allocator) {
+void dgx_free_command_lists_allocator(dgx_command_lists_allocator* allocator) {
     if (!allocator) return;
 
     command_lists_block* block = allocator->front_block;
@@ -2170,7 +2170,7 @@ static inline uint32_t block_acquire_index(command_lists_block* block) {
     return block->used_count++;     // or grow
 }
 
-command_lists_block* get_block_with_available_slot(lgx_command_lists_allocator* allocator) {
+command_lists_block* get_block_with_available_slot(dgx_command_lists_allocator* allocator) {
     command_lists_block* block = allocator->front_block;
 
     while (block) {
@@ -2185,10 +2185,10 @@ command_lists_block* get_block_with_available_slot(lgx_command_lists_allocator* 
     return new_block;
 }
 
-lgx_command_list* lgx_command_lists_allocator_alloc_command_list(lgx_command_lists_allocator* allocator) {
+dgx_command_list* dgx_command_lists_allocator_alloc_command_list(dgx_command_lists_allocator* allocator) {
     command_lists_block* block = get_block_with_available_slot(allocator);
     uint32_t             index = block_acquire_index(block);
-    lgx_command_list*    list  = &block->lists[index];
+    dgx_command_list*    list  = &block->lists[index];
 
     VkCommandBufferAllocateInfo allocation_info = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -2204,7 +2204,7 @@ lgx_command_list* lgx_command_lists_allocator_alloc_command_list(lgx_command_lis
         return 0;
     }
 
-    *list = (lgx_command_list){
+    *list = (dgx_command_list){
         .owning_allocator   = allocator,
         .command_buffer     = list->command_buffer,
         .in_block_index     = index 
@@ -2213,10 +2213,10 @@ lgx_command_list* lgx_command_lists_allocator_alloc_command_list(lgx_command_lis
     return list;
 }
 
-void lgx_command_lists_allocator_free_command_list(lgx_command_list* list) {
+void dgx_command_lists_allocator_free_command_list(dgx_command_list* list) {
     if (!list) return;
 
-    lgx_command_lists_allocator* allocator = list->owning_allocator;
+    dgx_command_lists_allocator* allocator = list->owning_allocator;
     command_lists_block*         block = allocator->front_block;
 
     while (block) {
@@ -2238,7 +2238,7 @@ void lgx_command_lists_allocator_free_command_list(lgx_command_list* list) {
     }
 }
 
-void lgx_begin_command_list_recording(lgx_command_list* list) {
+void dgx_begin_command_list_recording(dgx_command_list* list) {
     VkCommandBufferBeginInfo begin_info = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags              = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
@@ -2250,15 +2250,15 @@ void lgx_begin_command_list_recording(lgx_command_list* list) {
     }
 }
 
-void lgx_finish_command_list_recording(lgx_command_list* list) {
+void dgx_finish_command_list_recording(dgx_command_list* list) {
     if (vkEndCommandBuffer(list->command_buffer) != VK_SUCCESS) {
         return; // failed to record command buffer
     }
 }
 
-void lgx_submit_command_list(
-    lgx_hardware_queue*     queue,
-    const lgx_submit_info*  info
+void dgx_submit_command_list(
+    dgx_hardware_queue*     queue,
+    const dgx_submit_info*  info
 ) {
     uint32_t tlom_itr = 0;
 
@@ -2307,21 +2307,21 @@ void lgx_submit_command_list(
 
 // Generic
 
-void lgx_cmd_sync_buffers(
-    lgx_command_list*       target,
+void dgx_cmd_sync_buffers(
+    dgx_command_list*       target,
 
-    lgx_buffer_sync_point   previous_use,
-    lgx_buffer_sync_point   next_use,
+    dgx_buffer_sync_point   previous_use,
+    dgx_buffer_sync_point   next_use,
 
     uint32_t                buffers_count,
-    lgx_buffer**            buffers
+    dgx_buffer**            buffers
 ) {
     VkPipelineStageFlags    srcStageMask;
     VkPipelineStageFlags    dstStageMask;
     VkAccessFlags           srcAccessMask;
     VkAccessFlags           dstAccessMask;
 
-    lgx_translate_buffer_usage(
+    dgx_translate_buffer_usage(
         previous_use,
         next_use,
         &srcStageMask,
@@ -2357,14 +2357,14 @@ void lgx_cmd_sync_buffers(
     );
 }
 
-void lgx_cmd_sync_textures(
-    lgx_command_list*       target,
+void dgx_cmd_sync_textures(
+    dgx_command_list*       target,
 
-    lgx_texture_sync_point  previous_use,
-    lgx_texture_sync_point  next_use,
+    dgx_texture_sync_point  previous_use,
+    dgx_texture_sync_point  next_use,
 
     uint32_t                textures_count,
-    lgx_texture**           textures
+    dgx_texture**           textures
 ) {
     VkPipelineStageFlags    srcStage;
     VkPipelineStageFlags    dstStage;
@@ -2373,7 +2373,7 @@ void lgx_cmd_sync_textures(
     VkImageLayout           oldLayout;
     VkImageLayout           newLayout;
 
-    lgx_translate_texture_usage(
+    dgx_translate_texture_usage(
         previous_use,
         next_use,
         &srcStage,
@@ -2403,7 +2403,7 @@ void lgx_cmd_sync_textures(
             .image					= textures[i]->image,
 
             .subresourceRange = {
-                .aspectMask = (next_use == lgx_texture_sync_point_depth_attachment)
+                .aspectMask = (next_use == dgx_texture_sync_point_depth_attachment)
                     ? VK_IMAGE_ASPECT_DEPTH_BIT
                     : VK_IMAGE_ASPECT_COLOR_BIT,
 
@@ -2426,10 +2426,10 @@ void lgx_cmd_sync_textures(
     );
 }
 
-void lgx_cmd_copy_staging_memory_to_buffer(
-    lgx_command_list*       target,
-    lgx_staging_memory*     staging_memory,
-    lgx_buffer*             target_buffer,
+void dgx_cmd_copy_staging_memory_to_buffer(
+    dgx_command_list*       target,
+    dgx_staging_memory*     staging_memory,
+    dgx_buffer*             target_buffer,
     uint32_t                staging_memory_region_offset,
     uint32_t                buffer_write_region_offset,
     uint32_t                buffer_write_region_size
@@ -2448,13 +2448,13 @@ void lgx_cmd_copy_staging_memory_to_buffer(
     );
 }
 
-void lgx_cmd_copy_staging_memory_to_texture(
-    lgx_command_list*       target,
-    lgx_staging_memory*     staging_memory,
-    lgx_texture*            target_texture,
+void dgx_cmd_copy_staging_memory_to_texture(
+    dgx_command_list*       target,
+    dgx_staging_memory*     staging_memory,
+    dgx_texture*            target_texture,
     uint32_t                staging_memory_region_offset,
-    lgx_texture_dimensions  texture_write_region_offset,
-    lgx_texture_dimensions  texture_write_region_size
+    dgx_texture_dimensions  texture_write_region_offset,
+    dgx_texture_dimensions  texture_write_region_size
 ) {
     VkBufferImageCopy region = {
         .bufferOffset       = staging_memory_region_offset,
@@ -2490,9 +2490,9 @@ void lgx_cmd_copy_staging_memory_to_texture(
 
 // Graphics
 
-void lgx_gcmd_begin_render_target_write(
-    lgx_command_list* target,
-    lgx_gcmd_begin_render_target_write_info* info
+void dgx_gcmd_begin_render_target_write(
+    dgx_command_list* target,
+    dgx_gcmd_begin_render_target_write_info* info
 ) {
     VkClearValue clear_values[info->clear_colors_count];
 
@@ -2526,15 +2526,15 @@ void lgx_gcmd_begin_render_target_write(
     );
 }
 
-void lgx_gcmd_end_render_target_write(
-    lgx_command_list* target
+void dgx_gcmd_end_render_target_write(
+    dgx_command_list* target
 ) {
     vkCmdEndRenderPass(target->command_buffer);
 }
 
-void lgx_gcmd_bind_graphics_pipeline(
-    lgx_command_list*   target,
-    lgx_pipeline*       pipeline
+void dgx_gcmd_bind_graphics_pipeline(
+    dgx_command_list*   target,
+    dgx_pipeline*       pipeline
 ) {
     vkCmdBindPipeline(
         target->command_buffer,
@@ -2543,9 +2543,9 @@ void lgx_gcmd_bind_graphics_pipeline(
     );
 }
 
-void lgx_gcmd_bind_graphics_pipeline_vertex_buffer(
-    lgx_command_list*   target,
-    lgx_buffer*         buffer,
+void dgx_gcmd_bind_graphics_pipeline_vertex_buffer(
+    dgx_command_list*   target,
+    dgx_buffer*         buffer,
     uint32_t            offset,
     uint32_t            binding
 ) {
@@ -2558,9 +2558,9 @@ void lgx_gcmd_bind_graphics_pipeline_vertex_buffer(
     );
 }
 
-void lgx_gcmd_bind_graphics_pipeline_index_buffer(
-    lgx_command_list*   target,
-    lgx_buffer*         buffer,
+void dgx_gcmd_bind_graphics_pipeline_index_buffer(
+    dgx_command_list*   target,
+    dgx_buffer*         buffer,
     uint32_t            offset,
     int                 uint32_not_uint16
 ) {
@@ -2573,12 +2573,12 @@ void lgx_gcmd_bind_graphics_pipeline_index_buffer(
     );
 }
 
-void lgx_gcmd_bind_graphics_pipeline_descriptors(
-    lgx_command_list*                   target,
-    lgx_pipeline_descriptors_layout*    layout,
+void dgx_gcmd_bind_graphics_pipeline_descriptors(
+    dgx_command_list*                   target,
+    dgx_pipeline_descriptors_layout*    layout,
     uint32_t                            first_descriptor_index,
     uint32_t                            descriptors_count,
-    lgx_descriptor**                    descriptors
+    dgx_descriptor**                    descriptors
 ) {
     VkDescriptorSet* sets = tlom_alloc_only(sizeof(VkDescriptorSet) * descriptors_count);
 
@@ -2597,8 +2597,8 @@ void lgx_gcmd_bind_graphics_pipeline_descriptors(
     );
 }
 
-void lgx_gcmd_draw_vertices(
-    lgx_command_list*   target,
+void dgx_gcmd_draw_vertices(
+    dgx_command_list*   target,
 
     uint32_t            vertices_count,
     uint32_t            vertices_buffer_offset_index,
@@ -2615,8 +2615,8 @@ void lgx_gcmd_draw_vertices(
     );
 }
 
-void lgx_gcmd_draw_indexed(
-    lgx_command_list*   target,
+void dgx_gcmd_draw_indexed(
+    dgx_command_list*   target,
 
     uint32_t            indices_count,
     uint32_t            indicies_buffer_offset_index,
@@ -2635,8 +2635,8 @@ void lgx_gcmd_draw_indexed(
     );
 }
 
-void lgx_gcmd_set_scissors(
-    lgx_command_list* target,
+void dgx_gcmd_set_scissors(
+    dgx_command_list* target,
     float root_x,  float root_y,
     float width,   float height
 ) {
@@ -2654,8 +2654,8 @@ void lgx_gcmd_set_scissors(
     vkCmdSetScissor(target->command_buffer, 0, 1, &scissor);
 }
 
-void lgx_gcmd_set_viewport(
-    lgx_command_list* target,
+void dgx_gcmd_set_viewport(
+    dgx_command_list* target,
     float root_x,  float root_y,
     float width,   float height
 ) {
@@ -2684,7 +2684,7 @@ const uint32_t  instance_extensions_count = 0;
 
 // Validation Layers
 
-#ifdef LIGHT_GRAPHICS_VALIDATE
+#ifdef DEMIGURG_GRAPHICS_VALIDATE
     static const char* validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
     const char**    config_validation_layers_array = &validation_layers[0];
     const uint32_t  config_validation_layers_count = 1;
@@ -2796,8 +2796,8 @@ void free_swapchain_support_details(swapchain_support_details details) {
 
 /* ===== descriptor_allocator.c ===== */
 
-lgx_descriptor_allocator* lgx_create_descriptor_allocator(lgx_hardware* hardware, const lgx_descriptor_allocator_create_info* info) {
-    lgx_descriptor_layout* layout = info->descriptor_layout;
+dgx_descriptor_allocator* dgx_create_descriptor_allocator(dgx_hardware* hardware, const dgx_descriptor_allocator_create_info* info) {
+    dgx_descriptor_layout* layout = info->descriptor_layout;
 
     VkDescriptorPoolSize pool_sizes[4];
     uint32_t             pool_size_count = 0;
@@ -2842,37 +2842,37 @@ lgx_descriptor_allocator* lgx_create_descriptor_allocator(lgx_hardware* hardware
         return 0x0; // Failed to create descriptor pool
     }
 
-    lgx_descriptor* lgxpool = calloc(info->max_descriptors_allocated, sizeof(lgx_descriptor));
-    if (!lgxpool) {
+    dgx_descriptor* dgxpool = calloc(info->max_descriptors_allocated, sizeof(dgx_descriptor));
+    if (!dgxpool) {
         vkDestroyDescriptorPool(hardware->logical_device, vkpool, 0);
         return 0x0;
     }
 
-    lgx_descriptor_allocator* allocator = calloc(1, sizeof(*allocator));
-    *allocator = (lgx_descriptor_allocator){
+    dgx_descriptor_allocator* allocator = calloc(1, sizeof(*allocator));
+    *allocator = (dgx_descriptor_allocator){
         .owning_hardware    = hardware,
         .max_descriptors    = info->max_descriptors_allocated,
         .target_layout      = info->descriptor_layout,
         .vk_pool            = vkpool,
-        .lgx_pool           = lgxpool
+        .dgx_pool           = dgxpool
     };
 
     return allocator;
 }
 
-void lgx_free_descriptor_allocator(lgx_descriptor_allocator* allocator) {
+void dgx_free_descriptor_allocator(dgx_descriptor_allocator* allocator) {
     if (!allocator) return;
-    free(allocator->lgx_pool);
+    free(allocator->dgx_pool);
     vkDestroyDescriptorPool(allocator->owning_hardware->logical_device, allocator->vk_pool, NULL);
     free(allocator);
 }
 
-lgx_descriptor* lgx_descriptor_allocator_alloc_descriptor(lgx_descriptor_allocator* allocator) {
+dgx_descriptor* dgx_descriptor_allocator_alloc_descriptor(dgx_descriptor_allocator* allocator) {
     VkDevice device = allocator->owning_hardware->logical_device;
 
     for (uint32_t i = 0; i < allocator->max_descriptors; i++) {
-        if (allocator->lgx_pool[i].alive) continue;
-        lgx_descriptor* desc = &allocator->lgx_pool[i];
+        if (allocator->dgx_pool[i].alive) continue;
+        dgx_descriptor* desc = &allocator->dgx_pool[i];
 
         VkDescriptorSetAllocateInfo alloc_info = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -2885,7 +2885,7 @@ lgx_descriptor* lgx_descriptor_allocator_alloc_descriptor(lgx_descriptor_allocat
             return 0x0; // failed to allocate descriptor sets!
         }
 
-        *desc = (lgx_descriptor){
+        *desc = (dgx_descriptor){
             .owning_allocator   = allocator,
             .dsc_set            = set,
             .alive              = 1,
@@ -2897,7 +2897,7 @@ lgx_descriptor* lgx_descriptor_allocator_alloc_descriptor(lgx_descriptor_allocat
     return 0x0;
 }
 
-void lgx_descriptor_allocator_free_descriptor(lgx_descriptor* descriptor) {
+void dgx_descriptor_allocator_free_descriptor(dgx_descriptor* descriptor) {
     descriptor->alive = 0;
     vkFreeDescriptorSets(
         descriptor->owning_allocator->owning_hardware->logical_device,
@@ -2907,44 +2907,44 @@ void lgx_descriptor_allocator_free_descriptor(lgx_descriptor* descriptor) {
 }
 
 
-void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_descriptor_write_info* write_infos) {
+void dgx_descriptors_write(dgx_hardware* hardware, uint32_t writes_count, dgx_descriptor_write_info* write_infos) {
     uint32_t itr = 0; VkWriteDescriptorSet* vkwrites = tlom_alloc(&itr, writes_count * sizeof(VkWriteDescriptorSet));
 
     for (uint32_t i = 0; i < writes_count; i++) {
-        lgx_descriptor_write_info* info = &write_infos[i];
+        dgx_descriptor_write_info* info = &write_infos[i];
 
         VkDescriptorBufferInfo* write_buffer_info = NULL;
         VkDescriptorImageInfo*  write_image_info  = NULL;
 
         switch (info->binding_type) {
-        case lgx_descriptor_binding_type_uniform_buffer:
-        case lgx_descriptor_binding_type_storage_buffer: {
+        case dgx_descriptor_binding_type_uniform_buffer:
+        case dgx_descriptor_binding_type_storage_buffer: {
             write_buffer_info = tlom_alloc(&itr, info->array_elements_count * sizeof(VkDescriptorBufferInfo));
             for (uint32_t j = 0; j < info->array_elements_count; j++) {
-                const lgx_descriptor_buffer_write_info* lgx_elem_info = &info->infos.for_buffers[j];
+                const dgx_descriptor_buffer_write_info* dgx_elem_info = &info->infos.for_buffers[j];
                 write_buffer_info[j] = (VkDescriptorBufferInfo){
-                    .buffer = lgx_elem_info->buffer->buffer,
-                    .offset = lgx_elem_info->offset,
-                    .range  = lgx_elem_info->length
+                    .buffer = dgx_elem_info->buffer->buffer,
+                    .offset = dgx_elem_info->offset,
+                    .range  = dgx_elem_info->length
                 };
             }
         } break;
-        case lgx_descriptor_binding_type_sampled_texture: {
+        case dgx_descriptor_binding_type_sampled_texture: {
         write_image_info = tlom_alloc(&itr, info->array_elements_count * sizeof(VkDescriptorImageInfo));
             for (uint32_t j = 0; j < info->array_elements_count; j++) {
-                const lgx_descriptor_sampled_texture_write_info* lgx_elem_info = &info->infos.for_sampled_textures[j];
+                const dgx_descriptor_sampled_texture_write_info* dgx_elem_info = &info->infos.for_sampled_textures[j];
                 write_image_info[j] = (VkDescriptorImageInfo){
                     .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    .imageView = lgx_elem_info->sampled_texture->view
+                    .imageView = dgx_elem_info->sampled_texture->view
                 };
             }
         } break;
-        case lgx_descriptor_binding_type_sampler: {
+        case dgx_descriptor_binding_type_sampler: {
             write_image_info = tlom_alloc(&itr, info->array_elements_count * sizeof(VkDescriptorImageInfo));
             for (uint32_t j = 0; j < info->array_elements_count; j++) {
-                const lgx_descriptor_sampler_write_info* lgx_elem_info = &info->infos.for_samplers[j];
+                const dgx_descriptor_sampler_write_info* dgx_elem_info = &info->infos.for_samplers[j];
                 write_image_info[j] = (VkDescriptorImageInfo){
-                    .sampler = lgx_elem_info->sampler->sampler,
+                    .sampler = dgx_elem_info->sampler->sampler,
                 };
             }
         } break;
@@ -2957,7 +2957,7 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
             .dstBinding         = info->binding_index,
             .dstArrayElement    = info->array_element_index,
 
-            .descriptorType     = lgx_to_vk_descriptor_type(info->binding_type),
+            .descriptorType     = dgx_to_vk_descriptor_type(info->binding_type),
             .descriptorCount    = info->array_elements_count,
 
             .pBufferInfo        = write_buffer_info,
@@ -2977,7 +2977,7 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
 
 /* ===== descriptor_layout.c ===== */
 
-lgx_descriptor_layout* lgx_create_descriptor_layout(lgx_hardware* hardware, const lgx_descriptor_layout_create_info* info) {
+dgx_descriptor_layout* dgx_create_descriptor_layout(dgx_hardware* hardware, const dgx_descriptor_layout_create_info* info) {
     if (!hardware || !info || !info->bindings || info->bindings_count == 0) return NULL;
 
     uint32_t samplers         = 0;
@@ -2987,20 +2987,20 @@ lgx_descriptor_layout* lgx_create_descriptor_layout(lgx_hardware* hardware, cons
 
     VkDescriptorSetLayoutBinding* vk_bindings = tlom_alloc_only(sizeof(VkDescriptorSetLayoutBinding) * info->bindings_count);
     for (uint32_t i = 0; i < info->bindings_count; i++) {
-        const lgx_descriptor_binding* src = &info->bindings[i];
+        const dgx_descriptor_binding* src = &info->bindings[i];
         vk_bindings[i] = (VkDescriptorSetLayoutBinding){
             .binding            = (uint32_t)src->binding,
-            .descriptorType     = lgx_to_vk_descriptor_type(src->type),
+            .descriptorType     = dgx_to_vk_descriptor_type(src->type),
             .descriptorCount    = (uint32_t)src->count,
-            .stageFlags         = lgx_to_vk_shader_stage(src->stages),
+            .stageFlags         = dgx_to_vk_shader_stage(src->stages),
             .pImmutableSamplers = NULL,
         };
 
         switch (src->type) {
-        case lgx_descriptor_binding_type_sampler:           samplers++;         break;
-        case lgx_descriptor_binding_type_sampled_texture:   sampled_textures++; break;
-        case lgx_descriptor_binding_type_storage_buffer:    storage_buffers++;  break;
-        case lgx_descriptor_binding_type_uniform_buffer:    uniform_buffers++;  break;
+        case dgx_descriptor_binding_type_sampler:           samplers++;         break;
+        case dgx_descriptor_binding_type_sampled_texture:   sampled_textures++; break;
+        case dgx_descriptor_binding_type_storage_buffer:    storage_buffers++;  break;
+        case dgx_descriptor_binding_type_uniform_buffer:    uniform_buffers++;  break;
         }
     }
 
@@ -3014,8 +3014,8 @@ lgx_descriptor_layout* lgx_create_descriptor_layout(lgx_hardware* hardware, cons
     VkDescriptorSetLayout vklayout; 
     if (vkCreateDescriptorSetLayout(hardware->logical_device, &vk_info, 0, &vklayout) != VK_SUCCESS) return NULL;
 
-    lgx_descriptor_layout* layout = calloc(1, sizeof(lgx_descriptor_layout));
-    *layout = (lgx_descriptor_layout){
+    dgx_descriptor_layout* layout = calloc(1, sizeof(dgx_descriptor_layout));
+    *layout = (dgx_descriptor_layout){
         .owning_hardware            = hardware,
         .dsc_set_layout             = vklayout,
         .sampler_bindings           = samplers,
@@ -3027,7 +3027,7 @@ lgx_descriptor_layout* lgx_create_descriptor_layout(lgx_hardware* hardware, cons
     return layout;
 }
 
-void lgx_free_descriptor_layout(lgx_descriptor_layout* layout) {
+void dgx_free_descriptor_layout(dgx_descriptor_layout* layout) {
     if (!layout) return;
     VkDevice device = layout->owning_hardware->logical_device;
     if (layout->dsc_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device, layout->dsc_set_layout, NULL);
@@ -3040,7 +3040,7 @@ void lgx_free_descriptor_layout(lgx_descriptor_layout* layout) {
 // ===========================
 // Graphics Pipeline
 
-lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_create_info* info) {
+dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_create_info* info) {
     // Dynamic State
 
     VkPipelineDynamicStateCreateInfo dynamic_state = {
@@ -3087,12 +3087,12 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
     VkVertexInputBindingDescription bindings[16];
 
     for (uint32_t i = 0; i < info->vertex_layout.bindings_count; i++) {
-        const lgx_vertex_input_binding_info* bind = &info->vertex_layout.bindings[i];
+        const dgx_vertex_input_binding_info* bind = &info->vertex_layout.bindings[i];
 
         bindings[binding_count++] = (VkVertexInputBindingDescription){
             .binding   = (uint32_t)bind->binding,
             .stride    = (uint32_t)bind->stride,
-            .inputRate = lgx_to_vk_vertex_input_rate(bind->input_rate)
+            .inputRate = dgx_to_vk_vertex_input_rate(bind->input_rate)
         };
     }
 
@@ -3100,12 +3100,12 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
     VkVertexInputAttributeDescription attributes[16];
 
     for (uint32_t i = 0; i < info->vertex_layout.attributes_count; i++) {
-        const lgx_vertex_input_attribute_info* attr = &info->vertex_layout.attributes[i];
+        const dgx_vertex_input_attribute_info* attr = &info->vertex_layout.attributes[i];
 
         attributes[attribute_count++] = (VkVertexInputAttributeDescription){
             .location = (uint32_t)attr->location,
             .binding  = (uint32_t)attr->binding,
-            .format   = lgx_to_vk_format(attr->type),
+            .format   = dgx_to_vk_format(attr->type),
             .offset   = (uint32_t)attr->offset
         };
     }
@@ -3122,7 +3122,7 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology               = lgx_to_vk_primitive_topology(info->input_assembly.topology),
+        .topology               = dgx_to_vk_primitive_topology(info->input_assembly.topology),
         .primitiveRestartEnable = VK_FALSE
     };
 
@@ -3130,10 +3130,10 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = (info->rasterizer.fill_mode == lgx_fill_mode_wireframe)
+        .polygonMode = (info->rasterizer.fill_mode == dgx_fill_mode_wireframe)
             ? VK_POLYGON_MODE_LINE
             : VK_POLYGON_MODE_FILL,
-        .cullMode = lgx_to_vk_cull_mode(info->rasterizer.cull_mode),
+        .cullMode = dgx_to_vk_cull_mode(info->rasterizer.cull_mode),
         .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .lineWidth = 1.0f,
         .depthClampEnable = info->rasterizer.depth_clamp_enable,
@@ -3167,9 +3167,9 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
 
     VkPipelineColorBlendAttachmentState color_blend_attachment = {
         .blendEnable         = info->blend.blend_enable ? VK_TRUE : VK_FALSE,
-        .srcColorBlendFactor = lgx_to_vk_blend_factor(info->blend.src_factor),
-        .dstColorBlendFactor = lgx_to_vk_blend_factor(info->blend.dst_factor),
-        .colorBlendOp        = lgx_to_vk_blend_op(info->blend.blend_op),
+        .srcColorBlendFactor = dgx_to_vk_blend_factor(info->blend.src_factor),
+        .dstColorBlendFactor = dgx_to_vk_blend_factor(info->blend.dst_factor),
+        .colorBlendOp        = dgx_to_vk_blend_op(info->blend.blend_op),
         .colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT |
             VK_COLOR_COMPONENT_G_BIT |
@@ -3217,8 +3217,8 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
 
     // Assemble object
     
-    lgx_pipeline* pipeline = calloc(1, sizeof(lgx_pipeline));
-    *pipeline = (lgx_pipeline){
+    dgx_pipeline* pipeline = calloc(1, sizeof(dgx_pipeline));
+    *pipeline = (dgx_pipeline){
         .owning_hardware    = hardware,
         .pipeline           = vkpipeline
     };
@@ -3226,7 +3226,7 @@ lgx_pipeline* lgx_create_pipeline(lgx_hardware* hardware, const lgx_pipeline_cre
     return pipeline;
 }
 
-void lgx_free_pipeline(lgx_pipeline* pipeline) {
+void dgx_free_pipeline(dgx_pipeline* pipeline) {
     VkDevice device = pipeline->owning_hardware->logical_device;
     vkDestroyPipeline(device, pipeline->pipeline, NULL);
     free(pipeline);
@@ -3238,12 +3238,12 @@ void lgx_free_pipeline(lgx_pipeline* pipeline) {
 // ===========================
 // Hardware - Device Part
 
-static int physical_device_rate_type(VkPhysicalDeviceProperties* props, const lgx_hardware_create_info* info) {
-    if (info->desired_hardware_type == lgx_hardware_type_discrete &&
+static int physical_device_rate_type(VkPhysicalDeviceProperties* props, const dgx_hardware_create_info* info) {
+    if (info->desired_hardware_type == dgx_hardware_type_discrete &&
         props->deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
         return 1000;
 
-    if (info->desired_hardware_type == lgx_hardware_type_integrated &&
+    if (info->desired_hardware_type == dgx_hardware_type_integrated &&
         props->deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
         return 1000;
 
@@ -3252,7 +3252,7 @@ static int physical_device_rate_type(VkPhysicalDeviceProperties* props, const lg
 
 static int physical_device_rate_availabile_queues_families(
     VkPhysicalDevice                device,
-    const lgx_hardware_create_info* info,
+    const dgx_hardware_create_info* info,
     VkSurfaceKHR                    surface
 ) {
     int score = 0;
@@ -3348,7 +3348,7 @@ static const VkPhysicalDeviceDescriptorIndexingFeatures required_indexing_featur
 // Returns -1 if devide does not met requirements
 static int physical_device_score(
     VkPhysicalDevice                device, 
-    const lgx_hardware_create_info* info,
+    const dgx_hardware_create_info* info,
     VkSurfaceKHR                    surface
 ) {
     VkPhysicalDeviceProperties props;
@@ -3379,14 +3379,14 @@ static int physical_device_score(
     return score;
 }
 
-static lgx_hardware_queue* load_queues(
+static dgx_hardware_queue* load_queues(
     VkDevice device,
     uint32_t family_index,
     uint32_t count
 ) {
     if (count == 0) return NULL;
 
-    lgx_hardware_queue* queues = malloc(count * sizeof(lgx_hardware_queue));
+    dgx_hardware_queue* queues = malloc(count * sizeof(dgx_hardware_queue));
     for (uint32_t i = 0; i < count; i++) {
         vkGetDeviceQueue(device, family_index, (uint32_t)i, &queues[i].handle);
         queues[i].family_index = family_index;
@@ -3396,7 +3396,7 @@ static lgx_hardware_queue* load_queues(
 }
 
 // hardware->physical_device
-int hardware_pick_physical_device(lgx_hardware* hardware, const lgx_hardware_create_info* info, VkSurfaceKHR surface) {
+int hardware_pick_physical_device(dgx_hardware* hardware, const dgx_hardware_create_info* info, VkSurfaceKHR surface) {
     // Pull device info count
     uint32_t device_count = 0; vkEnumeratePhysicalDevices(hardware->owning_library->instance, &device_count, 0);
     if (device_count == 0) return 0x0;
@@ -3431,7 +3431,7 @@ int hardware_pick_physical_device(lgx_hardware* hardware, const lgx_hardware_cre
     return 1;
 }
 
-int hardware_create_device_and_queues(lgx_hardware* hardware, const lgx_hardware_create_info* info, VkSurfaceKHR surface) {
+int hardware_create_device_and_queues(dgx_hardware* hardware, const dgx_hardware_create_info* info, VkSurfaceKHR surface) {
     // Get queues info
     queues_family_info qf_info = get_physical_device_queues_family_info(hardware->physical_device, surface);
 
@@ -3526,10 +3526,10 @@ int hardware_create_device_and_queues(lgx_hardware* hardware, const lgx_hardware
     return 1;
 }
 
-int hardware_create_memory_allocator_state(lgx_hardware*);
+int hardware_create_memory_allocator_state(dgx_hardware*);
 
-lgx_hardware* lgx_create_hardware(lgx_library* library, const lgx_hardware_create_info* info) {
-    lgx_hardware* hardware = calloc(1, sizeof(lgx_hardware));
+dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_create_info* info) {
+    dgx_hardware* hardware = calloc(1, sizeof(dgx_hardware));
     hardware->owning_library = library;
 
     // Create temporary window and surface to test presentation availability
@@ -3559,12 +3559,12 @@ lgx_hardware* lgx_create_hardware(lgx_library* library, const lgx_hardware_creat
 
 _fail:
     vkDestroySurfaceKHR(hardware->owning_library->instance, surface, 0); glfwDestroyWindow(test_window);
-    lgx_free_hardware(hardware); return 0x0;
+    dgx_free_hardware(hardware); return 0x0;
 }
 
-void hardware_free_memory_allocator_state(lgx_hardware*);
+void hardware_free_memory_allocator_state(dgx_hardware*);
 
-void lgx_free_hardware(lgx_hardware* hardware) {
+void dgx_free_hardware(dgx_hardware* hardware) {
     if (!hardware) return;
     hardware_free_memory_allocator_state(hardware);
     vkDestroyDevice(hardware->logical_device, 0);
@@ -3576,79 +3576,79 @@ void lgx_free_hardware(lgx_hardware* hardware) {
     free(hardware);
 }
 
-uint32_t lgx_hardware_query_queues_count(lgx_hardware* hardware, lgx_hardware_queue_type type) {
+uint32_t dgx_hardware_query_queues_count(dgx_hardware* hardware, dgx_hardware_queue_type type) {
     if (!hardware) return 0;
 
     switch (type) {
-    case lgx_hardware_queue_type_graphics:          return hardware->graphics_queues_count;
-    case lgx_hardware_queue_type_transfer:          return hardware->transfer_queues_count;
-    case lgx_hardware_queue_type_compute:           return hardware->compute_queues_count;
-    case lgx_hardware_queue_type_transfer_compute:  return hardware->trs_cmp_queues_count;
+    case dgx_hardware_queue_type_graphics:          return hardware->graphics_queues_count;
+    case dgx_hardware_queue_type_transfer:          return hardware->transfer_queues_count;
+    case dgx_hardware_queue_type_compute:           return hardware->compute_queues_count;
+    case dgx_hardware_queue_type_transfer_compute:  return hardware->trs_cmp_queues_count;
     default: return 0;
     }
 }
 
-void lgx_hardware_query_queues
-(lgx_hardware* hardware, lgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, lgx_hardware_queue** queues) {
+void dgx_hardware_query_queues
+(dgx_hardware* hardware, dgx_hardware_queue_type type, uint32_t queues_offset, uint32_t queues_count, dgx_hardware_queue** queues) {
     if (!hardware || !queues) return;
 
-    lgx_hardware_queue* src = NULL;
+    dgx_hardware_queue* src = NULL;
     switch (type) {
-    case lgx_hardware_queue_type_graphics:          src = hardware->graphics_queues;   break;
-    case lgx_hardware_queue_type_transfer:          src = hardware->transfer_queues;   break;
-    case lgx_hardware_queue_type_compute:           src = hardware->compute_queues;    break;
-    case lgx_hardware_queue_type_transfer_compute:  src = hardware->trs_cmp_queues;    break;
+    case dgx_hardware_queue_type_graphics:          src = hardware->graphics_queues;   break;
+    case dgx_hardware_queue_type_transfer:          src = hardware->transfer_queues;   break;
+    case dgx_hardware_queue_type_compute:           src = hardware->compute_queues;    break;
+    case dgx_hardware_queue_type_transfer_compute:  src = hardware->trs_cmp_queues;    break;
     }
 
     for (uint32_t i = queues_offset; i < queues_offset + queues_count; i++) queues[i] = &src[i];
 }
 
-uint64_t lgx_hardware_query_limit(lgx_hardware* hardware, lgx_hardware_limit limit) {
+uint64_t dgx_hardware_query_limit(dgx_hardware* hardware, dgx_hardware_limit limit) {
     VkPhysicalDeviceLimits* l = &hardware->physical_device_properties.limits;
 
     switch (limit) {
         // Textures
 
-        case lgx_hardware_limit_max_texture_dimension_1d:   return l->maxImageDimension1D;
-        case lgx_hardware_limit_max_texture_dimension_2d:   return l->maxImageDimension2D;
-        case lgx_hardware_limit_max_texture_dimension_3d:   return l->maxImageDimension3D;
-        case lgx_hardware_limit_max_texture_dimension_cube: return l->maxImageDimensionCube;
-        case lgx_hardware_limit_max_texture_array_layers:   return l->maxImageArrayLayers;
+        case dgx_hardware_limit_max_texture_dimension_1d:   return l->maxImageDimension1D;
+        case dgx_hardware_limit_max_texture_dimension_2d:   return l->maxImageDimension2D;
+        case dgx_hardware_limit_max_texture_dimension_3d:   return l->maxImageDimension3D;
+        case dgx_hardware_limit_max_texture_dimension_cube: return l->maxImageDimensionCube;
+        case dgx_hardware_limit_max_texture_array_layers:   return l->maxImageArrayLayers;
 
         // Descriptors (pipeline-level)
 
-        case lgx_hardware_limit_max_descriptor_per_pipeline:    return l->maxBoundDescriptorSets;
+        case dgx_hardware_limit_max_descriptor_per_pipeline:    return l->maxBoundDescriptorSets;
 
         // Per-stage descriptor limits
 
-        case lgx_hardware_limit_max_descriptor_uniform_buffers_per_stage:   return l->maxPerStageDescriptorUniformBuffers;
-        case lgx_hardware_limit_max_descriptor_storage_buffers_per_stage:   return l->maxPerStageDescriptorStorageBuffers;
-        case lgx_hardware_limit_max_descriptor_sampled_images_per_stage:    return l->maxPerStageDescriptorSampledImages;
-        case lgx_hardware_limit_max_descriptor_samplers_per_stage:          return l->maxPerStageDescriptorSamplers;
+        case dgx_hardware_limit_max_descriptor_uniform_buffers_per_stage:   return l->maxPerStageDescriptorUniformBuffers;
+        case dgx_hardware_limit_max_descriptor_storage_buffers_per_stage:   return l->maxPerStageDescriptorStorageBuffers;
+        case dgx_hardware_limit_max_descriptor_sampled_images_per_stage:    return l->maxPerStageDescriptorSampledImages;
+        case dgx_hardware_limit_max_descriptor_samplers_per_stage:          return l->maxPerStageDescriptorSamplers;
 
         // Descriptor set layout limits
 
-        case lgx_hardware_limit_max_descriptor_uniform_buffers: return l->maxDescriptorSetUniformBuffers;
-        case lgx_hardware_limit_max_descriptor_storage_buffers: return l->maxDescriptorSetStorageBuffers;
-        case lgx_hardware_limit_max_descriptor_sampled_images:  return l->maxDescriptorSetSampledImages;
-        case lgx_hardware_limit_max_descriptor_samplers:        return l->maxDescriptorSetSamplers;
+        case dgx_hardware_limit_max_descriptor_uniform_buffers: return l->maxDescriptorSetUniformBuffers;
+        case dgx_hardware_limit_max_descriptor_storage_buffers: return l->maxDescriptorSetStorageBuffers;
+        case dgx_hardware_limit_max_descriptor_sampled_images:  return l->maxDescriptorSetSampledImages;
+        case dgx_hardware_limit_max_descriptor_samplers:        return l->maxDescriptorSetSamplers;
 
         // Buffer range limits
 
-        case lgx_hardware_limit_max_descriptor_bound_uniform_buffer_length: return l->maxUniformBufferRange;
-        case lgx_hardware_limit_max_descriptor_bound_storage_buffer_length: return l->maxStorageBufferRange;
+        case dgx_hardware_limit_max_descriptor_bound_uniform_buffer_length: return l->maxUniformBufferRange;
+        case dgx_hardware_limit_max_descriptor_bound_storage_buffer_length: return l->maxStorageBufferRange;
 
         // Vertex input
 
-        case lgx_hardware_limit_max_vertex_input_attributes:        return l->maxVertexInputAttributes;
-        case lgx_hardware_limit_max_vertex_input_bindings:          return l->maxVertexInputBindings;
-        case lgx_hardware_limit_max_vertex_input_attribute_offset:  return l->maxVertexInputAttributeOffset;
+        case dgx_hardware_limit_max_vertex_input_attributes:        return l->maxVertexInputAttributes;
+        case dgx_hardware_limit_max_vertex_input_bindings:          return l->maxVertexInputBindings;
+        case dgx_hardware_limit_max_vertex_input_attribute_offset:  return l->maxVertexInputAttributeOffset;
     }
 
     return 0;
 }
 
-void lgx_hardware_wait_idle(lgx_hardware* hardware) {
+void dgx_hardware_wait_idle(dgx_hardware* hardware) {
     vkDeviceWaitIdle(hardware->logical_device);
 }
 
@@ -3661,7 +3661,7 @@ struct hardware_paged_memory {
     hardware_paged_memory*  next_page;          // next page of same memory type
 };
 
-int hardware_create_memory_allocator_state(lgx_hardware* hardware) {
+int hardware_create_memory_allocator_state(dgx_hardware* hardware) {
     vkGetPhysicalDeviceMemoryProperties(hardware->physical_device, &hardware->memory_properties);
 
     uint32_t types_count = hardware->memory_properties.memoryTypeCount;
@@ -3670,7 +3670,7 @@ int hardware_create_memory_allocator_state(lgx_hardware* hardware) {
     return hardware->paged_per_type != 0x0;
 }
 
-void hardware_free_memory_allocator_state(lgx_hardware* hardware) {
+void hardware_free_memory_allocator_state(dgx_hardware* hardware) {
     for (uint32_t memory_type = 0; memory_type < hardware->memory_properties.memoryTypeCount; memory_type++) {
         hardware_paged_memory* page = hardware->paged_per_type[memory_type];
 
@@ -3685,7 +3685,7 @@ void hardware_free_memory_allocator_state(lgx_hardware* hardware) {
 }
 
 int try_alloc_dedicated(
-    lgx_hardware*           hardware,
+    dgx_hardware*           hardware,
     uint32_t                memory_type_index,
     uint32_t                size,
     VkDeviceMemory*         result_memory,
@@ -3719,8 +3719,8 @@ int try_alloc_paged(
 
 // 1 at success
 int try_allocate_hardware_memory(
-    lgx_hardware*                   hardware,
-    lgx_memory_allocation_strategy  strategy,
+    dgx_hardware*                   hardware,
+    dgx_memory_allocation_strategy  strategy,
     VkMemoryRequirements            memory_requirements,
     VkDeviceMemory*                 result_memory,
     uint32_t*                       result_offset
@@ -3742,7 +3742,7 @@ int try_allocate_hardware_memory(
         if (memory_type == UINT32_MAX) return 0;
 
         switch (strategy) {
-        case lgx_memory_allocation_strategy_paged:
+        case dgx_memory_allocation_strategy_paged:
             if (try_alloc_paged(
                 hardware->paged_per_type[memory_type], 
                 memory_size, 
@@ -3751,7 +3751,7 @@ int try_allocate_hardware_memory(
             )) return 1;
             // intended fallback to dedicated allocation in case paged failed
             __attribute__ ((fallthrough));
-        case lgx_memory_allocation_strategy_dedicated:
+        case dgx_memory_allocation_strategy_dedicated:
             if (try_alloc_dedicated(
                 hardware,
                 memory_type,
@@ -3786,7 +3786,7 @@ void get_platform_required_extensions(uint32_t* count, const char*** array) {
 // ===========================
 // Library
 
-lgx_library* lgx_create_library(const lgx_library_create_info* info) {
+dgx_library* dgx_create_library(const dgx_library_create_info* info) {
     VkApplicationInfo appInfo = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName   = "tgw app",
@@ -3820,8 +3820,8 @@ lgx_library* lgx_create_library(const lgx_library_create_info* info) {
     VkInstance instance;
     if (vkCreateInstance(&create_info, 0, &instance) != VK_SUCCESS) return 0x0;
 
-    lgx_library* library = calloc(1, sizeof(lgx_library));
-    *library = (lgx_library){
+    dgx_library* library = calloc(1, sizeof(dgx_library));
+    *library = (dgx_library){
         .instance           = instance,
         .platform_enabled   = info->platform_code_enabled
     };
@@ -3829,7 +3829,7 @@ lgx_library* lgx_create_library(const lgx_library_create_info* info) {
     return library;
 }
 
-void lgx_free_library(lgx_library* library) {
+void dgx_free_library(dgx_library* library) {
     vkDestroyInstance(library->instance, 0);
 
     if (library->platform_enabled) {
@@ -3842,8 +3842,8 @@ void lgx_free_library(lgx_library* library) {
 
 /* ===== pipeline_descriptors_layout.c ===== */
 
-lgx_pipeline_descriptors_layout* lgx_create_pipeline_descriptors_layout(
-    lgx_hardware* hardware, const lgx_pipeline_descriptors_layout_create_info* info
+dgx_pipeline_descriptors_layout* dgx_create_pipeline_descriptors_layout(
+    dgx_hardware* hardware, const dgx_pipeline_descriptors_layout_create_info* info
 ) {
     VkDescriptorSetLayout* desc_sets_layouts = tlom_alloc_only(info->layouts_count * sizeof(VkDescriptorSetLayout));
 
@@ -3861,8 +3861,8 @@ lgx_pipeline_descriptors_layout* lgx_create_pipeline_descriptors_layout(
         return 0x0; // failed to create pipeline layout
     }
 
-    lgx_pipeline_descriptors_layout* pd_layout = calloc(1, sizeof(lgx_pipeline_descriptors_layout));
-    *pd_layout = (lgx_pipeline_descriptors_layout){
+    dgx_pipeline_descriptors_layout* pd_layout = calloc(1, sizeof(dgx_pipeline_descriptors_layout));
+    *pd_layout = (dgx_pipeline_descriptors_layout){
         .owning_hardware    = hardware,
         .layout             = vklayout,
     };
@@ -3870,7 +3870,7 @@ lgx_pipeline_descriptors_layout* lgx_create_pipeline_descriptors_layout(
     return pd_layout;
 }
 
-void lgx_free_pipeline_descriptors_layout(lgx_pipeline_descriptors_layout* layout) {
+void dgx_free_pipeline_descriptors_layout(dgx_pipeline_descriptors_layout* layout) {
     if (!layout) return;
     vkDestroyPipelineLayout(layout->owning_hardware->logical_device, layout->layout, 0);
     free(layout);
@@ -3879,9 +3879,9 @@ void lgx_free_pipeline_descriptors_layout(lgx_pipeline_descriptors_layout* layou
 
 /* ===== render_target.c ===== */
 
-lgx_render_target* lgx_create_render_target(
-    lgx_hardware*                           hardware,
-    const lgx_render_target_create_info*    info
+dgx_render_target* dgx_create_render_target(
+    dgx_hardware*                           hardware,
+    const dgx_render_target_create_info*    info
 ) {
     assert(hardware); assert(info);
 
@@ -3923,8 +3923,8 @@ lgx_render_target* lgx_create_render_target(
 
     // Assemble render target
 
-    lgx_render_target* render_target = calloc(1, sizeof(lgx_render_target));
-    *render_target = (lgx_render_target){
+    dgx_render_target* render_target = calloc(1, sizeof(dgx_render_target));
+    *render_target = (dgx_render_target){
         .owning_hardware    = hardware,
         .layout             = info->render_target_layout,
         .framebuffer        = framebuffer,
@@ -3935,7 +3935,7 @@ lgx_render_target* lgx_create_render_target(
     return render_target;
 }
 
-void lgx_free_render_target(lgx_render_target* render_target) {
+void dgx_free_render_target(dgx_render_target* render_target) {
     if (!render_target) return;
     vkDestroyFramebuffer(render_target->owning_hardware->logical_device, render_target->framebuffer, NULL);
     free(render_target);
@@ -3944,9 +3944,9 @@ void lgx_free_render_target(lgx_render_target* render_target) {
 
 /* ===== render_target_layout.c ===== */
 
-lgx_render_target_layout* lgx_create_render_target_layout(
-    lgx_hardware*                               hardware,
-    const lgx_render_target_layout_create_info* info
+dgx_render_target_layout* dgx_create_render_target_layout(
+    dgx_hardware*                               hardware,
+    const dgx_render_target_layout_create_info* info
 ) {
     assert(hardware && info);
     uint32_t tlom_itr = 0;
@@ -3960,13 +3960,13 @@ lgx_render_target_layout* lgx_create_render_target_layout(
     // Color attachments
 
     for (uint32_t i = 0; i < color_attachment_count; i++) {
-        lgx_render_target_layout_attachment* a = &info->color_attachments[i];
+        dgx_render_target_layout_attachment* a = &info->color_attachments[i];
         attachments[i] = (VkAttachmentDescription){
             .flags          = 0,
-            .format         = lgx_to_vk_texture_format(a->format),
+            .format         = dgx_to_vk_texture_format(a->format),
             .samples        = (VkSampleCountFlagBits)a->sample_count,
-            .loadOp         = lgx_to_vk_load_op(a->load_op),
-            .storeOp        = lgx_to_vk_store_op(a->store_op),
+            .loadOp         = dgx_to_vk_load_op(a->load_op),
+            .storeOp        = dgx_to_vk_store_op(a->store_op),
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -3977,13 +3977,13 @@ lgx_render_target_layout* lgx_create_render_target_layout(
     // Depth/stencil attachment
 
     if (info->depth_stencil_attachment) {
-        lgx_render_target_layout_attachment* a = info->depth_stencil_attachment;
+        dgx_render_target_layout_attachment* a = info->depth_stencil_attachment;
         attachments[color_attachment_count] = (VkAttachmentDescription){
             .flags          = 0,
-            .format         = lgx_to_vk_texture_format(a->format),
+            .format         = dgx_to_vk_texture_format(a->format),
             .samples        = (VkSampleCountFlagBits)a->sample_count,
-            .loadOp         = lgx_to_vk_load_op(a->load_op),
-            .storeOp        = lgx_to_vk_store_op(a->store_op),
+            .loadOp         = dgx_to_vk_load_op(a->load_op),
+            .storeOp        = dgx_to_vk_store_op(a->store_op),
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -4036,8 +4036,8 @@ lgx_render_target_layout* lgx_create_render_target_layout(
     if (vkCreateRenderPass(hardware->logical_device, &rp_info, NULL, &renderpass) != VK_SUCCESS) return NULL;
 
     // Assemble layout
-    lgx_render_target_layout* layout = calloc(1, sizeof(lgx_render_target_layout));
-    *layout = (lgx_render_target_layout){
+    dgx_render_target_layout* layout = calloc(1, sizeof(dgx_render_target_layout));
+    *layout = (dgx_render_target_layout){
         .owning_hardware = hardware,
         .renderpass      = renderpass
     };
@@ -4045,7 +4045,7 @@ lgx_render_target_layout* lgx_create_render_target_layout(
     return layout;
 }
 
-void lgx_free_render_target_layout(lgx_render_target_layout* layout) {
+void dgx_free_render_target_layout(dgx_render_target_layout* layout) {
     if (!layout) return;
     vkDestroyRenderPass(layout->owning_hardware->logical_device, layout->renderpass, NULL);
     free(layout);
@@ -4054,17 +4054,17 @@ void lgx_free_render_target_layout(lgx_render_target_layout* layout) {
 
 /* ===== sampler.c ===== */
 
-lgx_sampler* lgx_create_sampler(lgx_hardware* hardware, const lgx_sampler_create_info* info) {
+dgx_sampler* dgx_create_sampler(dgx_hardware* hardware, const dgx_sampler_create_info* info) {
     VkSamplerCreateInfo create_info = {
         .sType  = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         
-        .magFilter               = lgx_to_vk_filter(info->mag_filter),
-        .minFilter               = lgx_to_vk_filter(info->min_filter),
-        .mipmapMode              = lgx_to_vk_mipmap_mode(info->mipmap_filter),
+        .magFilter               = dgx_to_vk_filter(info->mag_filter),
+        .minFilter               = dgx_to_vk_filter(info->min_filter),
+        .mipmapMode              = dgx_to_vk_mipmap_mode(info->mipmap_filter),
 
-        .addressModeU            = lgx_to_vk_sampler_wrapping(info->x_coord_wrapping),
-        .addressModeV            = lgx_to_vk_sampler_wrapping(info->y_coord_wrapping),
-        .addressModeW            = lgx_to_vk_sampler_wrapping(info->z_coord_wrapping),
+        .addressModeU            = dgx_to_vk_sampler_wrapping(info->x_coord_wrapping),
+        .addressModeV            = dgx_to_vk_sampler_wrapping(info->y_coord_wrapping),
+        .addressModeW            = dgx_to_vk_sampler_wrapping(info->z_coord_wrapping),
 
         .mipLodBias              = info->mip_lod_bias,
 
@@ -4086,8 +4086,8 @@ lgx_sampler* lgx_create_sampler(lgx_hardware* hardware, const lgx_sampler_create
         return 0x0; // failed to create sampler
     }
 
-    lgx_sampler* sampler = calloc(1, sizeof(lgx_sampler));
-    *sampler = (lgx_sampler){
+    dgx_sampler* sampler = calloc(1, sizeof(dgx_sampler));
+    *sampler = (dgx_sampler){
         .owning_hardware    = hardware,
         .sampler            = vksampler
     };
@@ -4095,7 +4095,7 @@ lgx_sampler* lgx_create_sampler(lgx_hardware* hardware, const lgx_sampler_create
     return sampler;
 }
 
-void lgx_free_sampler(lgx_sampler* sampler) {
+void dgx_free_sampler(dgx_sampler* sampler) {
     if (!sampler) return;
     vkDestroySampler(sampler->owning_hardware->logical_device, sampler->sampler, 0);
     free(sampler);
@@ -4104,7 +4104,7 @@ void lgx_free_sampler(lgx_sampler* sampler) {
 
 /* ===== shader.c ===== */
 
-lgx_shader* lgx_create_shader(lgx_hardware* hardware, const lgx_shader_create_info* info) {
+dgx_shader* dgx_create_shader(dgx_hardware* hardware, const dgx_shader_create_info* info) {
     VkShaderModuleCreateInfo shader_module_create_info = {
         .sType      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize   = info->source_size,
@@ -4116,8 +4116,8 @@ lgx_shader* lgx_create_shader(lgx_hardware* hardware, const lgx_shader_create_in
         return 0x0; // failed to create shader module
     }
 
-    lgx_shader* shader = calloc(1, sizeof(lgx_shader));
-    *shader = (lgx_shader){
+    dgx_shader* shader = calloc(1, sizeof(dgx_shader));
+    *shader = (dgx_shader){
         .owning_hardware = hardware,
         .module          = shader_module
     };
@@ -4125,7 +4125,7 @@ lgx_shader* lgx_create_shader(lgx_hardware* hardware, const lgx_shader_create_in
     return shader;
 }
 
-void lgx_free_shader(lgx_shader* shader) {
+void dgx_free_shader(dgx_shader* shader) {
     if (shader == 0x0) return;
     vkDestroyShaderModule(shader->owning_hardware->logical_device, shader->module, 0);
     free(shader);
@@ -4136,7 +4136,7 @@ void lgx_free_shader(lgx_shader* shader) {
 
 // Cpu Signal
 
-lgx_cpu_signal* lgx_create_cpu_signal(lgx_hardware* hardware, const lgx_cpu_signal_create_info* info) {
+dgx_cpu_signal* dgx_create_cpu_signal(dgx_hardware* hardware, const dgx_cpu_signal_create_info* info) {
     VkFenceCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .flags = (info->initialy_signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0)
@@ -4147,8 +4147,8 @@ lgx_cpu_signal* lgx_create_cpu_signal(lgx_hardware* hardware, const lgx_cpu_sign
         return 0x0; // failed to create fence
     }
 
-    lgx_cpu_signal* signal = calloc(1, sizeof(lgx_cpu_signal));
-    *signal = (lgx_cpu_signal){
+    dgx_cpu_signal* signal = calloc(1, sizeof(dgx_cpu_signal));
+    *signal = (dgx_cpu_signal){
         .owning_hardware = hardware,
         .fence           = fence
     };
@@ -4156,13 +4156,13 @@ lgx_cpu_signal* lgx_create_cpu_signal(lgx_hardware* hardware, const lgx_cpu_sign
     return signal;
 }
 
-void lgx_free_cpu_signal(lgx_cpu_signal* signal) {
+void dgx_free_cpu_signal(dgx_cpu_signal* signal) {
     if (!signal) return;
     vkDestroyFence(signal->owning_hardware->logical_device, signal->fence, NULL);
     free(signal);
 }
 
-int lgx_cpu_signal_signaled(lgx_cpu_signal* signal) {
+int dgx_cpu_signal_signaled(dgx_cpu_signal* signal) {
     VkResult res = vkGetFenceStatus(
         signal->owning_hardware->logical_device,
         signal->fence
@@ -4171,17 +4171,17 @@ int lgx_cpu_signal_signaled(lgx_cpu_signal* signal) {
     return res == VK_SUCCESS;
 }
 
-void lgx_cpu_signal_wait(lgx_cpu_signal* signal) {
+void dgx_cpu_signal_wait(dgx_cpu_signal* signal) {
     vkWaitForFences(signal->owning_hardware->logical_device, 1, &signal->fence, VK_TRUE,UINT64_MAX);
 }
 
-void lgx_cpu_signal_reset(lgx_cpu_signal* signal) {
+void dgx_cpu_signal_reset(dgx_cpu_signal* signal) {
     vkResetFences(signal->owning_hardware->logical_device, 1, &signal->fence);
 }
 
 // Gpu Signal
 
-lgx_gpu_signal* lgx_create_gpu_signal(lgx_hardware* hardware) {
+dgx_gpu_signal* dgx_create_gpu_signal(dgx_hardware* hardware) {
     VkSemaphoreCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
@@ -4191,8 +4191,8 @@ lgx_gpu_signal* lgx_create_gpu_signal(lgx_hardware* hardware) {
         return 0x0; // failed to create semaphore
     }
 
-    lgx_gpu_signal* signal = calloc(1, sizeof(lgx_gpu_signal));
-    *signal = (lgx_gpu_signal){
+    dgx_gpu_signal* signal = calloc(1, sizeof(dgx_gpu_signal));
+    *signal = (dgx_gpu_signal){
         .owning_hardware = hardware,
         .semaphore       = semaphore
     };
@@ -4200,7 +4200,7 @@ lgx_gpu_signal* lgx_create_gpu_signal(lgx_hardware* hardware) {
     return signal;
 }
 
-void lgx_free_gpu_signal(lgx_gpu_signal* signal) {
+void dgx_free_gpu_signal(dgx_gpu_signal* signal) {
     if (!signal) return;
     vkDestroySemaphore(signal->owning_hardware->logical_device, signal->semaphore, NULL);
     free(signal);
@@ -4209,7 +4209,7 @@ void lgx_free_gpu_signal(lgx_gpu_signal* signal) {
 
 /* ===== staging_memory.c ===== */
 
-lgx_staging_memory* lgx_create_staging_memory(lgx_hardware* hardware, const lgx_staging_memory_create_info* info) {
+dgx_staging_memory* dgx_create_staging_memory(dgx_hardware* hardware, const dgx_staging_memory_create_info* info) {
     VkBufferCreateInfo buffer_info = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size        = info->size_bytes,
@@ -4249,8 +4249,8 @@ lgx_staging_memory* lgx_create_staging_memory(lgx_hardware* hardware, const lgx_
 
     vkBindBufferMemory(hardware->logical_device, vkbuffer, vkmemory, 0);
 
-    lgx_staging_memory* memory = calloc(1, sizeof(lgx_staging_memory));
-    *memory = (lgx_staging_memory){
+    dgx_staging_memory* memory = calloc(1, sizeof(dgx_staging_memory));
+    *memory = (dgx_staging_memory){
         .owning_hardware    = hardware,
         .buffer             = vkbuffer,
         .memory             = vkmemory
@@ -4259,14 +4259,14 @@ lgx_staging_memory* lgx_create_staging_memory(lgx_hardware* hardware, const lgx_
     return memory;
 }
 
-void lgx_free_staging_memory(lgx_staging_memory* memory) {
+void dgx_free_staging_memory(dgx_staging_memory* memory) {
     if (!memory) return;
     vkDestroyBuffer(memory->owning_hardware->logical_device, memory->buffer, 0);
     vkFreeMemory(memory->owning_hardware->logical_device, memory->memory, 0);
     free(memory);
 }
 
-void* lgx_staging_memory_map(lgx_staging_memory* memory, uint64_t region_offset, uint64_t region_size) {
+void* dgx_staging_memory_map(dgx_staging_memory* memory, uint64_t region_offset, uint64_t region_size) {
     void* data;
     if (vkMapMemory(
         memory->owning_hardware->logical_device, 
@@ -4275,15 +4275,15 @@ void* lgx_staging_memory_map(lgx_staging_memory* memory, uint64_t region_offset,
     return data;
 }
 
-void lgx_staging_memory_unmap(lgx_staging_memory* memory) {
+void dgx_staging_memory_unmap(dgx_staging_memory* memory) {
     vkUnmapMemory(memory->owning_hardware->logical_device, memory->memory);
 }
 
 
 /* ===== texture.c ===== */
 
-lgx_texture* lgx_create_texture(lgx_hardware* hardware, const lgx_texture_create_info* info) {
-    VkFormat texture_format = lgx_to_vk_texture_format(info->format);
+dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create_info* info) {
+    VkFormat texture_format = dgx_to_vk_texture_format(info->format);
 
     // image
 
@@ -4298,7 +4298,7 @@ lgx_texture* lgx_create_texture(lgx_hardware* hardware, const lgx_texture_create
         .format         = texture_format,
         .tiling         = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage          = lgx_texture_usage_to_vk_image_usage(info->usage) | lgx_memory_access_to_vk_image_usage(info->memory_access),
+        .usage          = dgx_texture_usage_to_vk_image_usage(info->usage) | dgx_memory_access_to_vk_image_usage(info->memory_access),
         .sharingMode    = VK_SHARING_MODE_EXCLUSIVE,
         .samples        = VK_SAMPLE_COUNT_1_BIT,
         .flags          = 0,
@@ -4349,8 +4349,8 @@ lgx_texture* lgx_create_texture(lgx_hardware* hardware, const lgx_texture_create
         return 0x0; // failed to create image view!
     }
 
-    lgx_texture* texture = calloc(1, sizeof(lgx_texture));
-    *texture = (lgx_texture){
+    dgx_texture* texture = calloc(1, sizeof(dgx_texture));
+    *texture = (dgx_texture){
         .owning_hardware    = hardware,
         .dimensions         = info->dimensions,
         .bytes_per_pixel    = vk_format_pixel_size(texture_format),
@@ -4362,7 +4362,7 @@ lgx_texture* lgx_create_texture(lgx_hardware* hardware, const lgx_texture_create
     return texture;
 }
 
-void lgx_free_texture(lgx_texture* texture) {
+void dgx_free_texture(dgx_texture* texture) {
     if (!texture) return;
     vkDestroyImage(texture->owning_hardware->logical_device, texture->image, 0);
     vkDestroyImageView(texture->owning_hardware->logical_device, texture->view, 0);
@@ -4370,16 +4370,16 @@ void lgx_free_texture(lgx_texture* texture) {
     free(texture);
 }
 
-lgx_texture_dimensions lgx_texture_get_dimensions(lgx_texture* texture) {
+dgx_texture_dimensions dgx_texture_get_dimensions(dgx_texture* texture) {
     return texture->dimensions;
 }
 
-int lgx_texture_sync_upload(lgx_texture* texture, lgx_texture_dimensions texture_offset, const void* data, lgx_texture_dimensions write_dimensions) {
-    lgx_staging_memory*             staging_memory = NULL;
-    lgx_command_lists_allocator*    allocator = NULL;
-    lgx_command_list*               list = NULL;
-    lgx_cpu_signal*                 signal = NULL;
-    lgx_hardware_queue*             queue = NULL;
+int dgx_texture_sync_upload(dgx_texture* texture, dgx_texture_dimensions texture_offset, const void* data, dgx_texture_dimensions write_dimensions) {
+    dgx_staging_memory*             staging_memory = NULL;
+    dgx_command_lists_allocator*    allocator = NULL;
+    dgx_command_list*               list = NULL;
+    dgx_cpu_signal*                 signal = NULL;
+    dgx_hardware_queue*             queue = NULL;
     int success = 1;
 
     uint32_t texture_data_length = write_dimensions.x * write_dimensions.y * write_dimensions.z * texture->bytes_per_pixel;
@@ -4387,60 +4387,60 @@ int lgx_texture_sync_upload(lgx_texture* texture, lgx_texture_dimensions texture
 
     // Staging Memory
 
-    lgx_staging_memory_create_info staging_memory_create_info = {
+    dgx_staging_memory_create_info staging_memory_create_info = {
         .size_bytes = texture_data_length
     };
-    staging_memory = lgx_create_staging_memory(texture->owning_hardware, &staging_memory_create_info);
+    staging_memory = dgx_create_staging_memory(texture->owning_hardware, &staging_memory_create_info);
     if (!staging_memory) { success = 0; goto _cleanup; }
     
-    void* mapped = lgx_staging_memory_map(staging_memory, 0, texture_data_length);
+    void* mapped = dgx_staging_memory_map(staging_memory, 0, texture_data_length);
     if (!mapped) { success = 0; goto _cleanup; }
         memcpy(mapped, data, texture_data_length);
-    lgx_staging_memory_unmap(staging_memory);
+    dgx_staging_memory_unmap(staging_memory);
 
     // Command List
 
-    lgx_command_lists_allocator_create_info create_info = {
-        .target_queue_type = lgx_hardware_queue_type_graphics
+    dgx_command_lists_allocator_create_info create_info = {
+        .target_queue_type = dgx_hardware_queue_type_graphics
     };
-    allocator = lgx_create_command_lists_allocator(texture->owning_hardware, &create_info);
+    allocator = dgx_create_command_lists_allocator(texture->owning_hardware, &create_info);
     if (!allocator) { success = 0; goto _cleanup; }
 
-    list = lgx_command_lists_allocator_alloc_command_list(allocator);
+    list = dgx_command_lists_allocator_alloc_command_list(allocator);
     if (!list) { success = 0; goto _cleanup; }
 
-    lgx_begin_command_list_recording(list);
-        lgx_cmd_sync_textures(
-            list, lgx_texture_sync_point_this_command, lgx_texture_sync_point_transfer_destination,
+    dgx_begin_command_list_recording(list);
+        dgx_cmd_sync_textures(
+            list, dgx_texture_sync_point_this_command, dgx_texture_sync_point_transfer_destination,
             1, &texture
         );
 
-        lgx_cmd_copy_staging_memory_to_texture(
+        dgx_cmd_copy_staging_memory_to_texture(
             list, staging_memory, texture, 0, 
             texture_offset,
             write_dimensions
         );
-    lgx_finish_command_list_recording(list);
+    dgx_finish_command_list_recording(list);
 
     // Submit, Execute, Wait
-    lgx_hardware_query_queues(texture->owning_hardware, lgx_hardware_queue_type_graphics, 0, 1, &queue);
+    dgx_hardware_query_queues(texture->owning_hardware, dgx_hardware_queue_type_graphics, 0, 1, &queue);
 
-    signal = lgx_create_cpu_signal(texture->owning_hardware, &(lgx_cpu_signal_create_info){.initialy_signaled = 0});
+    signal = dgx_create_cpu_signal(texture->owning_hardware, &(dgx_cpu_signal_create_info){.initialy_signaled = 0});
     if (!signal) { success = 0; goto _cleanup; }
 
-    lgx_submit_info submit_info = {
+    dgx_submit_info submit_info = {
         .command_lists_count    = 1,
         .command_lists          = &list,
         .cpu_signal             = signal,
         .wait_gpu_signals_count = 0
     };
-    lgx_submit_command_list(queue, &submit_info);
-    lgx_cpu_signal_wait(signal);
+    dgx_submit_command_list(queue, &submit_info);
+    dgx_cpu_signal_wait(signal);
 
 _cleanup:
-    lgx_free_cpu_signal(signal);
-    lgx_free_command_lists_allocator(allocator);
-    lgx_free_staging_memory(staging_memory);
+    dgx_free_cpu_signal(signal);
+    dgx_free_command_lists_allocator(allocator);
+    dgx_free_staging_memory(staging_memory);
     return success;
 }
 
@@ -4529,7 +4529,7 @@ void window_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 // ===========================
 // Platform Window Creation
 
-int create_window_window(lgx_window* window, const lgx_window_create_info* info) {
+int create_window_window(dgx_window* window, const dgx_window_create_info* info) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
 
@@ -4538,12 +4538,12 @@ int create_window_window(lgx_window* window, const lgx_window_create_info* info)
 
     glfwSetWindowSizeCallback(window->platform_window, window_resized_callback);
     glfwSetScrollCallback(window->platform_window, window_scroll_callback);
-    glfwSetWindowUserPointer(window->platform_window, window);  // set glfw payload to owning lgx window
+    glfwSetWindowUserPointer(window->platform_window, window);  // set glfw payload to owning dgx window
 
     return 1;
 }
 
-int create_window_surface(lgx_window* window) {
+int create_window_surface(dgx_window* window) {
     // try to create surface
     if (glfwCreateWindowSurface(
             window->owning_hardware->owning_library->instance, 
@@ -4568,12 +4568,12 @@ int create_window_surface(lgx_window* window) {
     return 1;
 }
 
-void free_entire_platform(lgx_window* window) {
+void free_entire_platform(dgx_window* window) {
     if (window->surface)         vkDestroySurfaceKHR(window->owning_hardware->owning_library->instance, window->surface, 0);
     if (window->platform_window) glfwDestroyWindow(window->platform_window);
 }
 
-int create_entire_platform(lgx_window* window, const lgx_window_create_info* info) {
+int create_entire_platform(dgx_window* window, const dgx_window_create_info* info) {
     if (!create_window_window (window, info)) goto _fail;
     if (!create_window_surface(window)) goto _fail;
     return 1;
@@ -4586,7 +4586,7 @@ _fail:
 // ===========================
 // Swapchain Creation
 
-int create_swapchain_swapchain(lgx_window* window, const window_swapchain_settings* settings, VkSwapchainKHR old_swapchain) {
+int create_swapchain_swapchain(dgx_window* window, const window_swapchain_settings* settings, VkSwapchainKHR old_swapchain) {
     // Swapchain creation info
     VkSwapchainCreateInfoKHR swapchain_create_info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -4628,7 +4628,7 @@ int create_swapchain_swapchain(lgx_window* window, const window_swapchain_settin
     return 1;
 }
 
-int create_swapchain_images_and_views(lgx_window* window, const window_swapchain_settings* settings) {
+int create_swapchain_images_and_views(dgx_window* window, const window_swapchain_settings* settings) {
     VkDevice device = window->owning_hardware->logical_device; 
 
     // get swapchain images count
@@ -4670,7 +4670,7 @@ int create_swapchain_images_and_views(lgx_window* window, const window_swapchain
     return 1;
 }
 
-int create_swapchain_render_targets_layout(lgx_window* window, const window_swapchain_settings* settings) {
+int create_swapchain_render_targets_layout(dgx_window* window, const window_swapchain_settings* settings) {
     VkAttachmentDescription color_attachment = {
         .format         = settings->format.format,          // copy format of swapchain
         .samples        = VK_SAMPLE_COUNT_1_BIT,            // no multisampling on window
@@ -4706,8 +4706,8 @@ int create_swapchain_render_targets_layout(lgx_window* window, const window_swap
         return 0; // failed to create renderpass
     }
 
-    window->current_swapchain.render_target_layout = calloc(1, sizeof(lgx_render_target_layout));
-    *window->current_swapchain.render_target_layout = (lgx_render_target_layout){
+    window->current_swapchain.render_target_layout = calloc(1, sizeof(dgx_render_target_layout));
+    *window->current_swapchain.render_target_layout = (dgx_render_target_layout){
         .owning_hardware = window->owning_hardware,
         .renderpass      = render_pass
     };
@@ -4715,12 +4715,12 @@ int create_swapchain_render_targets_layout(lgx_window* window, const window_swap
     return 1;
 }
 
-int create_swapchain_render_targets(lgx_window* window, const window_swapchain_settings* settings) {
+int create_swapchain_render_targets(dgx_window* window, const window_swapchain_settings* settings) {
     VkDevice device = window->owning_hardware->logical_device;
-    window->current_swapchain.render_targets = calloc(window->current_swapchain.images_count, sizeof(lgx_render_target*));
+    window->current_swapchain.render_targets = calloc(window->current_swapchain.images_count, sizeof(dgx_render_target*));
 
     for (size_t i = 0; i < window->current_swapchain.images_count; i++) {
-        lgx_render_target* render_target = calloc(1, sizeof(lgx_render_target));
+        dgx_render_target* render_target = calloc(1, sizeof(dgx_render_target));
         window->current_swapchain.render_targets[i] = render_target;
 
         VkImageView attachments[] = {
@@ -4742,7 +4742,7 @@ int create_swapchain_render_targets(lgx_window* window, const window_swapchain_s
             goto _failure; // failed to create framebuffer (render target)
         }
 
-        *render_target = (lgx_render_target){
+        *render_target = (dgx_render_target){
             .owning_hardware            = window->owning_hardware,
             .width                      = settings->extend.width,
             .height                     = settings->extend.height,
@@ -4755,22 +4755,22 @@ int create_swapchain_render_targets(lgx_window* window, const window_swapchain_s
 
 _failure:
     for (size_t i = 0; i < window->current_swapchain.images_count; i++) {
-        lgx_free_render_target(window->current_swapchain.render_targets[i]);
+        dgx_free_render_target(window->current_swapchain.render_targets[i]);
     }
 
     return 0;
 }
 
-void free_entire_window_swapchain(lgx_window* window) {
+void free_entire_window_swapchain(dgx_window* window) {
     VkDevice device = window->owning_hardware->logical_device;
 
     if (window->current_swapchain.render_targets) {
-        for (uint32_t i = 0; i < window->current_swapchain.images_count; i++) lgx_free_render_target(window->current_swapchain.render_targets[i]);
+        for (uint32_t i = 0; i < window->current_swapchain.images_count; i++) dgx_free_render_target(window->current_swapchain.render_targets[i]);
         free(window->current_swapchain.render_targets);
         window->current_swapchain.render_targets = NULL;
     }
 
-    lgx_free_render_target_layout(window->current_swapchain.render_target_layout);
+    dgx_free_render_target_layout(window->current_swapchain.render_target_layout);
     window->current_swapchain.render_target_layout = NULL;
 
     if (window->current_swapchain.images_views) {
@@ -4788,7 +4788,7 @@ void free_entire_window_swapchain(lgx_window* window) {
 
 // provided window->platform_window and window->sufrace are valid
 int create_entire_swapchain
-(lgx_window* window, VkSwapchainKHR old_swapchain, lgx_render_target_layout* old_layout) {    
+(dgx_window* window, VkSwapchainKHR old_swapchain, dgx_render_target_layout* old_layout) {    
     int framebuffer_width, framebuffer_height;
     glfwGetFramebufferSize(window->platform_window, &framebuffer_width, &framebuffer_height);
     window->current_swapchain.width  = framebuffer_width;
@@ -4820,7 +4820,7 @@ _fail:
 // ===========================
 // Swapchain Recreation
 
-void window_recreate_swapchain(lgx_window* window) {
+void window_recreate_swapchain(dgx_window* window) {
     vkDeviceWaitIdle(window->owning_hardware->logical_device);
 
     free_entire_window_swapchain(window);
@@ -4834,22 +4834,22 @@ void window_recreate_swapchain(lgx_window* window) {
 // Window Changed Callbacks
 
 void window_resized_callback(GLFWwindow* platform_window, int width, int height) {
-    lgx_window* window = glfwGetWindowUserPointer(platform_window);
+    dgx_window* window = glfwGetWindowUserPointer(platform_window);
     if (window->current_swapchain.width == (uint32_t)width && window->current_swapchain.height == (uint32_t)height) return;
     window_recreate_swapchain(window);
 }
 
 void window_scroll_callback(GLFWwindow* platform_window, double xoffset, double yoffset) {
-    lgx_window* window = glfwGetWindowUserPointer(platform_window);
+    dgx_window* window = glfwGetWindowUserPointer(platform_window);
     window->window_scroll_input = yoffset;
 }
 
 // ===========================
 // Window Api
 
-lgx_window* lgx_create_window(lgx_hardware* hardware, const lgx_window_create_info* info) {
-    lgx_window* window = calloc(1, sizeof(lgx_window));
-    *window = (lgx_window){
+dgx_window* dgx_create_window(dgx_hardware* hardware, const dgx_window_create_info* info) {
+    dgx_window* window = calloc(1, sizeof(dgx_window));
+    *window = (dgx_window){
         .owning_hardware        = hardware,
         .desired_render_targets = info->desired_render_targets,
         .recreate_callback      = info->render_target_recreated_callback
@@ -4861,22 +4861,22 @@ lgx_window* lgx_create_window(lgx_hardware* hardware, const lgx_window_create_in
     return window;
 
 _fail:
-    lgx_free_window(window);
+    dgx_free_window(window);
     return 0x0;
 }
 
-void lgx_free_window(lgx_window* window) {
+void dgx_free_window(dgx_window* window) {
     if (!window) return;
     free_entire_window_swapchain(window);
     free_entire_platform(window);
     free(window);
 }
 
-uint32_t lgx_window_get_render_targets_count(lgx_window* window) {
+uint32_t dgx_window_get_render_targets_count(dgx_window* window) {
     return window->current_swapchain.images_count;
 }
 
-uint32_t lgx_window_acquire_next_render_target_index(lgx_window* window, lgx_gpu_signal* can_render_signal) {
+uint32_t dgx_window_acquire_next_render_target_index(dgx_window* window, dgx_gpu_signal* can_render_signal) {
     uint32_t image_index;
 
     VkResult result = vkAcquireNextImageKHR(
@@ -4890,7 +4890,7 @@ uint32_t lgx_window_acquire_next_render_target_index(lgx_window* window, lgx_gpu
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         window_recreate_swapchain(window);
-        return lgx_window_acquire_next_render_target_index(window, can_render_signal);
+        return dgx_window_acquire_next_render_target_index(window, can_render_signal);
     } 
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         return 0; // failed to acquire swap chain image
@@ -4899,16 +4899,16 @@ uint32_t lgx_window_acquire_next_render_target_index(lgx_window* window, lgx_gpu
     return image_index;
 }
 
-lgx_render_target_layout* lgx_window_get_render_target_layout(lgx_window* window) {
+dgx_render_target_layout* dgx_window_get_render_target_layout(dgx_window* window) {
     return window->current_swapchain.render_target_layout;
 }
 
-lgx_render_target* lgx_window_get_render_target(lgx_window* window, uint32_t target_index) {
+dgx_render_target* dgx_window_get_render_target(dgx_window* window, uint32_t target_index) {
     if (target_index >= window->current_swapchain.images_count) return 0x0;
     return window->current_swapchain.render_targets[target_index];
 }
 
-void lgx_window_enqueue_render_target_present(lgx_window* window, uint32_t index, uint32_t wait_signals_count, lgx_gpu_signal** wait_signals) {
+void dgx_window_enqueue_render_target_present(dgx_window* window, uint32_t index, uint32_t wait_signals_count, dgx_gpu_signal** wait_signals) {
     VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .swapchainCount     = 1,
@@ -4929,26 +4929,26 @@ void lgx_window_enqueue_render_target_present(lgx_window* window, uint32_t index
     );
 }
 
-void lgx_window_update_input(lgx_window* window) {
+void dgx_window_update_input(dgx_window* window) {
     window->window_scroll_input = 0.0f;
     glfwPollEvents();
 }
 
-int lgx_window_query_shall_close(lgx_window* window) {
+int dgx_window_query_shall_close(dgx_window* window) {
     return glfwWindowShouldClose(window->platform_window);
 }
 
-void lgx_window_query_is_focused(lgx_window* window, int* is) {
+void dgx_window_query_is_focused(dgx_window* window, int* is) {
     if (is) *is = glfwGetWindowAttrib(window->platform_window, GLFW_FOCUSED);
 }
 
-void lgx_window_query_cursor_pos(lgx_window* window, uint32_t* xpos, uint32_t* ypos) {
+void dgx_window_query_cursor_pos(dgx_window* window, uint32_t* xpos, uint32_t* ypos) {
     double x, y; glfwGetCursorPos(window->platform_window, &x, &y);
     if (xpos) *xpos = x;
     if (ypos) *ypos = y;
 }
 
-void lgx_window_query_input(lgx_window* window, int* left_pressed, int* right_pressed, float* scroll) {
+void dgx_window_query_input(dgx_window* window, int* left_pressed, int* right_pressed, float* scroll) {
     GLFWwindow* w = (GLFWwindow*)window->platform_window;
 
     if (left_pressed)   *left_pressed  = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
@@ -4956,12 +4956,12 @@ void lgx_window_query_input(lgx_window* window, int* left_pressed, int* right_pr
     if (scroll)         *scroll        = window->window_scroll_input;
 }
 
-void lgx_window_get_size(lgx_window* window, uint32_t* width, uint32_t* height) {
+void dgx_window_get_size(dgx_window* window, uint32_t* width, uint32_t* height) {
     if (width)  *width  = window->current_swapchain.width;
     if (height) *height = window->current_swapchain.height;
 }
 
 #else
-    #error No native api for light graphics set!
-#endif // LIGHT_GRAPHICS_VULKAN
-#endif // LIGHT_GRAPHICS_IMPL
+    #error No native api for demigurg graphics set!
+#endif // DEMIGURG_GRAPHICS_VULKAN
+#endif // DEMIGURG_GRAPHICS_IMPL

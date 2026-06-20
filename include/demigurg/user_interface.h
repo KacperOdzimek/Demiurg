@@ -1,12 +1,12 @@
 /*
 ----------------------------------------------------------------
 Contents:
-This file implements lui ui system.
+This file implements dui ui system.
 
 ----------------------------------------------------------------
 Code info:
-- lui prefix
-- LIGHT_USER_INTERFACE_IMPL macro to build
+- dui prefix
+- DEMIGURG_USER_INTERFACE_IMPL macro to build
 - partitioner.h dependent
 - linear_algebra.h dependent
 - graphics.h dependent
@@ -21,41 +21,41 @@ Usage: See dedicated documentation
     Depedencies
 */
 
-#include "light/partitioner.h"
-#include "light/linear_algebra.h"
-#include "light/graphics.h"
-#include "light/font.h"
+#include "demigurg/partitioner.h"
+#include "demigurg/linear_algebra.h"
+#include "demigurg/graphics.h"
+#include "demigurg/font.h"
 
 /*
     Implementation Injections
     Define in same file as user interface implementation
 */
 
-#ifdef LIGHT_USER_INTERFACE_IMPL
-    typedef struct lui_length     lui_length;
-    typedef struct lui_text_data  lui_text_data;
-    typedef struct lui_box_data   lui_box_data;
+#ifdef DEMIGURG_USER_INTERFACE_IMPL
+    typedef struct dui_length     dui_length;
+    typedef struct dui_text_data  dui_text_data;
+    typedef struct dui_box_data   dui_box_data;
 
     // returns non-zero at success (if returned is valid pointer)
-    int lui_injection_query_font (const char* font,  lfont**       font_out);
-    int lui_injection_query_image(const char* image, lgx_texture** texture_out, lgx_uv_2d* uv_out);
-#endif // LIGHT_USER_INTERFACE_IMPL
+    int dui_injection_query_font (const char* font,  lfont**       font_out);
+    int dui_injection_query_image(const char* image, dgx_texture** texture_out, dgx_uv_2d* uv_out);
+#endif // DEMIGURG_USER_INTERFACE_IMPL
 
 /*
     Header
 */
 
-#ifndef LIGHT_USER_INTERFACE_H
-#define LIGHT_USER_INTERFACE_H
+#ifndef DEMIGURG_USER_INTERFACE_H
+#define DEMIGURG_USER_INTERFACE_H
 
 // ===========================
 // Forwards
 
-typedef struct lui_type   lui_type;
-typedef struct lui_node   lui_node;
-typedef struct lui_cache  lui_cache;
-typedef struct lui_shared lui_shared;
-typedef struct lui_frames lui_frames;
+typedef struct dui_type   dui_type;
+typedef struct dui_node   dui_node;
+typedef struct dui_cache  dui_cache;
+typedef struct dui_shared dui_shared;
+typedef struct dui_frames dui_frames;
 
 // ===========================
 // Layout Length
@@ -63,7 +63,7 @@ typedef struct lui_frames lui_frames;
 // variable representing infinte length
 // not set to int max, to avoid overflows in implementation
 // needs to be increased if you are rendering on a (64+)K screen
-const static int lui_inf_length = 64 * 1000;
+const static int dui_inf_length = 64 * 1000;
 
 // structure representing 1d length
 // min  - minimal size element can be rendered with
@@ -72,64 +72,64 @@ const static int lui_inf_length = 64 * 1000;
 // each length object is expected to met:
 // min  <= max
 // flex >= 0
-typedef struct lui_length {
+typedef struct dui_length {
     int   min;  // minimum dimension
     int   max;  // maximum dimension
     float flex; // flex ratio
-} lui_length;
+} dui_length;
 
 // ===========================
 // Colors
 
 // basic 32 bit color
-typedef struct lui_color {
+typedef struct dui_color {
     unsigned char r, g, b, a;
-} lui_color;
+} dui_color;
 
-// runtime hex to lui_color conversion
+// runtime hex to dui_color conversion
 // letters case does not matter, '#' prefix is required
 // if hex[7] is not '\0', then alpha channel is read, else it is set to FF
 // LUI_HEX <- compile time alternative
-static inline lui_color lui_hex(const char* hex);
+static inline dui_color dui_hex(const char* hex);
 
 // LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
 
 // ===========================
 // Node Typedefs
 
-typedef struct lui_node_layout_state {
-    lui_length              measured_width;     // desired width  of this node
-    lui_length              measured_height;    // desired height of this node
+typedef struct dui_node_layout_state {
+    dui_length              measured_width;     // desired width  of this node
+    dui_length              measured_height;    // desired height of this node
     int                     given_width;        // received width
     int                     given_height;       // received height
     int                     hori_offset;        // node center horizontal offset from parent center
     int                     vert_offset;        // node center vertical offset from parent center
-} lui_node_layout_state;
+} dui_node_layout_state;
 
-typedef void (lui_node_auxilary_destructor_func_signature)(
+typedef void (dui_node_auxilary_destructor_func_signature)(
     void*                   auxilary            // node auxilary buffer - do not free it
 );
-typedef lui_node_auxilary_destructor_func_signature* lui_node_auxilary_destructor_func;
+typedef dui_node_auxilary_destructor_func_signature* dui_node_auxilary_destructor_func;
 
-typedef void(lui_node_layout_func_signature)(
+typedef void(dui_node_layout_func_signature)(
     const void*             node_data,          // node data
-    lui_node_layout_state*  node_state,         // node own state
+    dui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
-    lui_node_layout_state** children_states,    // node children states
+    dui_node_layout_state** children_states,    // node children states
     void*                   auxilary            // node auxilary buffer if requested by type
 );
-typedef lui_node_layout_func_signature* lui_node_layout_func;
+typedef dui_node_layout_func_signature* dui_node_layout_func;
 
-typedef void(lui_node_render_func_signature)(
+typedef void(dui_node_render_func_signature)(
     const void*             node_data,          // node data
     lla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
     int                     resolution_y,       // screen resolution y
     void*                   auxilary            // node auxilary buffer if requested by type
 );
-typedef lui_node_render_func_signature* lui_node_render_func;
+typedef dui_node_render_func_signature* dui_node_render_func;
 
-typedef struct lui_type {
+typedef struct dui_type {
     // Structure
 
     // Whether child pointer in node means single node
@@ -143,7 +143,7 @@ typedef struct lui_type {
 
     // This function will be called when auxilary storage is freed
     // You can use it to free some auxilary-owned memory
-    lui_node_auxilary_destructor_func auxilary_destructor;
+    dui_node_auxilary_destructor_func auxilary_destructor;
 
     // Auxilary Stage
 
@@ -151,7 +151,7 @@ typedef struct lui_type {
     // Allow for node own data changes (eg. caching some preprocessed state)
     // Unless it is convenient, this pass shall not be used, to preserve data-oriented-design,
     // and composability. Used to generate text format for GPU in implementation.
-    lui_node_layout_func    auxilary;
+    dui_node_layout_func    auxilary;
 
     // Layout Stages
 
@@ -159,31 +159,31 @@ typedef struct lui_type {
     // Generates desired nodes widths, bottom-up
     // IN:  [children measured width]
     // OUT: [own measured width]
-    lui_node_layout_func    width_measure;
+    dui_node_layout_func    width_measure;
 
     // Second layout stage
     // Generates actuall nodes widths, top-down
     // IN:  [width measurements, own given width]
     // OUT: [children given width]
-    lui_node_layout_func    width_distribute;
+    dui_node_layout_func    width_distribute;
 
     // Third layout stage
     // Generates desired nodes widths, bottom-up
     // IN:  [given widths, children measured heights]
     // OUT: [own measured height]
-    lui_node_layout_func    height_measure;
+    dui_node_layout_func    height_measure;
 
     // Fourth layout stage
     // Generates actuall nodes heights, top-down
     // IN:  [given widths, measured heights, own given height]
     // OUT  [children given heights]
-    lui_node_layout_func    height_distribute;
+    dui_node_layout_func    height_distribute;
 
     // Fifth layout stage
     // Position nodes on screen, top-down
     // IN:  [all widths and heights]
     // OUT: [node offset from ]
-    lui_node_layout_func    position;
+    dui_node_layout_func    position;
 
     // Rendering Stages
 
@@ -191,24 +191,24 @@ typedef struct lui_type {
     // Allow altering children render transforms, top down
     // IN:  [complete layout states, parent render transform]
     // OUT: [own and children render transform]
-    lui_node_render_func    transform;
-} lui_type;
+    dui_node_render_func    transform;
+} dui_type;
 
-typedef enum lui_flag {
-    lui_flag_instanced_data     = 1 << 0,
-    lui_flag_instanced_child    = 1 << 1,
-    lui_flag_ignore_min_width   = 1 << 2,
-    lui_flag_ignore_min_height  = 1 << 3,
-    lui_flag_ignore_max_width   = 1 << 4,
-    lui_flag_ignore_max_height  = 1 << 5,
-} lui_flag;
+typedef enum dui_flag {
+    dui_flag_instanced_data     = 1 << 0,
+    dui_flag_instanced_child    = 1 << 1,
+    dui_flag_ignore_min_width   = 1 << 2,
+    dui_flag_ignore_min_height  = 1 << 3,
+    dui_flag_ignore_max_width   = 1 << 4,
+    dui_flag_ignore_max_height  = 1 << 5,
+} dui_flag;
 
-typedef struct lui_node {
-    const lui_type* type;
+typedef struct dui_node {
+    const dui_type* type;
     const uint32_t  flags;
     
     union {
-        const lui_node* child;
+        const dui_node* child;
         size_t          child_offset;
     };
 
@@ -216,154 +216,154 @@ typedef struct lui_node {
         const void*     data;
         size_t          data_offset;
     };
-} lui_node;
+} dui_node;
 
 // Sentinel value to mark array end
-#define LUI_ARRAY_END (lui_node){.type = NULL, .child = NULL, .data = NULL}
+#define LUI_ARRAY_END (dui_node){.type = NULL, .child = NULL, .data = NULL}
 
 // ===========================
 // Predefinied Functions
 // Those implement basic box/overlay behavior, used by most nodes
 
 // width = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
-lui_node_layout_func_signature lui_overlay_width_measure_func;
+dui_node_layout_func_signature dui_overlay_width_measure_func;
 
 // children width = parent width, with applied maxes
-lui_node_layout_func_signature lui_overlay_width_distribute_func;
+dui_node_layout_func_signature dui_overlay_width_distribute_func;
 
 // height = (min = max(children mins), max = max(children max), flex = 1.0f if min != max, else 0)
-lui_node_layout_func_signature lui_overlay_height_measure_func;
+dui_node_layout_func_signature dui_overlay_height_measure_func;
 
 // children height = parent height, with applied maxes
-lui_node_layout_func_signature lui_overlay_height_distribute_func;
+dui_node_layout_func_signature dui_overlay_height_distribute_func;
 
 // centers children inside parent
-lui_node_layout_func_signature lui_overlay_position_func;
+dui_node_layout_func_signature dui_overlay_position_func;
 
 // ===========================
 // Architectural Node Types
 
 // Sets instance pointer to own data value
 // Data shall be arbitrary pointer (or offset in current instance) to instance structure
-extern const lui_type lui_instance_type;
+extern const dui_type dui_instance_type;
 
 // Layout-rebuild gate for the subtree - children layout will only
 // be rebuilt if invalidation node was marked with a proper dirty flag
 // No data, single child
-extern const lui_type lui_invalidation_type;
-typedef enum lui_invalidation_flag {
-    lui_invalidation_flag_auxilary          = 63,
-    lui_invalidation_flag_width_measure     = 62,
-    lui_invalidation_flag_width_distribute  = 60,
-    lui_invalidation_flag_height_measure    = 56,
-    lui_invalidation_flag_height_distribute = 48,
-    lui_invalidation_flag_position          = 32,
-    lui_invalidation_flag_none              = 0,
-    lui_invalidation_flag_all               = 63,
-} lui_invalidation_flag;
-typedef struct lui_invalidation_data {
-    lui_invalidation_flag flag_consumable;
-    lui_invalidation_flag flag_always;
-} lui_invalidation_data;
+extern const dui_type dui_invalidation_type;
+typedef enum dui_invalidation_flag {
+    dui_invalidation_flag_auxilary          = 63,
+    dui_invalidation_flag_width_measure     = 62,
+    dui_invalidation_flag_width_distribute  = 60,
+    dui_invalidation_flag_height_measure    = 56,
+    dui_invalidation_flag_height_distribute = 48,
+    dui_invalidation_flag_position          = 32,
+    dui_invalidation_flag_none              = 0,
+    dui_invalidation_flag_all               = 63,
+} dui_invalidation_flag;
+typedef struct dui_invalidation_data {
+    dui_invalidation_flag flag_consumable;
+    dui_invalidation_flag flag_always;
+} dui_invalidation_data;
 
 // ===========================
 // Layout Node Types
 
 // During layout, overwrites selected fields with provided values
-// Data is lui_sizebox_data, single child
-extern const lui_type lui_sizebox_type;
-typedef enum lui_sizebox_overwrite_flag {
-    lui_sizebox_overwrite_none        = 0,
-    lui_sizebox_overwrite_all         = 255,
-    lui_sizebox_overwrite_all_width   = 7,
-    lui_sizebox_overwrite_all_height  = 56,
+// Data is dui_sizebox_data, single child
+extern const dui_type dui_sizebox_type;
+typedef enum dui_sizebox_overwrite_flag {
+    dui_sizebox_overwrite_none        = 0,
+    dui_sizebox_overwrite_all         = 255,
+    dui_sizebox_overwrite_all_width   = 7,
+    dui_sizebox_overwrite_all_height  = 56,
 
-    lui_sizebox_overwrite_width_min   = 1 << 0,
-    lui_sizebox_overwrite_width_max   = 1 << 1,
-    lui_sizebox_overwrite_width_flex  = 1 << 2,
+    dui_sizebox_overwrite_width_min   = 1 << 0,
+    dui_sizebox_overwrite_width_max   = 1 << 1,
+    dui_sizebox_overwrite_width_flex  = 1 << 2,
 
-    lui_sizebox_overwrite_height_min  = 1 << 3,
-    lui_sizebox_overwrite_height_max  = 1 << 4,
-    lui_sizebox_overwrite_height_flex = 1 << 5
-} lui_sizebox_overwrite_flag;
-typedef struct lui_sizebox_data {
-    lui_sizebox_overwrite_flag  flag;
-    lui_length                  width;
-    lui_length                  height;    
-} lui_sizebox_data;
+    dui_sizebox_overwrite_height_min  = 1 << 3,
+    dui_sizebox_overwrite_height_max  = 1 << 4,
+    dui_sizebox_overwrite_height_flex = 1 << 5
+} dui_sizebox_overwrite_flag;
+typedef struct dui_sizebox_data {
+    dui_sizebox_overwrite_flag  flag;
+    dui_length                  width;
+    dui_length                  height;    
+} dui_sizebox_data;
 
 // Padds child inside self
-// Data is lui_padding_data, single child
-extern const lui_type lui_padding_type;
-typedef struct lui_padding_data {
-    lui_length left, right, top, bottom;
-} lui_padding_data;
+// Data is dui_padding_data, single child
+extern const dui_type dui_padding_type;
+typedef struct dui_padding_data {
+    dui_length left, right, top, bottom;
+} dui_padding_data;
 
 // Layouts children one on another
 // The first child is deepest, rendered first
 // No data, array children
-extern const lui_type lui_overlay_type;
+extern const dui_type dui_overlay_type;
 
 // Layouts children in a row, left to right
-// Data is lui_row_data, array children
-extern const lui_type lui_row_type;
-typedef struct lui_row_data {
+// Data is dui_row_data, array children
+extern const dui_type dui_row_type;
+typedef struct dui_row_data {
     float           vertical_align;     // 0 - align top,  0.5 - align center, 1.0 - align bottom, other values also work
-    lui_length      spacing;            // spacing between children
-} lui_row_data;
+    dui_length      spacing;            // spacing between children
+} dui_row_data;
 
 // Layouts children in a column, top to down
-// Data is lui_column_data, array children
-extern const lui_type lui_column_type;
-typedef struct lui_column_data {
+// Data is dui_column_data, array children
+extern const dui_type dui_column_type;
+typedef struct dui_column_data {
     float           horizontal_align;   // 0 - align left,  0.5 - align center, 1.0 - align right, other values also work
-    lui_length      spacing;            // spacing between children
-} lui_column_data;
+    dui_length      spacing;            // spacing between children
+} dui_column_data;
 
 // ===========================
 // Rendering Node Types
 
 // Constrains rendering to own dimensions
 // No data, single child
-extern const lui_type lui_clipbox_type;
+extern const dui_type dui_clipbox_type;
 
 // Adds node depth offset
 // Decreasing depth means going 'into' the screen
-// Data is lui_depth_data, ingle childed
-extern const lui_type lui_depth_type;
-typedef struct lui_depth_data {
+// Data is dui_depth_data, ingle childed
+extern const dui_type dui_depth_type;
+typedef struct dui_depth_data {
     short depth_change;
-} lui_depth_data;
+} dui_depth_data;
 
 // Box render primitive
-// Data is lui_box_data, single child
-extern const lui_type lui_box_type;
-typedef struct lui_box_data {
-    lui_color       tint;               // box color
+// Data is dui_box_data, single child
+extern const dui_type dui_box_type;
+typedef struct dui_box_data {
+    dui_color       tint;               // box color
     const char*     image;              // image name/path, may be NULL
     uint32_t        shader;             // shader effect index
-} lui_box_data;
+} dui_box_data;
 
 // Text render primitive
-// Data is lui_text_data, single child
-extern const lui_type lui_text_type;
-typedef struct lui_text_data {
+// Data is dui_text_data, single child
+extern const dui_type dui_text_type;
+typedef struct dui_text_data {
     unsigned int    size;               // font size
     const char*     font;               // font name/path
     const char*     text;               // text pointer
-    lui_color       tint;               // text color modyficator
+    dui_color       tint;               // text color modyficator
     uint32_t        shader;             // shader effect index
-} lui_text_data;
+} dui_text_data;
 
 // ===========================
 // Cache
 
-lui_cache* lui_create_cache();
-void lui_free_cache(lui_cache*);
+dui_cache* dui_create_cache();
+void dui_free_cache(dui_cache*);
 
-void lui_update_cache(
-    lui_cache*      cache,
-    const lui_node* root,
+void dui_update_cache(
+    dui_cache*      cache,
+    const dui_node* root,
     int             resolution_x,
     int             resolution_y
 );
@@ -371,42 +371,42 @@ void lui_update_cache(
 // ===========================
 // Rendering API
 
-typedef struct lui_shared_create_info {
-    lgx_render_target_layout*   pipeline_render_target_layout;
+typedef struct dui_shared_create_info {
+    dgx_render_target_layout*   pipeline_render_target_layout;
     uint32_t                    additional_pipeline_descriptors_layouts_count;
-    lgx_descriptor_layout**     additional_pipeline_descriptors_layouts;
-    lgx_shader*                 pipeline_vertex_shader;
-    lgx_shader*                 pipeline_pixel_shader;
-} lui_shared_create_info;
+    dgx_descriptor_layout**     additional_pipeline_descriptors_layouts;
+    dgx_shader*                 pipeline_vertex_shader;
+    dgx_shader*                 pipeline_pixel_shader;
+} dui_shared_create_info;
 
-lui_shared* lui_create_shared(lgx_hardware*, const lui_shared_create_info*);
-void lui_free_shared(lui_shared*);
+dui_shared* dui_create_shared(dgx_hardware*, const dui_shared_create_info*);
+void dui_free_shared(dui_shared*);
 
-typedef struct lui_frames_create_info {
-    lui_shared* shared;
+typedef struct dui_frames_create_info {
+    dui_shared* shared;
     uint32_t    frames_in_flight_count;
-} lui_frames_create_info;
+} dui_frames_create_info;
 
-lui_frames* lui_create_frames(lgx_hardware*, const lui_frames_create_info*);
-void lui_free_frames(lui_frames*);
+dui_frames* dui_create_frames(dgx_hardware*, const dui_frames_create_info*);
+void dui_free_frames(dui_frames*);
 
-void lui_upload_cache(
-    lui_cache*          cache,
-    lui_shared*         shared,
-    lui_frames*         frames,
+void dui_upload_cache(
+    dui_cache*          cache,
+    dui_shared*         shared,
+    dui_frames*         frames,
     uint32_t            frame_idx,
-    lgx_command_list*   command_list,
-    lgx_hardware_queue* queue_for_uploads,
-    lgx_staging_memory* staging_memory,
+    dgx_command_list*   command_list,
+    dgx_hardware_queue* queue_for_uploads,
+    dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    lgx_cpu_signal*     upload_finished_cpu,
-    lgx_gpu_signal*     upload_finished_gpu
+    dgx_cpu_signal*     upload_finished_cpu,
+    dgx_gpu_signal*     upload_finished_gpu
 );
 
-void lui_gcmd_render(
-    lgx_command_list*   target,
-    lui_frames*         frames,
+void dui_gcmd_render(
+    dgx_command_list*   target,
+    dui_frames*         frames,
     uint32_t            frame
 );
 
@@ -421,8 +421,8 @@ void lui_gcmd_render(
 // convert two hex chars to byte at compile time
 #define LUI_HEX_BYTE(c1, c2) ((LUI_HEX_VAL(c1) << 4) | LUI_HEX_VAL(c2))
 
-static inline lui_color lui_hex(const char* hex) {
-    lui_color result;
+static inline dui_color dui_hex(const char* hex) {
+    dui_color result;
     result.r = LUI_HEX_BYTE(hex[1], hex[2]);
     result.g = LUI_HEX_BYTE(hex[3], hex[4]);
     result.b = LUI_HEX_BYTE(hex[5], hex[6]);
@@ -434,20 +434,20 @@ static inline lui_color lui_hex(const char* hex) {
     return result;
 }
 
-// compile time lui_color from hex builder
+// compile time dui_color from hex builder
 // allows both lower and upper case letters
 // may include alpha (8 hex digits) or not (6 hex digits)
 // '#' prefix required
-#define LUI_HEX(s) (lui_color){ \
+#define LUI_HEX(s) (dui_color){ \
     LUI_HEX_BYTE(s[1], s[2]), \
     LUI_HEX_BYTE(s[3], s[4]), \
     LUI_HEX_BYTE(s[5], s[6]), \
     (sizeof(s) > 8 ? LUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
 }
 
-#endif // LIGHT_USER_INTERFACE_H
+#endif // DEMIGURG_USER_INTERFACE_H
 
-#ifdef LIGHT_USER_INTERFACE_IMPL
+#ifdef DEMIGURG_USER_INTERFACE_IMPL
 
 // Implementation Notes:
 // 1 - last_frame_used_in_render values reference
@@ -472,13 +472,13 @@ static inline lui_color lui_hex(const char* hex) {
 static inline int min_int(int a, int b) { return a < b ? a : b; }
 static inline int max_int(int a, int b) { return a < b ? b : a; }
 
-static inline int limit_length(int length, lui_length limits) {
+static inline int limit_length(int length, dui_length limits) {
     if (length > limits.max) length = limits.max;
     if (length < limits.min) length = limits.min;
     return length;
 }
 
-static inline int limit_length_gain(int current, lui_length limit, int proposed) {
+static inline int limit_length_gain(int current, dui_length limit, int proposed) {
     if (current + proposed < limit.min) return limit.min - current;
     if (current + proposed > limit.max) return limit.max - current;
     return proposed;
@@ -498,42 +498,42 @@ static inline lla_mat2x3 mat2x3_offset(lla_mat2x3 m, float ox, float oy) {
 // ===========================
 // Types helper
 
-#define box_behavior_type (lui_type){                           \
+#define box_behavior_type (dui_type){                           \
     .array_child        = 0,                                    \
     .auxilary_bytes     = 0,                                    \
     .auxilary           = NULL,                                 \
-    .width_measure      = lui_overlay_width_measure_func,       \
-    .width_distribute   = lui_overlay_width_distribute_func,    \
-    .height_measure     = lui_overlay_height_measure_func,      \
-    .height_distribute  = lui_overlay_height_distribute_func,   \
-    .position           = lui_overlay_position_func,            \
+    .width_measure      = dui_overlay_width_measure_func,       \
+    .width_distribute   = dui_overlay_width_distribute_func,    \
+    .height_measure     = dui_overlay_height_measure_func,      \
+    .height_distribute  = dui_overlay_height_distribute_func,   \
+    .position           = dui_overlay_position_func,            \
     .transform          = NULL                                  \
 } 
 
 // ===========================
 // Instance type
 // This type is specially handled in pass implementation
-const lui_type lui_instance_type = box_behavior_type;
+const dui_type dui_instance_type = box_behavior_type;
 
 // ===========================
 // Invalidation type
 // This type is specially handled in pass implementation
-const lui_type lui_invalidation_type = box_behavior_type;
+const dui_type dui_invalidation_type = box_behavior_type;
 
 // ===========================
 // Overlay Type
 
-void lui_overlay_width_measure_func(
+void dui_overlay_width_measure_func(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    (void)node_data; (void)auxilary; lui_length own = {0, 0, 0.0f};
+    (void)node_data; (void)auxilary; dui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i]->measured_width;
+        dui_length child = children_states[i]->measured_width;
         own.min  = max_int(own.min, child.min);
         own.max  = max_int(own.max, child.max);
     }
@@ -542,11 +542,11 @@ void lui_overlay_width_measure_func(
     node_state->measured_width = own;
 }
 
-void lui_overlay_width_distribute_func(
+void dui_overlay_width_distribute_func(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)node_data; (void)auxilary;
@@ -556,17 +556,17 @@ void lui_overlay_width_distribute_func(
     }
 }
 
-void lui_overlay_height_measure_func(
+void dui_overlay_height_measure_func(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    (void)node_data; (void)auxilary; lui_length own = {0, 0, 0.0f};
+    (void)node_data; (void)auxilary; dui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i]->measured_height;
+        dui_length child = children_states[i]->measured_height;
         own.min  = max_int(own.min, child.min);
         own.max  = max_int(own.max, child.max);
     }
@@ -575,11 +575,11 @@ void lui_overlay_height_measure_func(
     node_state->measured_height = own;
 }
 
-void lui_overlay_height_distribute_func(
+void dui_overlay_height_distribute_func(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)node_data; (void)auxilary;
@@ -589,11 +589,11 @@ void lui_overlay_height_distribute_func(
     }
 }
 
-void lui_overlay_position_func(
+void dui_overlay_position_func(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)node_data; (void)auxilary;
@@ -604,15 +604,15 @@ void lui_overlay_position_func(
     }
 }
 
-const lui_type lui_overlay_type = {
+const dui_type dui_overlay_type = {
     .array_child        = 1,
     .auxilary_bytes     = 0,
     .auxilary           = NULL,
-    .width_measure      = lui_overlay_width_measure_func,
-    .width_distribute   = lui_overlay_width_distribute_func,
-    .height_measure     = lui_overlay_height_measure_func,
-    .height_distribute  = lui_overlay_height_distribute_func,
-    .position           = lui_overlay_position_func,
+    .width_measure      = dui_overlay_width_measure_func,
+    .width_distribute   = dui_overlay_width_distribute_func,
+    .height_measure     = dui_overlay_height_measure_func,
+    .height_distribute  = dui_overlay_height_distribute_func,
+    .position           = dui_overlay_position_func,
     .transform          = NULL
 };
 
@@ -621,41 +621,41 @@ const lui_type lui_overlay_type = {
 
 void sizebox_width_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    const lui_sizebox_data* data = node_data;
-    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
-    if (data->flag & lui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
-    if (data->flag & lui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
-    if (data->flag & lui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
+    const dui_sizebox_data* data = node_data;
+    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    if (data->flag & dui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
+    if (data->flag & dui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
+    if (data->flag & dui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
 }
 
 void sizebox_height_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    const lui_sizebox_data* data = node_data;
-    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
-    if (data->flag & lui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
-    if (data->flag & lui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
-    if (data->flag & lui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
+    const dui_sizebox_data* data = node_data;
+    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    if (data->flag & dui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
+    if (data->flag & dui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
+    if (data->flag & dui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
 }
 
-const lui_type lui_sizebox_type = {
+const dui_type dui_sizebox_type = {
     .array_child        = 0,
     .auxilary_bytes     = 0,
     .auxilary           = NULL,
     .width_measure      = sizebox_width_measure,
-    .width_distribute   = lui_overlay_width_distribute_func,
+    .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = sizebox_height_measure,
-    .height_distribute  = lui_overlay_height_distribute_func,
-    .position           = lui_overlay_position_func,
+    .height_distribute  = dui_overlay_height_distribute_func,
+    .position           = dui_overlay_position_func,
     .transform          = NULL
 };
 
@@ -663,9 +663,9 @@ const lui_type lui_sizebox_type = {
 // Padding Type
 
 static inline int padding_distribute_length(
-    int* a, lui_length al,
-    int* b, lui_length bl,
-    int* c, lui_length cl,
+    int* a, dui_length al,
+    int* b, dui_length bl,
+    int* c, dui_length cl,
     int remaining
 ) {
     for (int pass = 0; pass < 3 && remaining > 0; pass++) {
@@ -688,14 +688,14 @@ static inline int padding_distribute_length(
 
 void padding_width_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)auxilary;
-    const lui_padding_data* data = node_data;
-    lui_length own = {0, 0, 0.0f};
+    const dui_padding_data* data = node_data;
+    dui_length own = {0, 0, 0.0f};
     
     int child_min = 0, child_max = 0;
     if (children_count > 0) {
@@ -706,7 +706,7 @@ void padding_width_measure(
     int w_min = data->left.min + child_min + data->right.min;
     int w_max = data->left.max + child_max + data->right.max;
 
-    node_state->measured_width = (lui_length){
+    node_state->measured_width = (dui_length){
         .min  = w_min,
         .max  = w_max,
         .flex = (w_min != w_max) ? 1.0f : 0.0f,
@@ -715,14 +715,14 @@ void padding_width_measure(
 
 void padding_width_distribute(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)auxilary; if (children_count == 0) return;
-    const lui_padding_data* data = node_data;
-    lui_node_layout_state* child = children_states[0];
+    const dui_padding_data* data = node_data;
+    dui_node_layout_state* child = children_states[0];
 
     // Give every element its minimum
     int left_w  = data->left.min;
@@ -744,12 +744,12 @@ void padding_width_distribute(
 
 void padding_height_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    (void)auxilary; const lui_padding_data* data = node_data;
+    (void)auxilary; const dui_padding_data* data = node_data;
 
     int child_min = 0, child_max = 0;
     if (children_count > 0) {
@@ -760,7 +760,7 @@ void padding_height_measure(
     int h_min = data->top.min + child_min + data->bottom.min;
     int h_max = data->top.max + child_max + data->bottom.max;
 
-    node_state->measured_height = (lui_length){
+    node_state->measured_height = (dui_length){
         .min  = h_min,
         .max  = h_max,
         .flex = (h_min != h_max) ? 1.0f : 0.0f,
@@ -769,14 +769,14 @@ void padding_height_measure(
 
 void padding_height_distribute(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)auxilary; if (children_count == 0) return;
-    const lui_padding_data* data = node_data;
-    lui_node_layout_state* child = children_states[0];
+    const dui_padding_data* data = node_data;
+    dui_node_layout_state* child = children_states[0];
 
     // Give every element its minimum
     int top_h    = data->top.min;
@@ -796,7 +796,7 @@ void padding_height_distribute(
     child->vert_offset  = (bottom_h - top_h) / 2;
 }
 
-const lui_type lui_padding_type = {
+const dui_type dui_padding_type = {
     .array_child        = 0,
     .auxilary_bytes     = 0,
     .auxilary           = NULL,
@@ -813,25 +813,25 @@ const lui_type lui_padding_type = {
 
 void row_width_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)auxilary; 
-    const lui_row_data* data = (const lui_row_data*)node_data;
-    lui_length          own  = {0, 0, 0.0f};
+    const dui_row_data* data = (const dui_row_data*)node_data;
+    dui_length          own  = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i]->measured_width;
+        dui_length child = children_states[i]->measured_width;
         own.min += child.min; own.max += child.max;
     }
 
     size_t spaces = children_count ? children_count - 1 : 0;
     own.min += spaces * data->spacing.min;
 
-    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) own.max += spaces * data->spacing.max;
-    else own.max = lui_inf_length;
+    if (own.max != dui_inf_length && data->spacing.max != dui_inf_length) own.max += spaces * data->spacing.max;
+    else own.max = dui_inf_length;
 
     if (own.min != own.max) own.flex = 1.0f;
     node_state->measured_width = own;
@@ -839,12 +839,12 @@ void row_width_measure(
 
 void row_width_distribute(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    (void)auxilary; const lui_row_data* data = (const lui_row_data*)node_data;
+    (void)auxilary; const dui_row_data* data = (const dui_row_data*)node_data;
 
     // Find spaces count
     size_t spaces_count = children_count ? children_count - 1 : 0;
@@ -882,7 +882,7 @@ void row_width_distribute(
 
         // add to children
         for (size_t i = 0; i < children_count; ++i) {
-            lui_length  m = children_states[i]->measured_width;
+            dui_length  m = children_states[i]->measured_width;
             int* assigned = &children_states[i]->given_width;
             if (*assigned == m.max) continue;   // maxed
 
@@ -905,7 +905,7 @@ void row_width_distribute(
     // Position children in horizontal axis
     int cursor_x = -node_state->given_width / 2;
     for (size_t i = 0; i < children_count; ++i) {
-        lui_node_layout_state* child = children_states[i];
+        dui_node_layout_state* child = children_states[i];
         cursor_x += child->given_width / 2;
         child->hori_offset = cursor_x;
         cursor_x += child->given_width / 2 + spacing;
@@ -914,28 +914,28 @@ void row_width_distribute(
 
 void row_position(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    (void)auxilary; const lui_row_data* data = (const lui_row_data*)node_data;
+    (void)auxilary; const dui_row_data* data = (const dui_row_data*)node_data;
 
     // Position children in vertial axis
     for (size_t i = 0; i < children_count; ++i) {
-        lui_node_layout_state* child = children_states[i];
+        dui_node_layout_state* child = children_states[i];
         child->vert_offset = (node_state->given_height - child->given_height) * (0.5f - data->vertical_align);
     }
 }
 
-const lui_type lui_row_type = {
+const dui_type dui_row_type = {
     .array_child        = 1,
     .auxilary_bytes     = 0,
     .auxilary           = NULL,
     .width_measure      = row_width_measure,
     .width_distribute   = row_width_distribute,
-    .height_measure     = lui_overlay_height_measure_func,
-    .height_distribute  = lui_overlay_height_distribute_func,
+    .height_measure     = dui_overlay_height_measure_func,
+    .height_distribute  = dui_overlay_height_distribute_func,
     .position           = row_position,
     .transform          = NULL
 };
@@ -945,25 +945,25 @@ const lui_type lui_row_type = {
 
 void column_height_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)auxilary;
-    const lui_column_data* data = (const lui_column_data*)node_data;
-    lui_length             own  = {0, 0, 0.0f};
+    const dui_column_data* data = (const dui_column_data*)node_data;
+    dui_length             own  = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
-        lui_length child = children_states[i]->measured_height;
+        dui_length child = children_states[i]->measured_height;
         own.min += child.min; own.max += child.max;
     }
 
     size_t spaces = children_count ? children_count - 1 : 0;
     own.min += spaces * data->spacing.min;
 
-    if (own.max != lui_inf_length && data->spacing.max != lui_inf_length) own.max += spaces * data->spacing.max;
-    else own.max = lui_inf_length;
+    if (own.max != dui_inf_length && data->spacing.max != dui_inf_length) own.max += spaces * data->spacing.max;
+    else own.max = dui_inf_length;
 
     if (own.min != own.max) own.flex = 1.0f;
     node_state->measured_height = own;
@@ -971,13 +971,13 @@ void column_height_measure(
 
 void column_height_distribute(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
     (void)auxilary;
-    const lui_column_data* data = (const lui_column_data*)node_data;
+    const dui_column_data* data = (const dui_column_data*)node_data;
 
     // Find spaces count
     size_t spaces_count = children_count ? children_count - 1 : 0;
@@ -1015,7 +1015,7 @@ void column_height_distribute(
 
         // add to children
         for (size_t i = 0; i < children_count; ++i) {
-            lui_length  m = children_states[i]->measured_height;
+            dui_length  m = children_states[i]->measured_height;
             int* assigned = &children_states[i]->given_height;
             if (*assigned == m.max) continue;   // maxed
 
@@ -1038,7 +1038,7 @@ void column_height_distribute(
     // Position children in vertical axis
     int cursor_y = node_state->given_height / 2;
     for (size_t i = 0; i < children_count; i++) {
-        lui_node_layout_state* child = children_states[i];
+        dui_node_layout_state* child = children_states[i];
         cursor_y -= child->given_height / 2;
         child->vert_offset = cursor_y;
         cursor_y -= child->given_height / 2 + spacing;
@@ -1047,26 +1047,26 @@ void column_height_distribute(
 
 void column_position(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    (void)auxilary; const lui_column_data* data = (const lui_column_data*)node_data;
+    (void)auxilary; const dui_column_data* data = (const dui_column_data*)node_data;
 
     // Position children in horizontal axis
     for (size_t i = 0; i < children_count; ++i) {
-        lui_node_layout_state* child = children_states[i];
+        dui_node_layout_state* child = children_states[i];
         child->hori_offset = (node_state->given_width  - child->given_width)  * (data->horizontal_align - 0.5f);
     }
 }
 
-const lui_type lui_column_type = {
+const dui_type dui_column_type = {
     .array_child        = 1,
     .auxilary_bytes     = 0,
     .auxilary           = NULL,
-    .width_measure      = lui_overlay_width_measure_func,
-    .width_distribute   = lui_overlay_width_distribute_func,
+    .width_measure      = dui_overlay_width_measure_func,
+    .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = column_height_measure,
     .height_distribute  = column_height_distribute,
     .position           = column_position,
@@ -1076,17 +1076,17 @@ const lui_type lui_column_type = {
 // ===========================
 // Clipbox Type
 // This type is specially handled in pass implementation
-const lui_type lui_clipbox_type = box_behavior_type;
+const dui_type dui_clipbox_type = box_behavior_type;
 
 // ===========================
 // Depth Type
 // This type is specially handled in pass implementation
-const lui_type lui_depth_type = box_behavior_type;
+const dui_type dui_depth_type = box_behavior_type;
 
 // ===========================
 // Box Type
 // This type is specially handled in pass implementation
-const lui_type lui_box_type = box_behavior_type;
+const dui_type dui_box_type = box_behavior_type;
 
 // ===========================
 // Text type
@@ -1107,12 +1107,12 @@ void text_auxilary_destructor(void* auxilary) {
 
 void text_width_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    lui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
     text_type_auxilary_state* aux = auxilary;
     node_state->measured_width.min = max_int(node_state->measured_width.min, (int)aux->text_width);
     node_state->measured_width.max = max_int(node_state->measured_width.max, (int)aux->text_width);
@@ -1121,41 +1121,41 @@ void text_width_measure(
 
 void text_height_measure(
     const void*             node_data,
-    lui_node_layout_state*  node_state,
+    dui_node_layout_state*  node_state,
     size_t                  children_count,
-    lui_node_layout_state** children_states,
+    dui_node_layout_state** children_states,
     void*                   auxilary
 ) {
-    lui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
     text_type_auxilary_state* aux = auxilary;
     node_state->measured_height.min = max_int(node_state->measured_height.min, (int)aux->text_height);
     node_state->measured_height.max = max_int(node_state->measured_height.max, (int)aux->text_height);
     if (node_state->measured_height.min != node_state->measured_height.max) node_state->measured_height.flex = 1.0f;
 }
 
-const lui_type lui_text_type = {
+const dui_type dui_text_type = {
     .array_child            = 0,
     .auxilary_bytes         = sizeof(text_type_auxilary_state),
     .auxilary               = NULL,
     .auxilary_destructor    = text_auxilary_destructor,
     .width_measure          = text_width_measure,
-    .width_distribute       = lui_overlay_width_distribute_func,
+    .width_distribute       = dui_overlay_width_distribute_func,
     .height_measure         = text_height_measure,
-    .height_distribute      = lui_overlay_height_distribute_func,
-    .position               = lui_overlay_position_func,
+    .height_distribute      = dui_overlay_height_distribute_func,
+    .position               = dui_overlay_position_func,
     .transform              = NULL
 };
 
 // ===========================
 // Node fields reads
 
-static inline const void* get_node_data(const lui_node* node, const char* instance) {
-    if (node->flags & lui_flag_instanced_data) return (void*)(instance + node->data_offset);
+static inline const void* get_node_data(const dui_node* node, const char* instance) {
+    if (node->flags & dui_flag_instanced_data) return (void*)(instance + node->data_offset);
     return node->data;
 }
 
-static inline const lui_node* get_node_child(const lui_node* node, const char* instance) {
-    if (node->flags & lui_flag_instanced_child) return (const lui_node*)(instance + node->child_offset);
+static inline const dui_node* get_node_child(const dui_node* node, const char* instance) {
+    if (node->flags & dui_flag_instanced_child) return (const dui_node*)(instance + node->child_offset);
     return node->child;
 }
 
@@ -1202,7 +1202,7 @@ typedef struct draw_request draw_request;
 typedef struct text_request text_request;
 typedef struct clipbox_request clipbox_request;
 
-struct lui_cache {
+struct dui_cache {
     // Passes constants
     int                 resolution_x;
     int                 resolution_y;
@@ -1234,14 +1234,14 @@ struct lui_cache {
     clipbox_request*    clipbox_requests;
 };
 
-lui_cache* lui_create_cache() {
-    lui_cache* cache = calloc(1, sizeof(lui_cache));
+dui_cache* dui_create_cache() {
+    dui_cache* cache = calloc(1, sizeof(dui_cache));
     return cache;
 }
 
-static void auxilary_hashmap_garbage_collect(lui_cache* cache);
-static void free_cached_text_requests(lui_cache* cache);
-void lui_free_cache(lui_cache* cache) {
+static void auxilary_hashmap_garbage_collect(dui_cache* cache);
+static void free_cached_text_requests(dui_cache* cache);
+void dui_free_cache(dui_cache* cache) {
     if (!cache) return;
 
     // Free all auxilary slots by using impossible value
@@ -1263,20 +1263,20 @@ void lui_free_cache(lui_cache* cache) {
 // Cache Hashmaps
 
 typedef struct node_stable_index {
-    const lui_node* node;
+    const dui_node* node;
     const void*     instance;
 } node_stable_index;
 
 typedef struct cache_slot {
     node_stable_index       key;
     size_t                  value_child_count;
-    lui_node_layout_state   value_state;
+    dui_node_layout_state   value_state;
     unsigned char           last_frame_used_in_render;  
 } cache_slot;
 
 typedef struct auxilary_slot {
     node_stable_index       key;
-    const lui_type*         state_type;
+    const dui_type*         state_type;
     void*                   state_ptr;
     unsigned char           last_frame_used_in_render;  
 } auxilary_slot;
@@ -1295,17 +1295,17 @@ static size_t hash_key(node_stable_index key) {
 }
 
 // Definies three functions:
-// void       PREFIX##_hashmap_grow             (lui_cache* cache);
-// SLOT_TYPE* PREFIX##_hashmap_get              (lui_cache* cache, node_stable_index key, int insert_if_none)
-// void       PREFIX##_hashmap_garbage_collect  (lui_cache* cache) 
+// void       PREFIX##_hashmap_grow             (dui_cache* cache);
+// SLOT_TYPE* PREFIX##_hashmap_get              (dui_cache* cache, node_stable_index key, int insert_if_none)
+// void       PREFIX##_hashmap_garbage_collect  (dui_cache* cache) 
 // Define HASHMAP_SLOT_INITIALIZER to define default slot value
 // Define HASHMAP_SLOT_DESTRUCTOR(slot ptr) to set garbage collector slot free method
 #define DEFINE_HASHMAP_FUNCS(PREFIX, SLOT_TYPE, SLOTS_FIELD, CAP_FIELD, FILL_FIELD) \
 \
 static SLOT_TYPE* PREFIX##_hashmap_get                                          \
-(lui_cache* cache, node_stable_index key, int insert_if_none);                  \
+(dui_cache* cache, node_stable_index key, int insert_if_none);                  \
 \
-static void PREFIX##_hashmap_grow(lui_cache* cache) {                           \
+static void PREFIX##_hashmap_grow(dui_cache* cache) {                           \
     size_t old_cap = cache->CAP_FIELD;                                          \
     SLOT_TYPE* old_slots = cache->SLOTS_FIELD;                                  \
 \
@@ -1327,7 +1327,7 @@ static void PREFIX##_hashmap_grow(lui_cache* cache) {                           
 }                                                                               \
 \
 static SLOT_TYPE* PREFIX##_hashmap_get(                                         \
-    lui_cache* cache, node_stable_index key, int insert_if_none) {              \
+    dui_cache* cache, node_stable_index key, int insert_if_none) {              \
     if ((cache->FILL_FIELD + 1) * 10 >= cache->CAP_FIELD * 7) {                 \
         PREFIX##_hashmap_grow(cache);                                           \
     }                                                                           \
@@ -1359,7 +1359,7 @@ static SLOT_TYPE* PREFIX##_hashmap_get(                                         
     }                                                                           \
 }                                                                               \
 \
-static void PREFIX##_hashmap_garbage_collect(lui_cache* cache) {                \
+static void PREFIX##_hashmap_garbage_collect(dui_cache* cache) {                \
     for (size_t i = 0; i < cache->CAP_FIELD; i++) {                             \
         SLOT_TYPE*     slot = &cache->SLOTS_FIELD[i];                           \
         unsigned char* time = &slot->last_frame_used_in_render;                 \
@@ -1395,12 +1395,12 @@ DEFINE_HASHMAP_FUNCS(
 );
 
 // Gets slot, always inserts, as cache must always exist for node
-static inline cache_slot* cache_get_utill(lui_cache* cache, node_stable_index index) {
+static inline cache_slot* cache_get_utill(dui_cache* cache, node_stable_index index) {
     return cache_hashmap_get(cache, index, 1);
 }
 
 // Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
-static inline auxilary_slot* auxilary_get_utill(lui_cache* cache, node_stable_index index) {
+static inline auxilary_slot* auxilary_get_utill(dui_cache* cache, node_stable_index index) {
     if (!index.node->type->auxilary_bytes) return NULL; // none desired
     auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
 
@@ -1428,7 +1428,7 @@ struct draw_request {
     short                   depth_index;
     char                    is_box_not_text;
     union {
-        lui_box_data        box_data;
+        dui_box_data        box_data;
         node_stable_index   text_node;
     };
 };
@@ -1444,9 +1444,9 @@ struct clipbox_request {
 };
 
 // Definies one function:
-// void PREFIX##_cache_push (lui_cache* cache, ELEMENT_TYPE element);
+// void PREFIX##_cache_push (dui_cache* cache, ELEMENT_TYPE element);
 #define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
-static int PREFIX##_cache_push(lui_cache* cache, ELEMENT_TYPE element) {                        \
+static int PREFIX##_cache_push(dui_cache* cache, ELEMENT_TYPE element) {                        \
     if (cache->CNT_FIELD + 1 > cache->CAP_FIELD) {                                              \
         size_t          new_cap = cache->CAP_FIELD ? cache->CAP_FIELD * 2 : 64;                 \
         ELEMENT_TYPE*   new_arr = realloc(cache->ARRAY_FIELD, new_cap * sizeof(ELEMENT_TYPE));  \
@@ -1472,7 +1472,7 @@ DEFINE_DYNAMIC_ARRAY_FUNCS(
     clipbox_request, clipbox_request, clipbox_requests, clipbox_requests_capacity, clipbox_requests_count
 );
 
-static inline void free_cached_text_requests(lui_cache* cache) {
+static inline void free_cached_text_requests(dui_cache* cache) {
     for (size_t i = 0; i < cache->text_requests_count; i++) {
         free(cache->text_requests[i].glyphs);
     }
@@ -1494,8 +1494,8 @@ typedef enum invalidation_flag_only {
 } invalidation_flag_only;
 
 static inline int find_shall_recurse(cache_slot* node_slot, const void* data, invalidation_flag_only pass) {
-    if (node_slot->key.node->type != &lui_invalidation_type) return 1;
-    lui_invalidation_data* inv_data = (lui_invalidation_data*)data; // special case where const may be discarded
+    if (node_slot->key.node->type != &dui_invalidation_type) return 1;
+    dui_invalidation_data* inv_data = (dui_invalidation_data*)data; // special case where const may be discarded
 
     // recurse one time in this pass
     if (inv_data->flag_consumable & pass) {
@@ -1516,11 +1516,11 @@ static inline int find_shall_recurse(cache_slot* node_slot, const void* data, in
 
 // shall initialized with cache and 0 in other fields
 typedef struct caches_walk_order {
-    lui_cache*              cache;      // cache owning cache slots
+    dui_cache*              cache;      // cache owning cache slots
     size_t                  capacity;   // in cache_slot pointers
     size_t                  position;   // in cache_slot pointers
     cache_slot**            slots;      // sized capacity, node cache slots in enter order
-    lui_node_layout_state** states;     // sized capacity, node layout states in children oreder
+    dui_node_layout_state** states;     // sized capacity, node layout states in children oreder
     auxilary_slot**         auxilary;   // sized capacity, node auxilary slots in enter order
     size_t*                 subtree;    // sized capacity, node subtree size, including self
 } caches_walk_order;
@@ -1541,7 +1541,7 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
         size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
     
         cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
-        lui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(lui_node_layout_state*));
+        dui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(dui_node_layout_state*));
         auxilary_slot**         new_aux = realloc(walk_order->auxilary, new_cap * sizeof(auxilary_slot*));
         size_t*                 new_sub = realloc(walk_order->subtree,  new_cap * sizeof(size_t));
 
@@ -1576,13 +1576,13 @@ int caches_walk_dfs(
     size_t*             subtree_size_target, 
     const void*         instance
 ) {
-    const lui_node* node  = current->key.node;
-    const lui_node* child = get_node_child(current->key.node, current->key.instance);
+    const dui_node* node  = current->key.node;
+    const dui_node* child = get_node_child(current->key.node, current->key.instance);
     size_t          count = 0;
     int             scc   = 1;
 
     // change instance for subtree
-    if (node->type == &lui_instance_type) {
+    if (node->type == &dui_instance_type) {
         instance = get_node_data(current->key.node, instance);
     }
 
@@ -1591,7 +1591,7 @@ int caches_walk_dfs(
         auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){child, instance});
         scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
     }
-    else if (child) for (const lui_node* cc = child; cc->type != NULL; cc++) {
+    else if (child) for (const dui_node* cc = child; cc->type != NULL; cc++) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){cc, instance});
         auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){cc, instance});
         scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
@@ -1633,7 +1633,7 @@ void PREFIX##_dfs(                                                              
         }                                                                                           \
     }                                                                                               \
 \
-    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
+    dui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
     if (func != NULL) func(                                                                         \
         data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
         auxilary ? auxilary->state_ptr : NULL                                                       \
@@ -1659,7 +1659,7 @@ void PREFIX##_dfs(                                                              
 \
     __VA_ARGS__                                                                                     \
 \
-    lui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
+    dui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
     if (func != NULL) func(                                                                         \
         data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
         auxilary ? auxilary->state_ptr : NULL                                                       \
@@ -1678,12 +1678,12 @@ void PREFIX##_dfs(                                                              
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
 
-void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
+void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
 
 // auxilary pass, additionaly update text buffer
 TOP_DOWN_DFS(
     auxilary, auxilary, invalidation_flag_only_auxilary,
-    if (current->key.node->type == &lui_text_type) {
+    if (current->key.node->type == &dui_text_type) {
         create_text_request(walk_order->cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
     }
 );
@@ -1691,12 +1691,12 @@ TOP_DOWN_DFS(
 // width measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     width_measure, width_measure, invalidation_flag_only_width_measure,
-    if (current->key.node->flags & lui_flag_ignore_min_width) {
+    if (current->key.node->flags & dui_flag_ignore_min_width) {
         current->value_state.measured_width.min = 0;
         current->value_state.measured_width.flex = 1.0f;
     }
-    if (current->key.node->flags & lui_flag_ignore_max_width) {
-        current->value_state.measured_width.max  = lui_inf_length;
+    if (current->key.node->flags & dui_flag_ignore_max_width) {
+        current->value_state.measured_width.max  = dui_inf_length;
         current->value_state.measured_width.flex = 1.0f;
     }
 );
@@ -1714,12 +1714,12 @@ TOP_DOWN_DFS(
 // height measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     height_measure, height_measure, invalidation_flag_only_height_measure,
-    if (current->key.node->flags & lui_flag_ignore_min_height) {
+    if (current->key.node->flags & dui_flag_ignore_min_height) {
         current->value_state.measured_height.min = 0;
         current->value_state.measured_height.flex = 1.0f;
     }
-    if (current->key.node->flags & lui_flag_ignore_max_height) {
-        current->value_state.measured_height.max  = lui_inf_length;
+    if (current->key.node->flags & dui_flag_ignore_max_height) {
+        current->value_state.measured_height.max  = dui_inf_length;
         current->value_state.measured_height.flex = 1.0f;
     }
 );
@@ -1745,10 +1745,10 @@ TOP_DOWN_DFS(
 // Since it refers on the pointer only on enter - after visiting any child it is not used
 
 void render_dfs(
-    lui_cache*          cache, 
+    dui_cache*          cache, 
     int                 previous_width,
     int                 previous_height, 
-    const lui_node*     node,
+    const dui_node*     node,
     lla_mat2x3          transform, 
     const void*         instance,
     short               depth_index,
@@ -1757,7 +1757,7 @@ void render_dfs(
     node_stable_index index = {node, instance};
 
     // get node data
-    const lui_node* child = get_node_child(node, instance);
+    const dui_node* child = get_node_child(node, instance);
     const void*     data  = get_node_data (node, instance);
     cache_slot*     own   = cache_get_utill(cache, index);
     auxilary_slot*  aux   = auxilary_get_utill(cache, index);
@@ -1767,7 +1767,7 @@ void render_dfs(
     if (aux) aux->last_frame_used_in_render = cache->frame_index;
 
     // change instance for subtree
-    if (node->type == &lui_instance_type) instance = data;
+    if (node->type == &dui_instance_type) instance = data;
 
     // change transform based on node's position and scale
     float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->resolution_x;
@@ -1786,8 +1786,8 @@ void render_dfs(
     );
     
     // special nodes (box, text, depth, clipbox)
-    if (node->type == &lui_box_type){
-        const lui_box_data* bdata = data;
+    if (node->type == &dui_box_type){
+        const dui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
             .clip_index         = clipbox_index,
@@ -1796,8 +1796,8 @@ void render_dfs(
             .box_data           = *bdata
         });
     }
-    else if (node->type == &lui_text_type) {
-        const lui_text_data*            tdata = data;
+    else if (node->type == &dui_text_type) {
+        const dui_text_data*            tdata = data;
         const text_type_auxilary_state* taux  = aux->state_ptr;
 
         draw_request_cache_push(cache, (draw_request){
@@ -1808,11 +1808,11 @@ void render_dfs(
             .text_node          = index
         });
     }
-    else if (node->type == &lui_depth_type) {
-        const lui_depth_data* ddata = data;
+    else if (node->type == &dui_depth_type) {
+        const dui_depth_data* ddata = data;
         depth_index += ddata->depth_change;
     }
-    else if (node->type == &lui_clipbox_type) {
+    else if (node->type == &dui_clipbox_type) {
         clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){
             .transform = transform
         });
@@ -1827,7 +1827,7 @@ void render_dfs(
         render_dfs(cache, own_width, own_height, child, transform, instance, depth_index, clipbox_index);
     }
     // multiple children
-    else if (child) for (const lui_node* current_child = child; current_child->type != NULL; current_child++) {
+    else if (child) for (const dui_node* current_child = child; current_child->type != NULL; current_child++) {
         render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
     }
 }
@@ -1843,9 +1843,9 @@ static inline int helper_draw_requests_greater_depth(const void* av, const void*
 // Main update function
 // Calls passes
 
-void lui_update_cache(
-    lui_cache*      cache,
-    const lui_node* root,
+void dui_update_cache(
+    dui_cache*      cache,
+    const dui_node* root,
     int             resolution_x,
     int             resolution_y
 ) {
@@ -1933,7 +1933,7 @@ typedef struct gpu_instance {
 
 typedef struct gpu_draw_item {
     lla_mat2x3  transform;
-    lgx_uv_2d   atlas_position;
+    dgx_uv_2d   atlas_position;
     int         texture_index;
     int         clipbox_index;
     float       r, g, b, a;
@@ -1945,7 +1945,7 @@ typedef struct gpu_clipbox {
 } gpu_clipbox;
 
 typedef struct gpu_glyph {
-    lgx_uv_2d   atlas_position;
+    dgx_uv_2d   atlas_position;
     float       off_x,  off_y;
     float       size_x, size_y;
 } gpu_glyph;
@@ -1955,21 +1955,21 @@ typedef struct gpu_parameters {
     int         resolution_y;
 } gpu_parameters;
 
-static inline lgx_buffer* create_ubo(lgx_hardware* hardware, uint64_t bytes) {
-    return lgx_create_buffer(hardware, &(lgx_buffer_create_info){
+static inline dgx_buffer* create_ubo(dgx_hardware* hardware, uint64_t bytes) {
+    return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
         .size_bytes         = bytes,
-        .usage              = lgx_buffer_usage_uniform,
-        .memory_strategy    = lgx_memory_allocation_strategy_dedicated,
-        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+        .usage              = dgx_buffer_usage_uniform,
+        .memory_strategy    = dgx_memory_allocation_strategy_dedicated,
+        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
     });
 }
 
-static inline lgx_buffer* create_ssbo(lgx_hardware* hardware, uint64_t bytes) {
-    return lgx_create_buffer(hardware, &(lgx_buffer_create_info){
+static inline dgx_buffer* create_ssbo(dgx_hardware* hardware, uint64_t bytes) {
+    return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
         .size_bytes         = bytes,
-        .usage              = lgx_buffer_usage_storage,
-        .memory_strategy    = lgx_memory_allocation_strategy_dedicated,
-        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+        .usage              = dgx_buffer_usage_storage,
+        .memory_strategy    = dgx_memory_allocation_strategy_dedicated,
+        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
     });
 }
 
@@ -1981,113 +1981,113 @@ static const float quad_vertices_array[] = {
      1.0f,  1.0f, 1.0f, 1.0f,
 };
 
-static lgx_vertex_input_attribute_info vertex_attributes[] = {
+static dgx_vertex_input_attribute_info vertex_attributes[] = {
     {   // position : per vertex
         .binding    = 0,
         .location   = 0,
         .offset     = 0,
-        .type       = lgx_data_type_vec2f32
+        .type       = dgx_data_type_vec2f32
     },
     {   // uv : per vertex
         .binding    = 0,
         .location   = 1,
         .offset     = 2 * 4,
-        .type       = lgx_data_type_vec2f32
+        .type       = dgx_data_type_vec2f32
     }
 };
 
-static lgx_vertex_input_binding_info vertex_bindings[] = {
+static dgx_vertex_input_binding_info vertex_bindings[] = {
     {
         .binding    = 0,
-        .input_rate = lgx_vertex_attribute_input_rate_per_vertex,
+        .input_rate = dgx_vertex_attribute_input_rate_per_vertex,
         .stride     = 4 * 4
     }
 };
 
-static lgx_descriptor_binding descriptor_bindings[] = {
+static dgx_descriptor_binding descriptor_bindings[] = {
     {   // the parameters buffer
         .binding = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
-        .stages  = lgx_shader_stage_vertex,
-        .type    = lgx_descriptor_binding_type_uniform_buffer
+        .stages  = dgx_shader_stage_vertex,
+        .type    = dgx_descriptor_binding_type_uniform_buffer
     },
     {   // the instances buffer
         .binding = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
-        .stages  = lgx_shader_stage_vertex,
-        .type    = lgx_descriptor_binding_type_storage_buffer
+        .stages  = dgx_shader_stage_vertex,
+        .type    = dgx_descriptor_binding_type_storage_buffer
     },
     {   // the draw items buffer
         .binding = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
-        .stages  = lgx_shader_stage_vertex,
-        .type    = lgx_descriptor_binding_type_storage_buffer
+        .stages  = dgx_shader_stage_vertex,
+        .type    = dgx_descriptor_binding_type_storage_buffer
     },
     {   // the glyphs buffer
         .binding = GLYPH_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
-        .stages  = lgx_shader_stage_vertex,
-        .type    = lgx_descriptor_binding_type_storage_buffer
+        .stages  = dgx_shader_stage_vertex,
+        .type    = dgx_descriptor_binding_type_storage_buffer
     },
     {   // the clips buffer
         .binding = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
         .count   = 1,
-        .stages  = lgx_shader_stage_pixel,
-        .type    = lgx_descriptor_binding_type_storage_buffer
+        .stages  = dgx_shader_stage_pixel,
+        .type    = dgx_descriptor_binding_type_storage_buffer
     },
     {   // the sampler
         .binding = SAMPLER_DESCRIPTOR_BINDING,
         .count   = 1,
-        .stages  = lgx_shader_stage_pixel,
-        .type    = lgx_descriptor_binding_type_sampler,
+        .stages  = dgx_shader_stage_pixel,
+        .type    = dgx_descriptor_binding_type_sampler,
     },
     {   // the textures
         .binding = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
         .count   = -1, // Needs to be set per hardware!
-        .stages  = lgx_shader_stage_pixel,
-        .type    = lgx_descriptor_binding_type_sampled_texture
+        .stages  = dgx_shader_stage_pixel,
+        .type    = dgx_descriptor_binding_type_sampled_texture
     }
 };
 
 // ===========================
 // Shared Object
 
-struct lui_shared {
-    lgx_hardware*                       owning_hardware;
+struct dui_shared {
+    dgx_hardware*                       owning_hardware;
 
-    lgx_buffer*                         vertex_buffer;
-    lgx_sampler*                        sampler;
+    dgx_buffer*                         vertex_buffer;
+    dgx_sampler*                        sampler;
 
     uint32_t                            descriptor_textures_array_length;
-    lgx_descriptor_layout*              descriptor_layout;
-    lgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
-    lgx_pipeline*                       pipeline;
+    dgx_descriptor_layout*              descriptor_layout;
+    dgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
+    dgx_pipeline*                       pipeline;
 
     lpr_partitioner*                    glyph_buffer_partitioner;
-    lgx_buffer*                         glyph_buffer;
+    dgx_buffer*                         glyph_buffer;
 };
 
-lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_info* info) {
-    lui_shared* shared = calloc(1, sizeof(lui_shared)); if (!shared) return NULL;
+dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_info* info) {
+    dui_shared* shared = calloc(1, sizeof(dui_shared)); if (!shared) return NULL;
     shared->owning_hardware = hardware;
 
     // Vertex Buffer
-    shared->vertex_buffer = lgx_create_buffer(hardware, &(lgx_buffer_create_info){
-        .usage              = lgx_buffer_usage_vertex,
+    shared->vertex_buffer = dgx_create_buffer(hardware, &(dgx_buffer_create_info){
+        .usage              = dgx_buffer_usage_vertex,
         .size_bytes         = sizeof(quad_vertices_array),
-        .memory_access      = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-        .memory_strategy    = lgx_memory_allocation_strategy_dedicated
+        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
+        .memory_strategy    = dgx_memory_allocation_strategy_dedicated
     });
     if (!shared->vertex_buffer) goto _fail;
-    lgx_buffer_sync_upload(shared->vertex_buffer, 0, quad_vertices_array, sizeof(quad_vertices_array));
+    dgx_buffer_sync_upload(shared->vertex_buffer, 0, quad_vertices_array, sizeof(quad_vertices_array));
 
     // Query textures limit
-    uint32_t max_textures = lgx_hardware_query_limit(hardware, lgx_hardware_limit_max_descriptor_sampled_images);
+    uint32_t max_textures = dgx_hardware_query_limit(hardware, dgx_hardware_limit_max_descriptor_sampled_images);
     shared->descriptor_textures_array_length = max_textures > INTERNAL_TEXTURES_LIMIT ? INTERNAL_TEXTURES_LIMIT : max_textures;
 
     // Copy descriptor bindings info
-    uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(lgx_descriptor_binding);
-    lgx_descriptor_binding* bindings = malloc(bindings_count * sizeof(lgx_descriptor_binding)); 
+    uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(dgx_descriptor_binding);
+    dgx_descriptor_binding* bindings = malloc(bindings_count * sizeof(dgx_descriptor_binding)); 
     if (!bindings) goto _fail; memcpy(bindings, descriptor_bindings, sizeof(descriptor_bindings));
 
     // Overwrite textures limit
@@ -2095,34 +2095,34 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
 
     // Descriptor Layout
     
-    shared->descriptor_layout = lgx_create_descriptor_layout(hardware, &(lgx_descriptor_layout_create_info){
+    shared->descriptor_layout = dgx_create_descriptor_layout(hardware, &(dgx_descriptor_layout_create_info){
         .bindings_count = bindings_count,
         .bindings       = bindings
     }); free(bindings); if (!shared->descriptor_layout) goto _fail;
 
     // Pipeline Descriptor Layout
     uint32_t layouts_count = 1 + info->additional_pipeline_descriptors_layouts_count;
-    lgx_descriptor_layout** layouts = calloc(layouts_count, sizeof(lgx_descriptor_layout*));
+    dgx_descriptor_layout** layouts = calloc(layouts_count, sizeof(dgx_descriptor_layout*));
 
     layouts[0] = shared->descriptor_layout;
     for (uint32_t i = 0; i < info->additional_pipeline_descriptors_layouts_count; i++) {
         layouts[i + 1] = info->additional_pipeline_descriptors_layouts[i];
     }
 
-    shared->pipeline_descriptor_layout = lgx_create_pipeline_descriptors_layout(hardware, &(lgx_pipeline_descriptors_layout_create_info){
+    shared->pipeline_descriptor_layout = dgx_create_pipeline_descriptors_layout(hardware, &(dgx_pipeline_descriptors_layout_create_info){
         .layouts_count  = layouts_count,
         .layouts        = layouts
     }); free(layouts); if (!shared->pipeline_descriptor_layout) goto _fail;
 
     // Sampler
-    shared->sampler = lgx_create_sampler(hardware, &(lgx_sampler_create_info){
-        .mag_filter                 = lgx_sampler_filter_linear,
-        .min_filter                 = lgx_sampler_filter_linear,
-        .mipmap_filter              = lgx_sampler_filter_linear,
+    shared->sampler = dgx_create_sampler(hardware, &(dgx_sampler_create_info){
+        .mag_filter                 = dgx_sampler_filter_linear,
+        .min_filter                 = dgx_sampler_filter_linear,
+        .mipmap_filter              = dgx_sampler_filter_linear,
 
-        .x_coord_wrapping           = lgx_sampler_wrapping_repeat,
-        .y_coord_wrapping           = lgx_sampler_wrapping_repeat,
-        .z_coord_wrapping           = lgx_sampler_wrapping_repeat,
+        .x_coord_wrapping           = dgx_sampler_wrapping_repeat,
+        .y_coord_wrapping           = dgx_sampler_wrapping_repeat,
+        .z_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .unnormalized_coordinates   = 0,
 
         .min_lod                    = 0,
@@ -2144,13 +2144,13 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
     if (!info->pipeline_vertex_shader || !info->pipeline_pixel_shader) goto _fail;
 
     // Pipeline
-    shared->pipeline = lgx_create_pipeline(shared->owning_hardware, &(lgx_pipeline_create_info){
+    shared->pipeline = dgx_create_pipeline(shared->owning_hardware, &(dgx_pipeline_create_info){
         .render_target_layout       = info->pipeline_render_target_layout,
         .descriptor_layout          = shared->pipeline_descriptor_layout,
         .vertex_layout = {
-            .attributes_count       = sizeof(vertex_attributes) / sizeof(lgx_vertex_input_attribute_info),
+            .attributes_count       = sizeof(vertex_attributes) / sizeof(dgx_vertex_input_attribute_info),
             .attributes             = vertex_attributes,
-            .bindings_count         = sizeof(vertex_bindings) / sizeof(lgx_vertex_input_binding_info),
+            .bindings_count         = sizeof(vertex_bindings) / sizeof(dgx_vertex_input_binding_info),
             .bindings               = vertex_bindings,
         },
         .shader_stages = {
@@ -2158,19 +2158,19 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
             .pixel                  = info->pipeline_pixel_shader
         },
         .input_assembly = {
-            .topology               = lgx_primitive_topology_triangle_strip
+            .topology               = dgx_primitive_topology_triangle_strip
         },
         .rasterizer = {
             .scissor_enable         = 0,
             .depth_clamp_enable     = 0,
-            .fill_mode              = lgx_fill_mode_solid,
-            .cull_mode              = lgx_cull_mode_none
+            .fill_mode              = dgx_fill_mode_solid,
+            .cull_mode              = dgx_cull_mode_none
         },
         .blend = {
             .blend_enable           = 1,
-            .blend_op               = lgx_blend_op_add,
-            .src_factor             = lgx_blend_factor_src_alpha,
-            .dst_factor             = lgx_blend_factor_one_minus_src_alpha,
+            .blend_op               = dgx_blend_op_add,
+            .src_factor             = dgx_blend_factor_src_alpha,
+            .dst_factor             = dgx_blend_factor_one_minus_src_alpha,
         },
         .depth_stencil = {
             .depth_test_enable      = 0,
@@ -2182,18 +2182,18 @@ lui_shared* lui_create_shared(lgx_hardware* hardware, const lui_shared_create_in
     return shared;
 
 _fail:
-    lui_free_shared(shared);
+    dui_free_shared(shared);
     return NULL;
 }
 
-void lui_free_shared(lui_shared* shared) {
+void dui_free_shared(dui_shared* shared) {
     if (!shared) return;
-    lgx_free_buffer(shared->vertex_buffer);
-    lgx_free_sampler(shared->sampler);
-    lgx_free_pipeline(shared->pipeline);
-    lgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
-    lgx_free_descriptor_layout(shared->descriptor_layout);
-    lgx_free_buffer(shared->glyph_buffer);
+    dgx_free_buffer(shared->vertex_buffer);
+    dgx_free_sampler(shared->sampler);
+    dgx_free_pipeline(shared->pipeline);
+    dgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
+    dgx_free_descriptor_layout(shared->descriptor_layout);
+    dgx_free_buffer(shared->glyph_buffer);
     lpr_free_partitioner(shared->glyph_buffer_partitioner);
     free(shared);
 }
@@ -2203,129 +2203,129 @@ void lui_free_shared(lui_shared* shared) {
 
 typedef struct single_frame {
     uint32_t                    instances_to_render;
-    lgx_buffer*                 parameters_buffer;
-    lgx_buffer*                 instances_buffer;
-    lgx_buffer*                 draw_items_buffer;
-    lgx_buffer*                 clipboxes_buffer;
-    lgx_descriptor*             descriptor;
+    dgx_buffer*                 parameters_buffer;
+    dgx_buffer*                 instances_buffer;
+    dgx_buffer*                 draw_items_buffer;
+    dgx_buffer*                 clipboxes_buffer;
+    dgx_descriptor*             descriptor;
     int                         bound_1_recent;
-    lgx_texture**               descriptor_bound_textures_1;
-    lgx_texture**               descriptor_bound_textures_2;
+    dgx_texture**               descriptor_bound_textures_1;
+    dgx_texture**               descriptor_bound_textures_2;
 } single_frame;
 
-struct lui_frames {
-    lui_shared*                 owning_shared;
-    lgx_descriptor_allocator*   descriptor_allocator;
+struct dui_frames {
+    dui_shared*                 owning_shared;
+    dgx_descriptor_allocator*   descriptor_allocator;
     uint32_t                    frames_count;
     single_frame*               frames;
 };
 
-void frame_descriptor_bind_buffers_and_sampler(lgx_hardware* hardware, lui_shared* shared, single_frame* frame) {
-    lgx_descriptor_write_info           writes[6];
-    lgx_descriptor_buffer_write_info    binfos[5];
-    lgx_descriptor_sampler_write_info   sinfos[1];
+void frame_descriptor_bind_buffers_and_sampler(dgx_hardware* hardware, dui_shared* shared, single_frame* frame) {
+    dgx_descriptor_write_info           writes[6];
+    dgx_descriptor_buffer_write_info    binfos[5];
+    dgx_descriptor_sampler_write_info   sinfos[1];
 
-    binfos[0] = (lgx_descriptor_buffer_write_info){
+    binfos[0] = (dgx_descriptor_buffer_write_info){
         .buffer = frame->parameters_buffer,
         .offset = 0,
-        .length = lgx_buffer_get_size_bytes(frame->parameters_buffer)
+        .length = dgx_buffer_get_size_bytes(frame->parameters_buffer)
     };
 
-    binfos[1] = (lgx_descriptor_buffer_write_info){
+    binfos[1] = (dgx_descriptor_buffer_write_info){
         .buffer = frame->instances_buffer,
         .offset = 0,
-        .length = lgx_buffer_get_size_bytes(frame->instances_buffer)
+        .length = dgx_buffer_get_size_bytes(frame->instances_buffer)
     };
 
-    binfos[2] = (lgx_descriptor_buffer_write_info){
+    binfos[2] = (dgx_descriptor_buffer_write_info){
         .buffer = frame->draw_items_buffer,
         .offset = 0,
-        .length = lgx_buffer_get_size_bytes(frame->draw_items_buffer)
+        .length = dgx_buffer_get_size_bytes(frame->draw_items_buffer)
     };
 
-    binfos[3] = (lgx_descriptor_buffer_write_info){
+    binfos[3] = (dgx_descriptor_buffer_write_info){
         .buffer = shared->glyph_buffer,
         .offset = 0,
-        .length = lgx_buffer_get_size_bytes(shared->glyph_buffer)
+        .length = dgx_buffer_get_size_bytes(shared->glyph_buffer)
     };
 
-    binfos[4] = (lgx_descriptor_buffer_write_info){
+    binfos[4] = (dgx_descriptor_buffer_write_info){
         .buffer = frame->clipboxes_buffer,
         .offset = 0,
-        .length = lgx_buffer_get_size_bytes(frame->clipboxes_buffer)
+        .length = dgx_buffer_get_size_bytes(frame->clipboxes_buffer)
     };
 
-    sinfos[0] = (lgx_descriptor_sampler_write_info){
+    sinfos[0] = (dgx_descriptor_sampler_write_info){
         .sampler = shared->sampler
     };
 
-    writes[0] = (lgx_descriptor_write_info){
+    writes[0] = (dgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_uniform_buffer,
+        .binding_type           = dgx_descriptor_binding_type_uniform_buffer,
         .binding_index          = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[0]
     };
 
-    writes[1] = (lgx_descriptor_write_info){
+    writes[1] = (dgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
         .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[1]
     };
 
-    writes[2] = (lgx_descriptor_write_info){
+    writes[2] = (dgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
         .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[2]
     };
 
-    writes[3] = (lgx_descriptor_write_info){
+    writes[3] = (dgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
         .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[3]
     };
     
-    writes[4] = (lgx_descriptor_write_info){
+    writes[4] = (dgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_storage_buffer,
+        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
         .binding_index          = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_buffers      = &binfos[4]
     };
 
-    writes[5] = (lgx_descriptor_write_info){
+    writes[5] = (dgx_descriptor_write_info){
         .descriptor             = frame->descriptor,
-        .binding_type           = lgx_descriptor_binding_type_sampler,
+        .binding_type           = dgx_descriptor_binding_type_sampler,
         .binding_index          = SAMPLER_DESCRIPTOR_BINDING,
         .array_element_index    = 0,
         .array_elements_count   = 1,
         .infos.for_samplers     = &sinfos[0]
     };
     
-    lgx_descriptors_write(hardware, 6, writes);
+    dgx_descriptors_write(hardware, 6, writes);
 }
 
-lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_info* info) {
-    lui_shared* shared = info->shared;
+dui_frames* dui_create_frames(dgx_hardware* hardware, const dui_frames_create_info* info) {
+    dui_shared* shared = info->shared;
 
-    lui_frames* frames = calloc(1, sizeof(lui_frames)); 
+    dui_frames* frames = calloc(1, sizeof(dui_frames)); 
     if (!frames) return NULL;
     
     frames->owning_shared = shared;
     
     // create descriptor allocator
-    frames->descriptor_allocator = lgx_create_descriptor_allocator(hardware, &(lgx_descriptor_allocator_create_info){
+    frames->descriptor_allocator = dgx_create_descriptor_allocator(hardware, &(dgx_descriptor_allocator_create_info){
         .descriptor_layout          = shared->descriptor_layout,
         .max_descriptors_allocated  = info->frames_in_flight_count
     }); if (!frames->descriptor_allocator) goto _fail;
@@ -2339,13 +2339,13 @@ lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_in
     for (uint32_t i = 0; i < info->frames_in_flight_count; i++) {
         single_frame* frame = &frames->frames[i];
         *frame = (single_frame){
-            .descriptor                  = lgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
+            .descriptor                  = dgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
             .parameters_buffer           = create_ubo (hardware, sizeof(gpu_parameters)),
             .instances_buffer            = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
             .draw_items_buffer           = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
             .clipboxes_buffer            = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE),
-            .descriptor_bound_textures_1 = calloc(shared->descriptor_textures_array_length, sizeof(lgx_texture*)),
-            .descriptor_bound_textures_2 = calloc(shared->descriptor_textures_array_length, sizeof(lgx_texture*))
+            .descriptor_bound_textures_1 = calloc(shared->descriptor_textures_array_length, sizeof(dgx_texture*)),
+            .descriptor_bound_textures_2 = calloc(shared->descriptor_textures_array_length, sizeof(dgx_texture*))
         };
 
         if (!frame->descriptor || !frame->parameters_buffer || !frame->instances_buffer || !frame->draw_items_buffer || 
@@ -2356,25 +2356,25 @@ lui_frames* lui_create_frames(lgx_hardware* hardware, const lui_frames_create_in
     return frames;
 
 _fail:
-    lui_free_frames(frames);
+    dui_free_frames(frames);
     return NULL;
 }
 
-void lui_free_frames(lui_frames* frames) {
+void dui_free_frames(dui_frames* frames) {
     if (!frames) return;
 
     for (uint32_t i = 0; i < frames->frames_count; i++) {
         single_frame* frame = &frames->frames[i];
-        lgx_free_buffer(frame->parameters_buffer);
-        lgx_free_buffer(frame->instances_buffer);
-        lgx_free_buffer(frame->draw_items_buffer);
-        lgx_free_buffer(frame->clipboxes_buffer);
+        dgx_free_buffer(frame->parameters_buffer);
+        dgx_free_buffer(frame->instances_buffer);
+        dgx_free_buffer(frame->draw_items_buffer);
+        dgx_free_buffer(frame->clipboxes_buffer);
         free(frame->descriptor_bound_textures_1);
         free(frame->descriptor_bound_textures_2);
     }
 
     // all per-frame descriptors freed with allocator
-    lgx_free_descriptor_allocator(frames->descriptor_allocator);
+    dgx_free_descriptor_allocator(frames->descriptor_allocator);
     free(frames->frames);
 
     free(frames);
@@ -2384,26 +2384,26 @@ void lui_free_frames(lui_frames* frames) {
 // Rendering Functions
 
 typedef struct texture_writes_dynamic_array {
-    lgx_descriptor*                             descriptor;
+    dgx_descriptor*                             descriptor;
     size_t                                      capacity;
     size_t                                      position;
-    lgx_descriptor_write_info*                  writes;
-    lgx_descriptor_sampled_texture_write_info*  infos;
+    dgx_descriptor_write_info*                  writes;
+    dgx_descriptor_sampled_texture_write_info*  infos;
 } texture_writes_dynamic_array;
 
 static void free_texture_writes_dynamic_array(texture_writes_dynamic_array writes) {
     free(writes.writes); free(writes.infos);
 }
 
-static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writes, lgx_texture* texture, uint32_t slot) {
+static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writes, dgx_texture* texture, uint32_t slot) {
     if (writes->position + 1 > writes->capacity) {
         size_t new_capacity = writes->capacity ? writes->capacity * 2 : 16;
 
-        lgx_descriptor_write_info* new_writes 
-            = realloc(writes->writes, new_capacity * sizeof(lgx_descriptor_write_info));
+        dgx_descriptor_write_info* new_writes 
+            = realloc(writes->writes, new_capacity * sizeof(dgx_descriptor_write_info));
 
-        lgx_descriptor_sampled_texture_write_info* new_infos 
-            = realloc(writes->infos,  new_capacity * sizeof(lgx_descriptor_sampled_texture_write_info));
+        dgx_descriptor_sampled_texture_write_info* new_infos 
+            = realloc(writes->infos,  new_capacity * sizeof(dgx_descriptor_sampled_texture_write_info));
 
         if (!new_writes || !new_infos) {
             free(new_writes); free(new_infos);
@@ -2415,16 +2415,16 @@ static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writ
         writes->infos    = new_infos;
     }
 
-    writes->writes[writes->position] = (lgx_descriptor_write_info){
+    writes->writes[writes->position] = (dgx_descriptor_write_info){
         .descriptor                 = writes->descriptor,
-        .binding_type               = lgx_descriptor_binding_type_sampled_texture,
+        .binding_type               = dgx_descriptor_binding_type_sampled_texture,
         .binding_index              = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
         .array_element_index        = slot,
         .array_elements_count       = 1,
         // cannot link info now, since infos can be reallocated
     };
 
-    writes->infos[writes->position] = (lgx_descriptor_sampled_texture_write_info){
+    writes->infos[writes->position] = (dgx_descriptor_sampled_texture_write_info){
         .sampled_texture = texture
     };
 
@@ -2433,16 +2433,16 @@ static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writ
 
 static int clear_write
 (uint32_t texture_slots_count, single_frame* frame) {
-    lgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
+    dgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
     for (uint32_t i = 0; i < texture_slots_count; i++) write[i] = NULL;
 }
 
 static int push_texture
-(texture_writes_dynamic_array* writes, uint32_t texture_slots_count, single_frame* frame, lgx_texture* texture, int is_font) {
+(texture_writes_dynamic_array* writes, uint32_t texture_slots_count, single_frame* frame, dgx_texture* texture, int is_font) {
     if (texture == NULL) return 0;
 
-    lgx_texture** recent = frame->bound_1_recent ? frame->descriptor_bound_textures_1 : frame->descriptor_bound_textures_2;
-    lgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
+    dgx_texture** recent = frame->bound_1_recent ? frame->descriptor_bound_textures_1 : frame->descriptor_bound_textures_2;
+    dgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
 
     // start search at module of texture pointer,
     // bit shift because pointers may be aligned, will often lead to same slot
@@ -2474,20 +2474,20 @@ static int push_texture
     return 0;
 }
 
-void lui_upload_cache(
-    lui_cache*          cache,
-    lui_shared*         shared,
-    lui_frames*         frames,
+void dui_upload_cache(
+    dui_cache*          cache,
+    dui_shared*         shared,
+    dui_frames*         frames,
     uint32_t            frame_idx,
-    lgx_command_list*   command_list,
-    lgx_hardware_queue* queue_for_uploads,
-    lgx_staging_memory* staging_memory,
+    dgx_command_list*   command_list,
+    dgx_hardware_queue* queue_for_uploads,
+    dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    lgx_cpu_signal*     upload_finished_cpu,
-    lgx_gpu_signal*     upload_finished_gpu
+    dgx_cpu_signal*     upload_finished_cpu,
+    dgx_gpu_signal*     upload_finished_gpu
 ) {
-    lgx_hardware* hardware = shared->owning_hardware;
+    dgx_hardware* hardware = shared->owning_hardware;
     single_frame* frame    = &frames->frames[frame_idx];
 
     // Prepare render parameters uniform
@@ -2508,7 +2508,7 @@ void lui_upload_cache(
 
     size_t upload_regions_count    = cache->text_requests_count + 4;
     size_t upload_regions_position = 0;
-    lgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(lgx_buffer_multi_upload_region));
+    dgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(dgx_buffer_multi_upload_region));
     if (!upload_regions) goto _cleanup;
 
     // Prepare partitions for text draws
@@ -2548,7 +2548,7 @@ void lui_upload_cache(
         lpr_partition*            prt = aux->owned_glyph_buffer_partition;
         if (!prt) continue; // text empty, nothing to upload
 
-        upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+        upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
             .buffer         = shared->glyph_buffer,
             .buffer_offset  = lpr_partition_query_offset(prt),
             .source_data    = req.glyphs,
@@ -2578,9 +2578,9 @@ void lui_upload_cache(
         draw_request req = cache->draw_requests[i];
 
         if (req.is_box_not_text) {
-            int texture_index = 0; lgx_uv_2d uv;
+            int texture_index = 0; dgx_uv_2d uv;
             if (req.box_data.image) {
-                lgx_texture* texture; if (lui_injection_query_image(req.box_data.image, &texture, &uv)) {
+                dgx_texture* texture; if (dui_injection_query_image(req.box_data.image, &texture, &uv)) {
                     texture_index = push_texture(
                         &texture_writes_array, shared->descriptor_textures_array_length, 
                         frame, texture, 0
@@ -2608,8 +2608,8 @@ void lui_upload_cache(
             lpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
 
-            lui_text_data text_data = *(const lui_text_data*)get_node_data(slot->key.node, slot->key.instance);
-            lfont* font; if (!lui_injection_query_font(text_data.font, &font)) continue;
+            dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
+            lfont* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
 
             int texture_index = push_texture(
                 &texture_writes_array, shared->descriptor_textures_array_length, 
@@ -2620,7 +2620,7 @@ void lui_upload_cache(
                 .transform      = req.transform,
                 .clipbox_index  = req.clip_index,
                 .texture_index  = texture_index,
-                .atlas_position = (lgx_uv_2d){0, 0, 1, 1},
+                .atlas_position = (dgx_uv_2d){0, 0, 1, 1},
                 .r              = (float)text_data.tint.r / 255.0f,
                 .g              = (float)text_data.tint.g / 255.0f,
                 .b              = (float)text_data.tint.b / 255.0f,
@@ -2676,22 +2676,22 @@ void lui_upload_cache(
     int rebind = 0;
 
     // Items buffer
-    if (lgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
-        lgx_free_buffer(frame->draw_items_buffer);
+    if (dgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
+        dgx_free_buffer(frame->draw_items_buffer);
         frame->draw_items_buffer = create_ssbo(hardware, items_bytes);
         rebind = 1;
     }
 
     // Instanced buffer
-    if (lgx_buffer_get_size_bytes(frame->instances_buffer) < instances_bytes) {
-        lgx_free_buffer(frame->instances_buffer);
+    if (dgx_buffer_get_size_bytes(frame->instances_buffer) < instances_bytes) {
+        dgx_free_buffer(frame->instances_buffer);
         frame->instances_buffer = create_ssbo(hardware, instances_bytes);
         rebind = 1;
     }
 
     // Clipboxes buffer
-    if (lgx_buffer_get_size_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
-        lgx_free_buffer(frame->clipboxes_buffer);
+    if (dgx_buffer_get_size_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+        dgx_free_buffer(frame->clipboxes_buffer);
         frame->clipboxes_buffer = create_ssbo(hardware, clipboxes_bytes);
         rebind = 1;
     }
@@ -2702,28 +2702,28 @@ void lui_upload_cache(
 
     // Upload
 
-    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
         .buffer         = frame->parameters_buffer,
         .buffer_offset  = 0,
         .source_data    = &parameters,
         .source_bytes   = sizeof(gpu_parameters)
     };
 
-    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
         .buffer         = frame->draw_items_buffer,
         .buffer_offset  = 0,
         .source_data    = items,
         .source_bytes   = items_count * sizeof(gpu_draw_item)
     };
 
-    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
         .buffer         = frame->clipboxes_buffer,
         .buffer_offset  = 0,
         .source_data    = clipboxes,
         .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
     };
 
-    upload_regions[upload_regions_position++] = (lgx_buffer_multi_upload_region){
+    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
         .buffer         = frame->instances_buffer,
         .buffer_offset  = 0,
         .source_data    = instances,
@@ -2731,7 +2731,7 @@ void lui_upload_cache(
     };
 
     // Write all buffers
-    lgx_buffer_multi_upload(
+    dgx_buffer_multi_upload(
         upload_regions,
         upload_regions_position,
         command_list, 
@@ -2750,7 +2750,7 @@ void lui_upload_cache(
     }
 
     // Update textures descriptor    
-    lgx_descriptors_write(
+    dgx_descriptors_write(
         hardware, texture_writes_array.position, texture_writes_array.writes
     );
 
@@ -2769,30 +2769,30 @@ _cleanup:
     frame->bound_1_recent = !frame->bound_1_recent;
 }
 
-void lui_gcmd_render(
-    lgx_command_list*   target,
-    lui_frames*         frames,
+void dui_gcmd_render(
+    dgx_command_list*   target,
+    dui_frames*         frames,
     uint32_t            frame_idx
 ) {
     single_frame* frame = &frames->frames[frame_idx % frames->frames_count];
     if (frame->instances_to_render) {
-        lgx_gcmd_bind_graphics_pipeline(target, frames->owning_shared->pipeline);
-        lgx_gcmd_bind_graphics_pipeline_descriptors(
+        dgx_gcmd_bind_graphics_pipeline(target, frames->owning_shared->pipeline);
+        dgx_gcmd_bind_graphics_pipeline_descriptors(
             target, 
             frames->owning_shared->pipeline_descriptor_layout, 
             0, 1, &frame->descriptor
         );
-        lgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frames->owning_shared->vertex_buffer, 0, 0);
-        lgx_gcmd_draw_vertices(target, 4, 0, frame->instances_to_render, 0);
+        dgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frames->owning_shared->vertex_buffer, 0, 0);
+        dgx_gcmd_draw_vertices(target, 4, 0, frame->instances_to_render, 0);
     }
 }
 
 // ===========================
 // Text layout generation
 
-void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
-    const lui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
-    lfont* font; if (!lui_injection_query_font(tdata->font, &font)) return;
+void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
+    const dui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
+    lfont* font; if (!dui_injection_query_font(tdata->font, &font)) return;
     const char* text = tdata->text;
 
     // If text empty or font invalid
@@ -2887,4 +2887,4 @@ void create_text_request(lui_cache* cache, cache_slot* slot, text_type_auxilary_
     text_request_cache_push(cache, req);
 }
 
-#endif // LIGHT_USER_INTERFACE_IMPL
+#endif // DEMIGURG_USER_INTERFACE_IMPL
