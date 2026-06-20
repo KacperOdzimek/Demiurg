@@ -113,6 +113,23 @@ float               font_ascent;
 float               font_descent;
 float               font_line_gap;
 
+// Helper, flips texture in Y
+void flip_y(unsigned char *data, int w, int h) {
+    int row_size = w;
+
+    unsigned char *temp_row = (unsigned char*)malloc(row_size);
+    for (int y = 0; y < h / 2; y++) {
+        unsigned char *row_top    = data + y * row_size;
+        unsigned char *row_bottom = data + (h - 1 - y) * row_size;
+
+        memcpy(temp_row, row_top, row_size);
+        memcpy(row_top, row_bottom, row_size);
+        memcpy(row_bottom, temp_row, row_size);
+    }
+
+    free(temp_row);
+}
+
 // Code
 
 int generate();
@@ -237,6 +254,9 @@ int generate() {
             valid_glyphs++;
             continue;
         }
+
+        // Flip texture
+        flip_y(egd->sdf_texture, egd->sdf_width, egd->sdf_height);
 
         // Generate font entry
 
