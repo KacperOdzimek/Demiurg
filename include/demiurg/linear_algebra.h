@@ -11,7 +11,7 @@ Code info:
 
 ----------------------------------------------------------------
 Usage:
-- does not require building implementation unlike most demigurg libraries
+- does not require building implementation unlike most demiurg libraries
 - read through what available, include and use
 
 ----------------------------------------------------------------
@@ -19,8 +19,8 @@ Notes:
 - SIMD can be implemented
 */
 
-#ifndef DEMIGURG_LINEAR_ALGEBRA_H
-#define DEMIGURG_LINEAR_ALGEBRA_H
+#ifndef DEMIURG_LINEAR_ALGEBRA_H
+#define DEMIURG_LINEAR_ALGEBRA_H
 
 #include <math.h>
 #include <string.h>
@@ -801,4 +801,4 @@ static inline dla_mat4x4 dla_mat4x4_from_mat2x2(dla_mat2x2 a) {
     return dla_mat4x4_from_mat3x3(dla_mat3x3_from_mat2x2(a));
 }
  
-#endif // DEMIGURG_LINEAR_ALGEBRA_H
+#endif // DEMIURG_LINEAR_ALGEBRA_H

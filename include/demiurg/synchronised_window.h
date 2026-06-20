@@ -7,7 +7,7 @@ The user provides a `dswin_synchronised_window_frame_callback`, called once per 
 ----------------------------------------------------------------
 Code info:
 - dswin prefix
-- DEMIGURG_SYNCHRONISED_WINDOW_IMPL macro to build
+- DEMIURG_SYNCHRONISED_WINDOW_IMPL macro to build
 - graphics.h dependant
 
 ----------------------------------------------------------------
@@ -41,10 +41,10 @@ Notes
 - Callback runs on the enter calling thread
 */
 
-#ifndef DEMIGURG_SYNCHRONISED_WINDOW_H
-#define DEMIGURG_SYNCHRONISED_WINDOW_H
+#ifndef DEMIURG_SYNCHRONISED_WINDOW_H
+#define DEMIURG_SYNCHRONISED_WINDOW_H
 
-#include "demigurg/graphics.h"
+#include "graphics.h"
 
 typedef struct dswin_synchronised_window dswin_synchronised_window;
 
@@ -77,9 +77,9 @@ void dswin_synchronised_window_enter(dswin_synchronised_window*, int do_lock);
 // Get basic window out of synchronised window
 dgx_window* dswin_synchronised_window_get_window(dswin_synchronised_window*);
 
-#endif // DEMIGURG_SYNCHRONISED_WINDOW_H
+#endif // DEMIURG_SYNCHRONISED_WINDOW_H
 
-#ifdef DEMIGURG_SYNCHRONISED_WINDOW_IMPL
+#ifdef DEMIURG_SYNCHRONISED_WINDOW_IMPL
 
 /*
     Implementation note:
@@ -262,4 +262,4 @@ dgx_window* dswin_synchronised_window_get_window(dswin_synchronised_window* sync
     return synchronised_window->window;
 }
 
-#endif // DEMIGURG_SYNCHRONISED_WINDOW_IMPL
+#endif // DEMIURG_SYNCHRONISED_WINDOW_IMPL

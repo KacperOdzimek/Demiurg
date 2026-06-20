@@ -6,7 +6,7 @@ This file provides partitioner object, allowing performant memory partitioning, 
 ----------------------------------------------------------------
 Code info:
 - dpr prefix
-- DEMIGURG_PARTITIONER_IMPL macro to build
+- DEMIURG_PARTITIONER_IMPL macro to build
 
 ----------------------------------------------------------------
 Usage
@@ -18,8 +18,8 @@ Usage
 - Partitions are partitioner owned - erasing partitioner frees all partitions.
 */
 
-#ifndef DEMIGURG_PARTITIONER_H
-#define DEMIGURG_PARTITIONER_H
+#ifndef DEMIURG_PARTITIONER_H
+#define DEMIURG_PARTITIONER_H
 
 #include <stddef.h>
 
@@ -49,7 +49,7 @@ size_t dpr_partition_query_size  (dpr_partition*);
 
 #endif
 
-#ifdef DEMIGURG_PARTITIONER_IMPL
+#ifdef DEMIURG_PARTITIONER_IMPL
 
 #include <stdlib.h>
 #include <stdint.h>

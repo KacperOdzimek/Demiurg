@@ -27,8 +27,8 @@ Deserialization:
 - Free memory
 */
 
-#ifndef DEMIGURG_SERIALIZER_H
-#define DEMIGURG_SERIALIZER_H
+#ifndef DEMIURG_SERIALIZER_H
+#define DEMIURG_SERIALIZER_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -187,4 +187,4 @@ static inline float lse_de_float32(lse_de_buffer* buf) {
     float v; memcpy(&v, &u, sizeof(uint32_t)); return v;
 }
 
-#endif // DEMIGURG_SERIALIZER_H
+#endif // DEMIURG_SERIALIZER_H

@@ -7,15 +7,15 @@ This interface allows user to write api independent low-level graphics systems.
 ----------------------------------------------------------------
 Code info:
 - dgx prefix
-- DEMIGURG_GRAPHICS_IMPL macro to build
+- DEMIURG_GRAPHICS_IMPL macro to build
 - user must select graphics api at build using one of the macros below:
-    - DEMIGURG_GRAPHICS_VULKAN
-- add DEMIGURG_GRAPHICS_VALIDATE macro-flag pre implementation to enable validation and error logging
+    - DEMIURG_GRAPHICS_VULKAN
+- add DEMIURG_GRAPHICS_VALIDATE macro-flag pre implementation to enable validation and error logging
 
 ----------------------------------------------------------------
 Depedencies:
 - Each of native APIs have they own compilation requirements:
-- DEMIGURG_GRAPHICS_VULKAN: - (todo)
+- DEMIURG_GRAPHICS_VULKAN: - (todo)
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
@@ -26,13 +26,13 @@ Possible Optimizations and TODOs:
 - (Vulkan) non blocking swapchain recreation, render layout preservation
 */
 
-#ifndef DEMIGURG_GRAPHICS_H
-#define DEMIGURG_GRAPHICS_H
+#ifndef DEMIURG_GRAPHICS_H
+#define DEMIURG_GRAPHICS_H
 
 // ==========================
 // Compile Flags
 
-// #define DEMIGURG_GRAPHICS_VALIDATE - enables validation layers
+// #define DEMIURG_GRAPHICS_VALIDATE - enables validation layers
 
 // ==========================
 // Depedencies
@@ -915,10 +915,10 @@ void dgx_gcmd_set_viewport(
 
 #endif
 
-#ifdef DEMIGURG_GRAPHICS_IMPL
+#ifdef DEMIURG_GRAPHICS_IMPL
 
 // Vulkan Implementation
-#ifdef DEMIGURG_GRAPHICS_VULKAN
+#ifdef DEMIURG_GRAPHICS_VULKAN
 
 #define GLFW_INCLUDE_VULKAN
 #include <vulkan/vulkan.h>
@@ -2684,7 +2684,7 @@ const uint32_t  instance_extensions_count = 0;
 
 // Validation Layers
 
-#ifdef DEMIGURG_GRAPHICS_VALIDATE
+#ifdef DEMIURG_GRAPHICS_VALIDATE
     static const char* validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
     const char**    config_validation_layers_array = &validation_layers[0];
     const uint32_t  config_validation_layers_count = 1;
@@ -4962,6 +4962,6 @@ void dgx_window_get_size(dgx_window* window, uint32_t* width, uint32_t* height) 
 }
 
 #else
-    #error No native api for demigurg graphics set!
-#endif // DEMIGURG_GRAPHICS_VULKAN
-#endif // DEMIGURG_GRAPHICS_IMPL
+    #error No native api for demiurg graphics set!
+#endif // DEMIURG_GRAPHICS_VULKAN
+#endif // DEMIURG_GRAPHICS_IMPL

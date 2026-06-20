@@ -8,8 +8,8 @@
 !.gitattributes
 
 !include/
-!include/demigurg/
-!include/demigurg/**
+!include/demiurg/
+!include/demiurg/**
 
 !utility
 !utility/**

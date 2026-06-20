@@ -7,7 +7,7 @@ This file provides simple system to render basic shapes: lines, triangles, recta
 ----------------------------------------------------------------
 Code info:
 - dshp prefix
-- DEMIGURG_SHAPES_IMPL macro to build
+- DEMIURG_SHAPES_IMPL macro to build
 - graphics.h dependant
 - linear_algebra.h dependant
 
@@ -28,11 +28,11 @@ Notes
     struct gpu_triangle_render_info, but I am not going to change that now, it is 3 am.
 */
 
-#ifndef DEMIGURG_SHAPES_H
-#define DEMIGURG_SHAPES_H
+#ifndef DEMIURG_SHAPES_H
+#define DEMIURG_SHAPES_H
 
-#include "demigurg/graphics.h"
-#include "demigurg/linear_algebra.h"
+#include "graphics.h"
+#include "linear_algebra.h"
 
 // Shapes Rendering Shared Object
 
@@ -128,9 +128,9 @@ void dshp_circle(
     lla_vec2 center, float radius
 );
 
-#endif // DEMIGURG_SHAPES_H
+#endif // DEMIURG_SHAPES_H
 
-#ifdef DEMIGURG_SHAPES_IMPL
+#ifdef DEMIURG_SHAPES_IMPL
 
 #include <stdlib.h>
 #include <string.h>
@@ -744,4 +744,4 @@ void dshp_circle(
     );
 }
 
-#endif // DEMIGURG_SHAPES_IMPL
+#endif // DEMIURG_SHAPES_IMPL

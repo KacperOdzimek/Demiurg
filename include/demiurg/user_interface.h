@@ -6,7 +6,7 @@ This file implements dui ui system.
 ----------------------------------------------------------------
 Code info:
 - dui prefix
-- DEMIGURG_USER_INTERFACE_IMPL macro to build
+- DEMIURG_USER_INTERFACE_IMPL macro to build
 - partitioner.h dependent
 - linear_algebra.h dependent
 - graphics.h dependent
@@ -21,17 +21,17 @@ Usage: See dedicated documentation
     Depedencies
 */
 
-#include "demigurg/partitioner.h"
-#include "demigurg/linear_algebra.h"
-#include "demigurg/graphics.h"
-#include "demigurg/font.h"
+#include "partitioner.h"
+#include "linear_algebra.h"
+#include "graphics.h"
+#include "font.h"
 
 /*
     Implementation Injections
     Define in same file as user interface implementation
 */
 
-#ifdef DEMIGURG_USER_INTERFACE_IMPL
+#ifdef DEMIURG_USER_INTERFACE_IMPL
     typedef struct dui_length     dui_length;
     typedef struct dui_text_data  dui_text_data;
     typedef struct dui_box_data   dui_box_data;
@@ -39,14 +39,14 @@ Usage: See dedicated documentation
     // returns non-zero at success (if returned is valid pointer)
     int dui_injection_query_font (const char* font,  dfont**       font_out);
     int dui_injection_query_image(const char* image, dgx_texture** texture_out, dgx_uv_2d* uv_out);
-#endif // DEMIGURG_USER_INTERFACE_IMPL
+#endif // DEMIURG_USER_INTERFACE_IMPL
 
 /*
     Header
 */
 
-#ifndef DEMIGURG_USER_INTERFACE_H
-#define DEMIGURG_USER_INTERFACE_H
+#ifndef DEMIURG_USER_INTERFACE_H
+#define DEMIURG_USER_INTERFACE_H
 
 // ===========================
 // Forwards
@@ -445,9 +445,9 @@ static inline dui_color dui_hex(const char* hex) {
     (sizeof(s) > 8 ? LUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
 }
 
-#endif // DEMIGURG_USER_INTERFACE_H
+#endif // DEMIURG_USER_INTERFACE_H
 
-#ifdef DEMIGURG_USER_INTERFACE_IMPL
+#ifdef DEMIURG_USER_INTERFACE_IMPL
 
 // Implementation Notes:
 // 1 - last_frame_used_in_render values reference
@@ -2887,4 +2887,4 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     text_request_cache_push(cache, req);
 }
 
-#endif // DEMIGURG_USER_INTERFACE_IMPL
+#endif // DEMIURG_USER_INTERFACE_IMPL

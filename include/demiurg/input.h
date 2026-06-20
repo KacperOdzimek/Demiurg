@@ -7,22 +7,22 @@ This file implements input system, allowing user to read input from mouses, keyb
 ----------------------------------------------------------------
 Code info:
 - din prefix
-- DEMIGURG_INPUT_IMPL macro to build
+- DEMIURG_INPUT_IMPL macro to build
 - User must pick target OS system by using of the macros below:
-    - DEMIGURG_INPUT_LINUX
+    - DEMIURG_INPUT_LINUX
 
 ----------------------------------------------------------------
 Depedencies:
 - each OS have own compilation requirements:
-    - DEMIGURG_INPUT_LINUX
+    - DEMIURG_INPUT_LINUX
         - libevdev library installed
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
 */
 
-#ifndef DEMIGURG_INPUT_H
-#define DEMIGURG_INPUT_H
+#ifndef DEMIURG_INPUT_H
+#define DEMIURG_INPUT_H
 
 #include <stddef.h>
 
@@ -205,10 +205,10 @@ typedef struct din_input_state {
     float axes   [din_axis_count];
 } din_input_state;
 
-#endif // DEMIGURG_INPUT_H
+#endif // DEMIURG_INPUT_H
 
-#ifdef DEMIGURG_INPUT_IMPL
-#ifdef DEMIGURG_INPUT_LINUX
+#ifdef DEMIURG_INPUT_IMPL
+#ifdef DEMIURG_INPUT_LINUX
 
 /*
     The caller needs read access to /dev/input/event* devices.
@@ -679,6 +679,6 @@ void din_slot_query_input_state(din_slot* slot, din_input_state* st) {
     }
 }
 #else
-    #error No OS info provided for demigurg input!
+    #error No OS info provided for demiurg input!
 #endif // OS IF
-#endif // DEMIGURG_INPUT_IMPL
+#endif // DEMIURG_INPUT_IMPL

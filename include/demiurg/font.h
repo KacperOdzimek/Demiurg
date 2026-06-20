@@ -3,25 +3,25 @@
 Contents:
 
 This file provides a `font` object, which consists of glyph SDF texture atlas and glyph metrics.
-The font object is created from a demigurg-font-file file, which can be generated out of other font formats, using
-    utility/font_generator/demigurg_font_file_conv.c program.
+The font object is created from a demiurg-font-file file, which can be generated out of other font formats, using
+    utility/font_generator/demiurg_font_file_conv.c program.
 
 ----------------------------------------------------------------
 Code info:
 - dfont prefix
-- DEMIGURG_FONT_IMPL macro to build
+- DEMIURG_FONT_IMPL macro to build
 - graphics.h dependant
 
 ----------------------------------------------------------------
 Usage:
-- Create font object, with a valid demigurg-font-file linked in create info
+- Create font object, with a valid demiurg-font-file linked in create info
 - Use get functions to query font/glyph metrics
 - dfont_get_glyph and dfont_get_kerning are O(log n) operations
 - rest of get operations are O(1)
 
 ----------------------------------------------------------------
 Notes:
-- demigurg-font-file are NOT tested against being malformed - user is trusted to provide proper input
+- demiurg-font-file are NOT tested against being malformed - user is trusted to provide proper input
 
 ----------------------------------------------------------------
 Possible Optimizations:
@@ -29,10 +29,10 @@ Possible Optimizations:
     perform O(1) array access within range - this would be faster
 */
 
-#ifndef DEMIGURG_FONT_H
-#define DEMIGURG_FONT_H
+#ifndef DEMIURG_FONT_H
+#define DEMIURG_FONT_H
 
-#include "demigurg/graphics.h"
+#include "graphics.h"
 #include <stddef.h>
 
 /*
@@ -55,8 +55,8 @@ typedef struct dfont_glyph {
 } dfont_glyph;
 
 typedef struct dfont_create_info {
-    size_t                  demigurg_font_format_file_length;
-    const unsigned char*    demigurg_font_format_file_data;
+    size_t                  demiurg_font_format_file_length;
+    const unsigned char*    demiurg_font_format_file_data;
 } dfont_create_info;
 
 typedef struct dfont dfont;
@@ -100,9 +100,9 @@ static inline int dfont_utf8_decode(const char* str, size_t itr, uint32_t* codep
     return 1;
 }
 
-#endif // DEMIGURG_FONT_H
+#endif // DEMIURG_FONT_H
 
-#ifdef DEMIGURG_FONT_IMPL
+#ifdef DEMIURG_FONT_IMPL
 
 #include <stdlib.h>
 #include <string.h>
@@ -151,7 +151,7 @@ dfont* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
     if (!font) return NULL;
     font->owning_hardware = hardware;
 
-    const unsigned char* buf = info->demigurg_font_format_file_data;
+    const unsigned char* buf = info->demiurg_font_format_file_data;
 
     #define READ_U32(target) {target = deserialize_reg_32(buf); buf += 4; } 
     #define READ_F32(target) {uint32_t as_u32; READ_U32(as_u32); memcpy(&target, &as_u32, 4);}
@@ -294,4 +294,4 @@ float dfont_get_base_line_gap(const dfont* font) {
     return font->line_gap;
 }
 
-#endif // DEMIGURG_FONT_IMPL
+#endif // DEMIURG_FONT_IMPL
