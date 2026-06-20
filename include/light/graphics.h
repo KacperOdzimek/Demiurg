@@ -2906,6 +2906,7 @@ void lgx_descriptor_allocator_free_descriptor(lgx_descriptor* descriptor) {
     );
 }
 
+
 void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_descriptor_write_info* write_infos) {
     uint32_t itr = 0; VkWriteDescriptorSet* vkwrites = tlom_alloc(&itr, writes_count * sizeof(VkWriteDescriptorSet));
 
@@ -2973,7 +2974,6 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
         NULL
     );
 }
-
 
 /* ===== descriptor_layout.c ===== */
 
