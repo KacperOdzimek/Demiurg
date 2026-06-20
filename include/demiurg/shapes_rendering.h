@@ -494,7 +494,7 @@ void dshp_upload(
     int provided_cpu_signal = upload_finished_cpu && 1;
 
     dgx_hardware*  hardware = context->contextes->owning_hardware;
-    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
+    single_frame*  frame = &context->contextes->frames[context->frame_in_flight];
 
     int v_buffer_recreated = 0;
     uint32_t v_to_copy = ensure_buffer_size_pre_upload(
@@ -584,6 +584,9 @@ void dshp_upload(
         dgx_cpu_signal_wait(upload_finished_cpu);
         dgx_free_cpu_signal(upload_finished_cpu);
     }
+
+    // Set triangles count
+    frame->triangles_to_draw = (v_copy_position / gpu_vertex_sizeof / 3);
 }
 
 void dshp_gcmd_render(
@@ -638,9 +641,6 @@ static inline void emit_triangle(
         .center_y   = rcy,
         .radius     = radius,
     };
-
-    // Emit triangle
-    frame->triangles_to_draw++;
 };
 
 void dshp_set_color(
