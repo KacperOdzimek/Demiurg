@@ -59,19 +59,19 @@ typedef struct dfont_create_info {
     const unsigned char*    demiurg_font_format_file_data;
 } dfont_create_info;
 
-typedef struct dfont dfont;
+typedef struct dfont_font dfont_font;
 
-dfont* dfont_create_font(dgx_hardware*, dfont_create_info*);
-void dfont_free_font(dfont*);
+dfont_font* dfont_create_font(dgx_hardware*, dfont_create_info*);
+void dfont_free_font(dfont_font*);
 
-dgx_texture* dfont_get_texture(const dfont*);
-dfont_glyph  dfont_get_glyph  (const dfont*, uint32_t codepoint);
-float        dfont_get_kerning(const dfont*, uint32_t left_codepoint, uint32_t right_codepoint);
+dgx_texture* dfont_get_texture(const dfont_font*);
+dfont_glyph  dfont_get_glyph  (const dfont_font*, uint32_t codepoint);
+float        dfont_get_kerning(const dfont_font*, uint32_t left_codepoint, uint32_t right_codepoint);
 
-float dfont_get_base_size    (const dfont*);
-float dfont_get_base_ascent  (const dfont*);
-float dfont_get_base_descent (const dfont*);
-float dfont_get_base_line_gap(const dfont*);
+float dfont_get_base_size    (const dfont_font*);
+float dfont_get_base_ascent  (const dfont_font*);
+float dfont_get_base_descent (const dfont_font*);
+float dfont_get_base_line_gap(const dfont_font*);
 
 // inline implementations
 
@@ -119,7 +119,7 @@ typedef struct kerning_pair_entry {
     float       advance_x;
 } kerning_pair_entry;
 
-struct dfont {
+struct dfont_font {
     dgx_hardware*       owning_hardware;
 
     float               size;
@@ -146,8 +146,8 @@ static inline uint32_t deserialize_reg_32(const unsigned char* b) {
     );
 }
 
-dfont* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
-    dfont* font = calloc(1, sizeof(dfont));
+dfont_font* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
+    dfont_font* font = calloc(1, sizeof(dfont_font));
     if (!font) return NULL;
     font->owning_hardware = hardware;
 
@@ -225,7 +225,7 @@ _fail:
     return NULL;
 }
 
-void dfont_free_font(dfont* font) {
+void dfont_free_font(dfont_font* font) {
     if (font == NULL) return;
     free(font->glyphs_array);
     free(font->kernings_array);
@@ -233,11 +233,11 @@ void dfont_free_font(dfont* font) {
     free(font);
 }
 
-dgx_texture* dfont_get_texture(const dfont* font) {
+dgx_texture* dfont_get_texture(const dfont_font* font) {
     return font->atlas_texture;
 }
 
-dfont_glyph dfont_get_glyph(const dfont* font, uint32_t codepoint) {
+dfont_glyph dfont_get_glyph(const dfont_font* font, uint32_t codepoint) {
     int left = 0;
     int right = (int)font->glyphs_count - 1;
 
@@ -255,7 +255,7 @@ dfont_glyph dfont_get_glyph(const dfont* font, uint32_t codepoint) {
 }
 
 float dfont_get_kerning(
-    const dfont* font,
+    const dfont_font* font,
     uint32_t left_codepoint,
     uint32_t right_codepoint
 ) {
@@ -278,19 +278,19 @@ float dfont_get_kerning(
     return 0.0f;
 }
 
-float dfont_get_base_size(const dfont* font) {
+float dfont_get_base_size(const dfont_font* font) {
     return font->size;
 }
 
-float dfont_get_base_ascent(const dfont* font) {
+float dfont_get_base_ascent(const dfont_font* font) {
     return font->ascent;
 }
 
-float dfont_get_base_descent(const dfont* font) {
+float dfont_get_base_descent(const dfont_font* font) {
     return font->descent;
 }
 
-float dfont_get_base_line_gap(const dfont* font) {
+float dfont_get_base_line_gap(const dfont_font* font) {
     return font->line_gap;
 }
 

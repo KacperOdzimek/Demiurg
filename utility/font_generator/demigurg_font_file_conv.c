@@ -1,5 +1,5 @@
 /*
-    This file generates light-font-file (lff) from other font formats.
+    This file generates demigurg-font-file (dff) from other font formats.
     Supported right now:
     - truefont
 */
@@ -137,11 +137,11 @@ int serialize();
 
 int main() {
     if (generate()) {
-        fprintf(stderr, "Failed to generate light font\n");
+        fprintf(stderr, "Failed to generate demigurg font\n");
         return 1;
     }
     if (serialize()) {
-        fprintf(stderr, "Failed to save light font\n");
+        fprintf(stderr, "Failed to save demigurg font\n");
         return 1;
     }
     printf("Success!");

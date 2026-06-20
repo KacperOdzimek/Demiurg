@@ -37,7 +37,7 @@ Usage: See dedicated documentation
     typedef struct dui_box_data   dui_box_data;
 
     // returns non-zero at success (if returned is valid pointer)
-    int dui_injection_query_font (const char* font,  dfont**       font_out);
+    int dui_injection_query_font (const char* font,  dfont_font**       font_out);
     int dui_injection_query_image(const char* image, dgx_texture** texture_out, dgx_uv_2d* uv_out);
 #endif // DEMIURG_USER_INTERFACE_IMPL
 
@@ -2609,7 +2609,7 @@ void dui_upload_cache(
             if (!part) continue;
 
             dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
-            dfont* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
+            dfont_font* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
 
             int texture_index = push_texture(
                 &texture_writes_array, shared->descriptor_textures_array_length, 
@@ -2792,7 +2792,7 @@ void dui_gcmd_render(
 
 void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
     const dui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
-    dfont* font; if (!dui_injection_query_font(tdata->font, &font)) return;
+    dfont_font* font; if (!dui_injection_query_font(tdata->font, &font)) return;
     const char* text = tdata->text;
 
     // If text empty or font invalid
