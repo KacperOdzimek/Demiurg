@@ -265,11 +265,6 @@ typedef struct lgx_color {
     float r, g, b, a;
 } lgx_color;
 
-typedef struct lgx_uv_2d {
-    float min_x, min_y;
-    float max_x, max_y;
-} lgx_uv_2d;
-
 // ===========================
 // Library
 
@@ -465,32 +460,6 @@ uint64_t lgx_buffer_get_size_bytes(lgx_buffer*);
 // staging memory, command list allocator, ... 
 // It is really heavy. Non zero at success
 int lgx_buffer_sync_upload(lgx_buffer*, uint64_t buffer_offset, const void* data, uint64_t data_size_bytes);
-
-typedef struct lgx_buffer_multi_upload_region {
-    void*       source_data;
-    uint64_t    source_bytes;
-    uint64_t    buffer_offset;
-    lgx_buffer* buffer;
-} lgx_buffer_multi_upload_region;
-
-// Usefull utility function, which  uploads N regions from CPU memory to N GPU buffers 
-// using a shared staging window. The window may be smaller than the
-// combined data; the function will loop, flushing intermediate batches synchronously via a CPU signal, 
-// and only emitting the GPU signal on the final submit.
-// CPU signal may be NULL, in case of multiple batches function will create own
-// If multiple batches were sent, returns a combined data size
-// Else returns 0
-uint64_t lgx_buffer_multi_upload(
-    lgx_buffer_multi_upload_region* regions,
-    uint32_t                        region_count,
-    lgx_command_list*               command_list,
-    lgx_hardware_queue*             queue_for_uploads,
-    lgx_staging_memory*             staging_memory,
-    uint64_t                        staging_memory_region_offset,
-    uint64_t                        staging_memory_region_size,
-    lgx_cpu_signal*                 upload_finished_cpu,
-    lgx_gpu_signal*                 upload_finished_gpu
-);
 
 // ==========================
 // Sampler
@@ -1969,119 +1938,6 @@ _cleanup:
     return success;
 }
 
-uint64_t lgx_buffer_multi_upload(
-    lgx_buffer_multi_upload_region* regions,
-    uint32_t                        region_count,
-    lgx_command_list*               command_list,
-    lgx_hardware_queue*             queue_for_uploads,
-    lgx_staging_memory*             staging_memory,
-    uint64_t                        staging_memory_region_offset,
-    uint64_t                        staging_memory_region_size,
-    lgx_cpu_signal*                 upload_finished_cpu,
-    lgx_gpu_signal*                 upload_finished_gpu
-) {
-    if (region_count == 0) return 0;
-    int provided_cpu_signal = (upload_finished_cpu != NULL);
-
-    // Per-region progress, staging offsets, and per-batch byte counts
-    uint32_t* copy_positions  = calloc(region_count, sizeof(uint32_t));
-    uint32_t* batch_bytes     = malloc(region_count * sizeof(uint32_t));
-    uint64_t* batch_stage_off = malloc(region_count * sizeof(uint64_t));
-
-    uint64_t all_bytes        = 0;
-    int      multiple_batches = 0;
-
-    int has_remaining = 1;
-    while (has_remaining) {
-        // Write staging buffer
-        char* mapped = lgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
-        uint64_t staging_used = 0;
-
-        for (uint32_t r = 0; r < region_count; r++) {
-            uint32_t remaining = regions[r].source_bytes - copy_positions[r];
-            uint64_t available = staging_memory_region_size - staging_used;
-            uint32_t to_copy   = (remaining < (uint32_t)available) ? remaining : (uint32_t)available;
-
-            batch_stage_off[r] = staging_used;
-            batch_bytes[r]     = to_copy;
-
-            if (to_copy > 0) {
-                memcpy(mapped + staging_used, (char*)regions[r].source_data + copy_positions[r], to_copy);
-                staging_used += to_copy;
-            }
-        }
-
-        lgx_staging_memory_unmap(staging_memory);
-
-        // Reocrd command lists
-        lgx_begin_command_list_recording(command_list);
-        for (uint32_t r = 0; r < region_count; r++) {
-            if (batch_bytes[r] == 0) continue;
-            lgx_cmd_copy_staging_memory_to_buffer(
-                command_list,
-                staging_memory,
-                regions[r].buffer,
-                staging_memory_region_offset + batch_stage_off[r],
-                copy_positions[r] + regions[r].buffer_offset,
-                batch_bytes[r]
-            );
-            all_bytes += batch_bytes[r];
-        }
-        lgx_finish_command_list_recording(command_list);
-
-        // Advance positions
-        for (uint32_t r = 0; r < region_count; r++)
-            copy_positions[r] += batch_bytes[r];
-
-        // Check remaining work
-        has_remaining = 0;
-        for (uint32_t r = 0; r < region_count; r++) {
-            if (copy_positions[r] < regions[r].source_bytes) {
-                has_remaining = 1;
-                break;
-            }
-        }
-
-        int is_final_batch = !has_remaining;
-        multiple_batches |= !is_final_batch;
-
-        // ensure cpu signal exist if multiple batch are to be sent
-        if (!is_final_batch && upload_finished_cpu == NULL) {
-            upload_finished_cpu = lgx_create_cpu_signal(staging_memory->owning_hardware, &(lgx_cpu_signal_create_info){ 
-                .initialy_signaled = 0 
-            });
-        }
-
-        // submit
-        lgx_submit_info submit = {
-            .command_lists_count      = 1,
-            .command_lists            = &command_list,
-            .cpu_signal               = upload_finished_cpu,
-            .signal_gpu_signals_count = (is_final_batch && upload_finished_gpu != NULL) ? 1 : 0,
-            .signal_gpu_signals       = &upload_finished_gpu,
-        };
-        lgx_submit_command_list(queue_for_uploads, &submit);
-
-        // sync upload
-        if (!is_final_batch) {
-            lgx_cpu_signal_wait(upload_finished_cpu);
-            lgx_cpu_signal_reset(upload_finished_cpu);
-        }
-    }
-
-    // free cpu signal if owned
-    if (!provided_cpu_signal && upload_finished_cpu != NULL) {
-        lgx_cpu_signal_wait(upload_finished_cpu);
-        lgx_free_cpu_signal(upload_finished_cpu);
-    }
-
-    free(copy_positions);
-    free(batch_bytes);
-    free(batch_stage_off);
-
-    if (multiple_batches) return all_bytes;
-    return 0;
-}
 
 /* ===== command_lists_allocator.c ===== */
 
@@ -2906,7 +2762,6 @@ void lgx_descriptor_allocator_free_descriptor(lgx_descriptor* descriptor) {
     );
 }
 
-
 void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_descriptor_write_info* write_infos) {
     uint32_t itr = 0; VkWriteDescriptorSet* vkwrites = tlom_alloc(&itr, writes_count * sizeof(VkWriteDescriptorSet));
 
@@ -2974,6 +2829,7 @@ void lgx_descriptors_write(lgx_hardware* hardware, uint32_t writes_count, lgx_de
         NULL
     );
 }
+
 
 /* ===== descriptor_layout.c ===== */
 

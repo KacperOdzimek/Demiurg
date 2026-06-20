@@ -1,29 +1,46 @@
 #version 430
 
-layout(location = 0) in      vec2  in_pos;
-layout(location = 1) in      vec2  in_uv;
-layout(location = 2) flat in int   in_clipbox_index;
-layout(location = 3) flat in int   in_texture_index;
-layout(location = 4) flat in vec4  in_color;
+layout(location = 0) in vec2     out_pos;
+layout(location = 1) in vec2     in_uv;
+layout(location = 2) flat in int in_instance;
 
 layout(location = 0) out vec4 outColor;
 
-struct lla_mat2x3 {
-    float m00, m01;
-    float m10, m11;
-    float tx,  ty;
+struct lui_transform {
+    float m00, m01, tx;
+    float m10, m11, ty;
 };
 
-layout(std430, set = 0, binding = 4) readonly buffer Clips {
-    lla_mat2x3 clips[];
+struct atlas_position_uv {
+    float uv_min_x, uv_min_y;
+    float uv_max_x, uv_max_y;
 };
 
-layout(set = 0, binding = 5) uniform sampler Sampler;
-layout(set = 0, binding = 6) uniform texture2D Textures[1024];
+struct gpu_instance {
+    lui_transform       transform;
+    atlas_position_uv   atlas_position;
+    int                 texture_index;
+    int                 clip_index;
+    float               r, g, b, a;
+    int                 shader;
+};
 
-bool point_in_clip(lla_mat2x3 t, vec2 p) {
+layout(std430, set = 0, binding = 0) readonly buffer Instances {
+    gpu_instance instances[];
+};
+
+layout(std430, set = 0, binding = 1) readonly buffer Clips {
+    lui_transform clips[];
+};
+
+layout(set = 0, binding = 2) uniform sampler Sampler;
+layout(set = 0, binding = 3) uniform texture2D Textures[1024];
+
+bool point_in_clip(lui_transform t, vec2 p) {
     float det = t.m00 * t.m11 - t.m01 * t.m10;
-    if (abs(det) < 0.00001) return true;
+
+    if (abs(det) < 0.00001)
+        return true;
 
     // inverse matrix
     float inv00 =  t.m11 / det;
@@ -51,15 +68,36 @@ vec3 srgb_to_linear(vec3 c) {
 }
 
 void main() {
-    if (in_clipbox_index >= 0 && (!point_in_clip(clips[in_clipbox_index], in_pos))) discard; // Clipping
-    vec4 tint = vec4(srgb_to_linear(in_color.rgb), in_color.a);                              // Tint
+    gpu_instance inst = instances[in_instance];
+
+    // Clipping
+    if (inst.clip_index >= 0) {
+        if (!point_in_clip(clips[inst.clip_index], out_pos)) discard;
+    }
+
+    // Tint
+    vec4 tint = vec4(
+        srgb_to_linear(vec3(inst.r, inst.g, inst.b)),
+        inst.a
+    );
 
     // Texture selection
-    bool has_texture = in_texture_index != 0;
-    bool is_font     = in_texture_index < 0;
+    bool has_texture = inst.texture_index != 0;
+    bool is_font     = inst.texture_index < 0;
 
-    int  tex_index     = has_texture ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1) : 0;
-    vec4 texture_color = has_texture ? texture(sampler2D(Textures[tex_index], Sampler), in_uv) : vec4(1.0);
+    int tex_index = has_texture
+        ? (is_font ? -(inst.texture_index + 1) : inst.texture_index - 1)
+        : 0;
+
+    vec2 uv = mix(
+        vec2(inst.atlas_position.uv_min_x, inst.atlas_position.uv_min_y),
+        vec2(inst.atlas_position.uv_max_x, inst.atlas_position.uv_max_y),
+        in_uv
+    );
+
+    vec4 texture_color = has_texture
+        ? texture(sampler2D(Textures[tex_index], Sampler), uv)
+        : vec4(1.0);
 
     // Font alpha handling
     if (is_font) {
@@ -74,5 +112,6 @@ void main() {
     }
 
     // Final color
-    outColor = vec4(texture_color.rgb * tint.rgb, texture_color.a * tint.a);
+    outColor = vec4(texture_color.rgb * tint.rgb,
+                    texture_color.a * tint.a);
 }

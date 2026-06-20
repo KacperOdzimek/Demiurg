@@ -2,7 +2,7 @@
 ----------------------------------------------------------------
 Contents
 
-This file provides simple system to render basic shapes: lines, triangles, rectangles, circles.
+This file provided simple system to render basic shapes: lines, triangles, rectangles, circles.
 
 ----------------------------------------------------------------
 Code info:

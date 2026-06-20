@@ -46,12 +46,13 @@ static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codep
 // font type
 
 typedef struct lfont_glyph {
-    lgx_uv_2d   atlas_position;
-    float       size_x;
-    float       size_y;
-    float       bearing_x;
-    float       bearing_y;
-    float       advance_x;
+    float uv_min_x, uv_min_y;
+    float uv_max_x, uv_max_y;
+    float size_x;
+    float size_y;
+    float bearing_x;
+    float bearing_y;
+    float advance_x;
 } lfont_glyph;
 
 typedef struct lfont_create_info {
@@ -109,8 +110,8 @@ static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codep
 #include <stdint.h>
 
 typedef struct glyph_entry {
-    uint32_t    codepoint;
-    lfont_glyph glyph;
+    uint32_t            codepoint;
+    lfont_glyph  glyph;
 } glyph_entry;
 
 typedef struct kerning_pair_entry {
@@ -173,10 +174,10 @@ lfont* lfont_create_font(lgx_hardware* hardware, lfont_create_info* info) {
     if (!font->glyphs_array) goto _fail;
     for (uint32_t i = 0; i < font->glyphs_count; i++) {
         READ_U32(font->glyphs_array[i].codepoint);
-        READ_F32(font->glyphs_array[i].glyph.atlas_position.min_x);
-        READ_F32(font->glyphs_array[i].glyph.atlas_position.min_y);
-        READ_F32(font->glyphs_array[i].glyph.atlas_position.max_x);
-        READ_F32(font->glyphs_array[i].glyph.atlas_position.max_y);
+        READ_F32(font->glyphs_array[i].glyph.uv_min_x);
+        READ_F32(font->glyphs_array[i].glyph.uv_min_y);
+        READ_F32(font->glyphs_array[i].glyph.uv_max_x);
+        READ_F32(font->glyphs_array[i].glyph.uv_max_y);
         READ_F32(font->glyphs_array[i].glyph.size_x);
         READ_F32(font->glyphs_array[i].glyph.size_y);
         READ_F32(font->glyphs_array[i].glyph.bearing_x);
