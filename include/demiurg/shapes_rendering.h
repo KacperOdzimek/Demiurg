@@ -16,7 +16,7 @@ Usage
 
 - Create dshp_shared object - it contains shared read-only objects for rendering.
     Create one per hardware. In create info, link shaders. (compile provided default_shader_source).
-- Create dshp_frames_contextes - it contains per frame geometry buffers you record with
+- Create dshp_frames - it contains per frame geometry buffers you record with
     drawing methods. Create one per hardware.
 - Then you can draw whatever You want it given frame in flight context
 - Upload data to gpu with dshp_upload
@@ -50,26 +50,28 @@ void dshp_free_shared(dshp_shared*);
 
 // Shapes Rendering Frame Contextes
 
-typedef struct dshp_frames_contextes_create_info {
+typedef struct dshp_frames_create_info {
     dshp_shared*    shared;
     uint32_t        frames_in_flight_count;
-} dshp_frames_contextes_create_info;
+} dshp_frames_create_info;
 
-typedef struct dshp_frames_contextes dshp_frames_contextes;
-dshp_frames_contextes* dshp_create_frames_contextes(dgx_hardware*, const dshp_frames_contextes_create_info* info);
-void dshp_free_frames_contextes(dshp_frames_contextes*);
+typedef struct dshp_frames dshp_frames;
+dshp_frames* dshp_create_frames(dgx_hardware*, const dshp_frames_create_info* info);
+void dshp_free_frames(dshp_frames*);
 
 // shorthand not to pass frame in flight to every function
-typedef struct dshp_frame_context {
-    dshp_frames_contextes*  contextes;
-    uint32_t                frame_in_flight;
-} dshp_frame_context;
+typedef struct dshp_context {
+    dshp_frames*    contextes;
+    uint32_t        frame_in_flight;
+    float           r, g, b, a;
+    float           line_thickness;
+} dshp_context;
 
 // Actuall Draw Operation
 
 // resets draw requests in context
 void dshp_reset(
-    dshp_frame_context* context,
+    dshp_context* context,
     int clear_geometry, 
     int clear_state
 );
@@ -78,7 +80,7 @@ void dshp_reset(
 void dshp_upload(
     dgx_command_list*   command_list,
     dgx_hardware_queue* queue_for_uploads,
-    dshp_frame_context* context,
+    dshp_context* context,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
@@ -92,40 +94,40 @@ void dshp_upload(
 // call with render target bound, viewport and scissors set
 void dshp_gcmd_render(
     dgx_command_list*   target,
-    dshp_frame_context* context
+    dshp_context* context
 );
 
 // Shapes Draw Function
 
 // set drawn shapes color
 void dshp_set_color(
-    dshp_frame_context* context,
+    dshp_context* context,
     float r, float g, float b, float a
 );
 
 void dshp_set_line_thickness(
-    dshp_frame_context* context,
+    dshp_context* context,
     float line_thickness
 );
 
 void dshp_line(
-    dshp_frame_context* context,
-    lla_vec2 begin, lla_vec2 end
+    dshp_context* context,
+    dla_vec2 begin, dla_vec2 end
 );
 
 void dshp_triangle(
-    dshp_frame_context* context,
-    lla_vec2 a, lla_vec2 b, lla_vec2 c
+    dshp_context* context,
+    dla_vec2 a, dla_vec2 b, dla_vec2 c
 );
 
 void dshp_rect(
-    dshp_frame_context* context,
-    lla_vec2 first_corner, lla_vec2 second_corner
+    dshp_context* context,
+    dla_vec2 first_corner, dla_vec2 second_corner
 );
 
 void dshp_circle(
-    dshp_frame_context* context,
-    lla_vec2 center, float radius
+    dshp_context* context,
+    dla_vec2 center, float radius
 );
 
 #endif // DEMIURG_SHAPES_H
@@ -326,11 +328,7 @@ static inline int ensure_arena_free_space(arena* a, uint64_t req_space) {
     Frames
 */
 
-typedef struct frame_context {
-    // drawing state
-    float           r, g, b, a; // current color
-    float           line_thickness;
-
+typedef struct single_frame {
     // drawing data
     arena           vertex_arena;
     arena           instance_arena;
@@ -340,14 +338,14 @@ typedef struct frame_context {
     dgx_descriptor* assigned_descriptor;
     dgx_buffer*     instances_buffer;
     dgx_buffer*     vertices_buffer;
-} frame_context;
+} single_frame;
 
-struct dshp_frames_contextes {
+struct dshp_frames {
     dgx_hardware*               owning_hardware;
     dshp_shared*                owning_shared;
     dgx_descriptor_allocator*   descriptor_allocator;
     uint32_t                    in_flight;
-    frame_context*              frames;
+    single_frame*               frames;
 };
 
 dgx_buffer* create_buffer(dgx_hardware* hardware, uint64_t size_bytes, dgx_buffer_usage usage) {
@@ -360,7 +358,7 @@ dgx_buffer* create_buffer(dgx_hardware* hardware, uint64_t size_bytes, dgx_buffe
     return dgx_create_buffer(hardware, &vb_create_info);
 }
 
-void link_frame_descriptor_with_instance_buffer(dgx_hardware* hardware, frame_context* frame) {
+void link_frame_descriptor_with_instance_buffer(dgx_hardware* hardware, single_frame* frame) {
     dgx_descriptor_buffer_write_info binfo = {
         .buffer = frame->instances_buffer,
         .offset = 0,
@@ -379,13 +377,13 @@ void link_frame_descriptor_with_instance_buffer(dgx_hardware* hardware, frame_co
     dgx_descriptors_write(hardware, 1, &write);
 }
 
-dshp_frames_contextes* dshp_create_frames_contextes(dgx_hardware* hardware, const dshp_frames_contextes_create_info* info) {
+dshp_frames* dshp_create_frames(dgx_hardware* hardware, const dshp_frames_create_info* info) {
     if (!hardware || !info->shared) goto _fail;
 
-    dshp_frames_contextes* contextes = calloc(1, sizeof(dshp_frames_contextes)); 
+    dshp_frames* contextes = calloc(1, sizeof(dshp_frames)); 
     if (!contextes) goto _fail;
 
-    *contextes = (dshp_frames_contextes) {
+    *contextes = (dshp_frames) {
         .owning_hardware    = hardware,
         .owning_shared      = info->shared,
         .in_flight          = info->frames_in_flight_count
@@ -398,15 +396,12 @@ dshp_frames_contextes* dshp_create_frames_contextes(dgx_hardware* hardware, cons
     }); if (!contextes->descriptor_allocator) goto _fail;
     
     // Frames
-    contextes->frames = calloc(info->frames_in_flight_count, sizeof(frame_context));
+    contextes->frames = calloc(info->frames_in_flight_count, sizeof(single_frame));
     if (!contextes->frames) goto _fail;
     for (uint32_t i = 0; i < info->frames_in_flight_count; i++) {
-        frame_context* frame = &contextes->frames[i];
+        single_frame* frame = &contextes->frames[i];
 
-        *frame = (frame_context){
-            .r = 1, .g = 1, .b = 1, .a = 1,
-            .line_thickness = 0.01,
-
+        *frame = (single_frame){
             .vertex_arena   = alloc_arena(initial_vertices_buffer_cap),
             .instance_arena = alloc_arena(initial_instances_buffer_cap),
             
@@ -430,11 +425,11 @@ dshp_frames_contextes* dshp_create_frames_contextes(dgx_hardware* hardware, cons
     return contextes;
 
 _fail:
-    dshp_free_frames_contextes(contextes);
+    dshp_free_frames(contextes);
     return NULL;
 }
 
-void dshp_free_frames_contextes(dshp_frames_contextes* contextes) {
+void dshp_free_frames(dshp_frames* contextes) {
     if (!contextes) return;
 
     for (uint32_t i = 0; i < contextes->in_flight; i++) {
@@ -450,8 +445,8 @@ void dshp_free_frames_contextes(dshp_frames_contextes* contextes) {
     free(contextes);
 }
 
-void dshp_reset(dshp_frame_context* context, int clear_geometry, int clear_state) {
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
+void dshp_reset(dshp_context* context, int clear_geometry, int clear_state) {
+    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
 
     if (clear_geometry) {
         frame->vertex_arena.position = 0;
@@ -460,8 +455,8 @@ void dshp_reset(dshp_frame_context* context, int clear_geometry, int clear_state
     }
 
     if (clear_state) {
-        frame->r = 1; frame->g = 1; frame->b = 1; frame->a = 1;
-        frame->line_thickness = 0.01;
+        context->r = 1; context->g = 1; context->b = 1; context->a = 1;
+        context->line_thickness = 0.01;
     }
 }
 
@@ -489,7 +484,7 @@ uint32_t ensure_buffer_size_pre_upload
 void dshp_upload(
     dgx_command_list*   command_list,
     dgx_hardware_queue* queue_for_uploads,
-    dshp_frame_context* context,
+    dshp_context* context,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
@@ -499,7 +494,7 @@ void dshp_upload(
     int provided_cpu_signal = upload_finished_cpu && 1;
 
     dgx_hardware*  hardware = context->contextes->owning_hardware;
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
+    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
 
     int v_buffer_recreated = 0;
     uint32_t v_to_copy = ensure_buffer_size_pre_upload(
@@ -593,9 +588,9 @@ void dshp_upload(
 
 void dshp_gcmd_render(
     dgx_command_list*           target,
-    dshp_frame_context*   context
+    dshp_context*   context
 ) {
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
+    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
     if (frame->triangles_to_draw) {
         dgx_gcmd_bind_graphics_pipeline(target, context->contextes->owning_shared->pipeline);
         dgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frame->vertices_buffer, 0, 0);
@@ -611,14 +606,14 @@ void dshp_gcmd_render(
 // Methods
 
 static inline void emit_triangle(
-    dshp_frame_context* context, 
+    dshp_context* context, 
     float x0,   float y0,
     float x1,   float y1,
     float x2,   float y2,
     float rcx,  float rcy, // radius center
     float radius
 ) {
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
+    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
 
     // Ensure arena space
     if (!ensure_arena_free_space(&frame->vertex_arena, 3 * gpu_vertex_sizeof))      return;
@@ -635,10 +630,10 @@ static inline void emit_triangle(
     gpu_instance* iarena = (gpu_instance*)(frame->instance_arena.data + frame->instance_arena.position);
     frame->instance_arena.position += 1 * sizeof(gpu_instance);
     iarena[0] = (gpu_instance){
-        .r          = frame->r, 
-        .g          = frame->g, 
-        .b          = frame->b, 
-        .a          = frame->a,
+        .r          = context->r, 
+        .g          = context->g, 
+        .b          = context->b, 
+        .a          = context->a,
         .center_x   = rcx, 
         .center_y   = rcy,
         .radius     = radius,
@@ -649,26 +644,24 @@ static inline void emit_triangle(
 };
 
 void dshp_set_color(
-    dshp_frame_context* context,
+    dshp_context* context,
     float r, float g, float b, float a
 ) {
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
-    frame->r = r; frame->g = g; frame->b = b; frame->a = a;
+    context->r = r; context->g = g; context->b = b; context->a = a;
 }
 
 void dshp_set_line_thickness(
-    dshp_frame_context* context,
+    dshp_context* context,
     float line_thickness
 ) {
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
-    frame->line_thickness = line_thickness;
+    context->line_thickness = line_thickness;
 }
 
 void dshp_line(
-    dshp_frame_context* context,
-    lla_vec2 begin, lla_vec2 end
+    dshp_context* context,
+    dla_vec2 begin, dla_vec2 end
 ) {
-    frame_context* frame = &context->contextes->frames[context->frame_in_flight];
+    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
 
     float dx = end.x - begin.x;
     float dy = end.y - begin.y;
@@ -679,8 +672,8 @@ void dshp_line(
     float nx = -dy / len;
     float ny =  dx / len;
 
-    float ox = nx * frame->line_thickness * 0.5f;
-    float oy = ny * frame->line_thickness * 0.5f;
+    float ox = nx * context->line_thickness * 0.5f;
+    float oy = ny * context->line_thickness * 0.5f;
 
     emit_triangle(context,
         begin.x + ox, begin.y + oy,
@@ -698,15 +691,15 @@ void dshp_line(
 }
 
 void dshp_triangle(
-    dshp_frame_context* context,
-    lla_vec2 a, lla_vec2 b, lla_vec2 c
+    dshp_context* context,
+    dla_vec2 a, dla_vec2 b, dla_vec2 c
 ) {
     emit_triangle(context, a.x, a.y, b.x, b.y, c.x, c.y, 0, 0, -1.0f); // unrounded
 }
 
 void dshp_rect(
-    dshp_frame_context* context,
-    lla_vec2 first_corner, lla_vec2 second_corner
+    dshp_context* context,
+    dla_vec2 first_corner, dla_vec2 second_corner
 ) {
     emit_triangle(
         context,
@@ -726,8 +719,8 @@ void dshp_rect(
 }
 
 void dshp_circle(
-    dshp_frame_context* context,
-    lla_vec2 center, float radius
+    dshp_context* context,
+    dla_vec2 center, float radius
 ) {
     emit_triangle(context, 
         center.x - radius, center.y - radius, 
