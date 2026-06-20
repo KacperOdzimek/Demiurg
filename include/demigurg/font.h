@@ -3,25 +3,25 @@
 Contents:
 
 This file provides a `font` object, which consists of glyph SDF texture atlas and glyph metrics.
-The font object is created from a light-font-file file, which can be generated out of other font formats, using
-    utility/font_generator/light_font_file_conv.c program.
+The font object is created from a demigurg-font-file file, which can be generated out of other font formats, using
+    utility/font_generator/demigurg_font_file_conv.c program.
 
 ----------------------------------------------------------------
 Code info:
-- lfont prefix
-- LIGHT_FONT_IMPL macro to build
+- dfont prefix
+- DEMIGURG_FONT_IMPL macro to build
 - graphics.h dependant
 
 ----------------------------------------------------------------
 Usage:
-- Create font object, with a valid light-font-file linked in create info
+- Create font object, with a valid demigurg-font-file linked in create info
 - Use get functions to query font/glyph metrics
-- lfont_get_glyph and lfont_get_kerning are O(log n) operations
+- dfont_get_glyph and dfont_get_kerning are O(log n) operations
 - rest of get operations are O(1)
 
 ----------------------------------------------------------------
 Notes:
-- light-font-file are NOT tested against being malformed - user is trusted to provide proper input
+- demigurg-font-file are NOT tested against being malformed - user is trusted to provide proper input
 
 ----------------------------------------------------------------
 Possible Optimizations:
@@ -29,10 +29,10 @@ Possible Optimizations:
     perform O(1) array access within range - this would be faster
 */
 
-#ifndef LIGHT_FONT_H
-#define LIGHT_FONT_H
+#ifndef DEMIGURG_FONT_H
+#define DEMIGURG_FONT_H
 
-#include "light/graphics.h"
+#include "demigurg/graphics.h"
 #include <stddef.h>
 
 /*
@@ -41,41 +41,41 @@ Possible Optimizations:
 
 // utf8 utility
 
-static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codepoint);
+static inline int dfont_utf8_decode(const char* str, size_t itr, uint32_t* codepoint);
 
 // font type
 
-typedef struct lfont_glyph {
-    lgx_uv_2d   atlas_position;
+typedef struct dfont_glyph {
+    dgx_uv_2d   atlas_position;
     float       size_x;
     float       size_y;
     float       bearing_x;
     float       bearing_y;
     float       advance_x;
-} lfont_glyph;
+} dfont_glyph;
 
-typedef struct lfont_create_info {
-    size_t                  light_font_format_file_length;
-    const unsigned char*    light_font_format_file_data;
-} lfont_create_info;
+typedef struct dfont_create_info {
+    size_t                  demigurg_font_format_file_length;
+    const unsigned char*    demigurg_font_format_file_data;
+} dfont_create_info;
 
-typedef struct lfont lfont;
+typedef struct dfont dfont;
 
-lfont* lfont_create_font(lgx_hardware*, lfont_create_info*);
-void lfont_free_font(lfont*);
+dfont* dfont_create_font(dgx_hardware*, dfont_create_info*);
+void dfont_free_font(dfont*);
 
-lgx_texture* lfont_get_texture(const lfont*);
-lfont_glyph  lfont_get_glyph  (const lfont*, uint32_t codepoint);
-float        lfont_get_kerning(const lfont*, uint32_t left_codepoint, uint32_t right_codepoint);
+dgx_texture* dfont_get_texture(const dfont*);
+dfont_glyph  dfont_get_glyph  (const dfont*, uint32_t codepoint);
+float        dfont_get_kerning(const dfont*, uint32_t left_codepoint, uint32_t right_codepoint);
 
-float lfont_get_base_size    (const lfont*);
-float lfont_get_base_ascent  (const lfont*);
-float lfont_get_base_descent (const lfont*);
-float lfont_get_base_line_gap(const lfont*);
+float dfont_get_base_size    (const dfont*);
+float dfont_get_base_ascent  (const dfont*);
+float dfont_get_base_descent (const dfont*);
+float dfont_get_base_line_gap(const dfont*);
 
 // inline implementations
 
-static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codepoint) {
+static inline int dfont_utf8_decode(const char* str, size_t itr, uint32_t* codepoint) {
     str += itr; unsigned char c = (unsigned char)str[0];
 
     if (c < 0x80) {
@@ -100,9 +100,9 @@ static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codep
     return 1;
 }
 
-#endif // LIGHT_FONT_H
+#endif // DEMIGURG_FONT_H
 
-#ifdef LIGHT_FONT_IMPL
+#ifdef DEMIGURG_FONT_IMPL
 
 #include <stdlib.h>
 #include <string.h>
@@ -110,7 +110,7 @@ static inline int lfont_utf8_decode(const char* str, size_t itr, uint32_t* codep
 
 typedef struct glyph_entry {
     uint32_t    codepoint;
-    lfont_glyph glyph;
+    dfont_glyph glyph;
 } glyph_entry;
 
 typedef struct kerning_pair_entry {
@@ -119,8 +119,8 @@ typedef struct kerning_pair_entry {
     float       advance_x;
 } kerning_pair_entry;
 
-struct lfont {
-    lgx_hardware*       owning_hardware;
+struct dfont {
+    dgx_hardware*       owning_hardware;
 
     float               size;
     float               ascent;
@@ -133,7 +133,7 @@ struct lfont {
     uint32_t            kernings_count;
     kerning_pair_entry* kernings_array;
 
-    lgx_texture*        atlas_texture;
+    dgx_texture*        atlas_texture;
 };
 
 // deserialize little-endian 32-bit value
@@ -146,12 +146,12 @@ static inline uint32_t deserialize_reg_32(const unsigned char* b) {
     );
 }
 
-lfont* lfont_create_font(lgx_hardware* hardware, lfont_create_info* info) {
-    lfont* font = calloc(1, sizeof(lfont));
+dfont* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
+    dfont* font = calloc(1, sizeof(dfont));
     if (!font) return NULL;
     font->owning_hardware = hardware;
 
-    const unsigned char* buf = info->light_font_format_file_data;
+    const unsigned char* buf = info->demigurg_font_format_file_data;
 
     #define READ_U32(target) {target = deserialize_reg_32(buf); buf += 4; } 
     #define READ_F32(target) {uint32_t as_u32; READ_U32(as_u32); memcpy(&target, &as_u32, 4);}
@@ -194,50 +194,50 @@ lfont* lfont_create_font(lgx_hardware* hardware, lfont_create_info* info) {
     }
 
     // Create texture
-    lgx_texture_create_info texture_create_info = {
-        .type = lgx_texture_type_2d,
-        .usage = lgx_texture_usage_sampled,
-        .dimensions = (lgx_texture_dimensions){
+    dgx_texture_create_info texture_create_info = {
+        .type = dgx_texture_type_2d,
+        .usage = dgx_texture_usage_sampled,
+        .dimensions = (dgx_texture_dimensions){
             .x = texture_width,
             .y = texture_height,
             .z = 1
         },
         .mipmap_layers   = 1,
         .array_length    = 1,
-        .format          = lgx_texture_format_r8_unorm,
-        .memory_access   = lgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-        .memory_strategy = lgx_memory_allocation_strategy_dedicated
+        .format          = dgx_texture_format_r8_unorm,
+        .memory_access   = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
+        .memory_strategy = dgx_memory_allocation_strategy_dedicated
     };
 
-    font->atlas_texture = lgx_create_texture(hardware, &texture_create_info);
+    font->atlas_texture = dgx_create_texture(hardware, &texture_create_info);
     if (!font->atlas_texture) goto _fail;
 
     // Upload atlas texture
-    lgx_texture_sync_upload(
+    dgx_texture_sync_upload(
         font->atlas_texture, 
-        (lgx_texture_dimensions){0, 0, 0}, buf, 
-        (lgx_texture_dimensions){texture_width, texture_height, 1}
+        (dgx_texture_dimensions){0, 0, 0}, buf, 
+        (dgx_texture_dimensions){texture_width, texture_height, 1}
     );
 
     return font;
 _fail:
-    lfont_free_font(font);
+    dfont_free_font(font);
     return NULL;
 }
 
-void lfont_free_font(lfont* font) {
+void dfont_free_font(dfont* font) {
     if (font == NULL) return;
     free(font->glyphs_array);
     free(font->kernings_array);
-    lgx_free_texture(font->atlas_texture);
+    dgx_free_texture(font->atlas_texture);
     free(font);
 }
 
-lgx_texture* lfont_get_texture(const lfont* font) {
+dgx_texture* dfont_get_texture(const dfont* font) {
     return font->atlas_texture;
 }
 
-lfont_glyph lfont_get_glyph(const lfont* font, uint32_t codepoint) {
+dfont_glyph dfont_get_glyph(const dfont* font, uint32_t codepoint) {
     int left = 0;
     int right = (int)font->glyphs_count - 1;
 
@@ -251,11 +251,11 @@ lfont_glyph lfont_get_glyph(const lfont* font, uint32_t codepoint) {
     }
 
     // fallback: missing glyph (return empty / zero glyph)
-    return (lfont_glyph){0};
+    return (dfont_glyph){0};
 }
 
-float lfont_get_kerning(
-    const lfont* font,
+float dfont_get_kerning(
+    const dfont* font,
     uint32_t left_codepoint,
     uint32_t right_codepoint
 ) {
@@ -278,20 +278,20 @@ float lfont_get_kerning(
     return 0.0f;
 }
 
-float lfont_get_base_size(const lfont* font) {
+float dfont_get_base_size(const dfont* font) {
     return font->size;
 }
 
-float lfont_get_base_ascent(const lfont* font) {
+float dfont_get_base_ascent(const dfont* font) {
     return font->ascent;
 }
 
-float lfont_get_base_descent(const lfont* font) {
+float dfont_get_base_descent(const dfont* font) {
     return font->descent;
 }
 
-float lfont_get_base_line_gap(const lfont* font) {
+float dfont_get_base_line_gap(const dfont* font) {
     return font->line_gap;
 }
 
-#endif // LIGHT_FONT_IMPL
+#endif // DEMIGURG_FONT_IMPL
