@@ -1,12 +1,30 @@
+/*
+----------------------------------------------------------------
+Contents:
+This file implements lui ui system.
+
+----------------------------------------------------------------
+Code info:
+- lui prefix
+- LIGHT_USER_INTERFACE_IMPL macro to build
+- partitioner.h dependent
+- linear_algebra.h dependent
+- graphics.h dependent
+- font.h dependent
+
+----------------------------------------------------------------
+Usage: See dedicated documentation
+*/
+
 
 /*
     Depedencies
 */
 
-#include "light/graphics.h"
-#include "light/linear_algebra.h"
-#include "light/font.h"
 #include "light/partitioner.h"
+#include "light/linear_algebra.h"
+#include "light/graphics.h"
+#include "light/font.h"
 
 /*
     Implementation Injections
