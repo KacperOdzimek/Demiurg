@@ -37,7 +37,7 @@ Usage: See dedicated documentation
     typedef struct dui_box_data   dui_box_data;
 
     // returns non-zero at success (if returned is valid pointer)
-    int dui_injection_query_font (const char* font,  lfont**       font_out);
+    int dui_injection_query_font (const char* font,  dfont**       font_out);
     int dui_injection_query_image(const char* image, dgx_texture** texture_out, dgx_uv_2d* uv_out);
 #endif // DEMIGURG_USER_INTERFACE_IMPL
 
@@ -122,7 +122,7 @@ typedef dui_node_layout_func_signature* dui_node_layout_func;
 
 typedef void(dui_node_render_func_signature)(
     const void*             node_data,          // node data
-    lla_mat2x3*             transform,          // given transform, can be changed
+    dla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
     int                     resolution_y,       // screen resolution y
     void*                   auxilary            // node auxilary buffer if requested by type
@@ -484,13 +484,13 @@ static inline int limit_length_gain(int current, dui_length limit, int proposed)
     return proposed;
 }
 
-static inline lla_mat2x3 mat2x3_scale(lla_mat2x3 m, float sx, float sy) {
+static inline dla_mat2x3 mat2x3_scale(dla_mat2x3 m, float sx, float sy) {
     m.m[0][0] *= sx;  m.m[0][1] *= sy;
     m.m[1][0] *= sx;  m.m[1][1] *= sy;
     return m;
 }
 
-static inline lla_mat2x3 mat2x3_offset(lla_mat2x3 m, float ox, float oy) {
+static inline dla_mat2x3 mat2x3_offset(dla_mat2x3 m, float ox, float oy) {
     m.m[2][0] += ox; m.m[2][1] += oy;
     return m;
 }
@@ -1093,15 +1093,15 @@ const dui_type dui_box_type = box_behavior_type;
 // This type is specially handled in pass implementation
 
 typedef struct text_type_auxilary_state {
-    lpr_partitioner*    partitioner;
-    lpr_partition*      owned_glyph_buffer_partition;
+    dpr_partitioner*    partitioner;
+    dpr_partition*      owned_glyph_buffer_partition;
     float               text_width;
     float               text_height;
 } text_type_auxilary_state;
 
 void text_auxilary_destructor(void* auxilary) {
     text_type_auxilary_state* aux = auxilary;
-    if (aux->owned_glyph_buffer_partition) lpr_partitioner_free_partition(aux->partitioner, aux->owned_glyph_buffer_partition);
+    if (aux->owned_glyph_buffer_partition) dpr_partitioner_free_partition(aux->partitioner, aux->owned_glyph_buffer_partition);
     aux->owned_glyph_buffer_partition = NULL;
 }
 
@@ -1423,7 +1423,7 @@ static inline auxilary_slot* auxilary_get_utill(dui_cache* cache, node_stable_in
 // Cache dynamic arrays
 
 struct draw_request {
-    lla_mat2x3              transform;
+    dla_mat2x3              transform;
     int                     clip_index;
     short                   depth_index;
     char                    is_box_not_text;
@@ -1440,7 +1440,7 @@ struct text_request {
 };
 
 struct clipbox_request {
-    lla_mat2x3              transform;
+    dla_mat2x3              transform;
 };
 
 // Definies one function:
@@ -1749,7 +1749,7 @@ void render_dfs(
     int                 previous_width,
     int                 previous_height, 
     const dui_node*     node,
-    lla_mat2x3          transform, 
+    dla_mat2x3          transform, 
     const void*         instance,
     short               depth_index,
     int                 clipbox_index
@@ -1860,7 +1860,7 @@ void dui_update_cache(
     cache->frame_index++; if (cache->frame_index < LAST_FRAME_USED_IN_RENDER_FIRST) cache->frame_index = LAST_FRAME_USED_IN_RENDER_FIRST;
 
     // Render pass
-    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, lla_mat2x3_identity(), NULL, 0, -1);
+    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), NULL, 0, -1);
 
     // Sort render requests by depth
     stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
@@ -1932,7 +1932,7 @@ typedef struct gpu_instance {
 } gpu_instance;
 
 typedef struct gpu_draw_item {
-    lla_mat2x3  transform;
+    dla_mat2x3  transform;
     dgx_uv_2d   atlas_position;
     int         texture_index;
     int         clipbox_index;
@@ -1941,7 +1941,7 @@ typedef struct gpu_draw_item {
 } gpu_draw_item;
 
 typedef struct gpu_clipbox {
-    lla_mat2x3 transform;
+    dla_mat2x3 transform;
 } gpu_clipbox;
 
 typedef struct gpu_glyph {
@@ -2063,7 +2063,7 @@ struct dui_shared {
     dgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
     dgx_pipeline*                       pipeline;
 
-    lpr_partitioner*                    glyph_buffer_partitioner;
+    dpr_partitioner*                    glyph_buffer_partitioner;
     dgx_buffer*                         glyph_buffer;
 };
 
@@ -2135,7 +2135,7 @@ dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_in
     if (!shared->glyph_buffer) goto _fail;
 
     // Glyph buffer partitioner
-    shared->glyph_buffer_partitioner = lpr_create_partitioner(&(lpr_partitioner_create_info){
+    shared->glyph_buffer_partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
         .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE,
         .align_bytes  = GLYPH_STRUCTURE_ALIGN
     }); if (!shared->glyph_buffer_partitioner) goto _fail;
@@ -2194,7 +2194,7 @@ void dui_free_shared(dui_shared* shared) {
     dgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
     dgx_free_descriptor_layout(shared->descriptor_layout);
     dgx_free_buffer(shared->glyph_buffer);
-    lpr_free_partitioner(shared->glyph_buffer_partitioner);
+    dpr_free_partitioner(shared->glyph_buffer_partitioner);
     free(shared);
 }
 
@@ -2521,7 +2521,7 @@ void dui_upload_cache(
 
         // always free owned partition to reduce fragmentation
         if (aux->owned_glyph_buffer_partition) {
-            lpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
+            dpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
             aux->owned_glyph_buffer_partition = NULL;
         }
 
@@ -2529,7 +2529,7 @@ void dui_upload_cache(
         if (!req.glyphs_count) continue;
 
         // request new partition
-        aux->owned_glyph_buffer_partition = lpr_partitioner_alloc_partition(
+        aux->owned_glyph_buffer_partition = dpr_partitioner_alloc_partition(
             shared->glyph_buffer_partitioner,
             req.glyphs_count * sizeof(gpu_glyph)
         );
@@ -2545,12 +2545,12 @@ void dui_upload_cache(
     for (size_t i = 0; i < cache->text_requests_count; i++) {
         text_request              req  = cache->text_requests[i];
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
-        lpr_partition*            prt = aux->owned_glyph_buffer_partition;
+        dpr_partition*            prt = aux->owned_glyph_buffer_partition;
         if (!prt) continue; // text empty, nothing to upload
 
         upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
             .buffer         = shared->glyph_buffer,
-            .buffer_offset  = lpr_partition_query_offset(prt),
+            .buffer_offset  = dpr_partition_query_offset(prt),
             .source_data    = req.glyphs,
             .source_bytes   = req.glyphs_count * sizeof(gpu_draw_item)
         };
@@ -2605,15 +2605,15 @@ void dui_upload_cache(
         else {
             auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
             text_type_auxilary_state* aux  = slot->state_ptr;
-            lpr_partition*            part = aux->owned_glyph_buffer_partition;
+            dpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
 
             dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
-            lfont* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
+            dfont* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
 
             int texture_index = push_texture(
                 &texture_writes_array, shared->descriptor_textures_array_length, 
-                frame, lfont_get_texture(font), 1
+                frame, dfont_get_texture(font), 1
             );
 
             items[i] = (gpu_draw_item){
@@ -2628,7 +2628,7 @@ void dui_upload_cache(
                 .shader         = text_data.shader
             };
 
-            instances_count += lpr_partition_query_size(part) / sizeof(gpu_glyph);
+            instances_count += dpr_partition_query_size(part) / sizeof(gpu_glyph);
         }
     }
 
@@ -2647,11 +2647,11 @@ void dui_upload_cache(
         else {
             auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
             text_type_auxilary_state* aux  = slot->state_ptr;
-            lpr_partition*            part = aux->owned_glyph_buffer_partition;
+            dpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
             
-            size_t first  = lpr_partition_query_offset(part) / sizeof(gpu_glyph);
-            size_t glyphs = lpr_partition_query_size(part) / sizeof(gpu_glyph);
+            size_t first  = dpr_partition_query_offset(part) / sizeof(gpu_glyph);
+            size_t glyphs = dpr_partition_query_size(part) / sizeof(gpu_glyph);
             for (size_t g = 0; g < glyphs; g++) {
                 instances[instance_idx++] = (gpu_instance){
                     .item   = i,
@@ -2792,7 +2792,7 @@ void dui_gcmd_render(
 
 void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
     const dui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
-    lfont* font; if (!dui_injection_query_font(tdata->font, &font)) return;
+    dfont* font; if (!dui_injection_query_font(tdata->font, &font)) return;
     const char* text = tdata->text;
 
     // If text empty or font invalid
@@ -2810,7 +2810,7 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     // Count glyphs to allocate
     size_t glyph_count = 0; size_t extra_lines_count = 0;
     for (size_t i = 0; text[i] != '\0';) {
-        uint32_t cp; i += lfont_utf8_decode(text, i, &cp);
+        uint32_t cp; i += dfont_utf8_decode(text, i, &cp);
         if (cp != '\n') glyph_count++; 
         else extra_lines_count++;
     }
@@ -2823,12 +2823,12 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     }
 
     // Find font scale
-    const float font_scale = tdata->size / lfont_get_base_size(font);
+    const float font_scale = tdata->size / dfont_get_base_size(font);
 
     // Populate glyphs buffer
-    const float ascent      = lfont_get_base_ascent(font)   * font_scale;
-    const float descent     = lfont_get_base_descent(font)  * font_scale;
-    const float line_gap    = lfont_get_base_line_gap(font) * font_scale;
+    const float ascent      = dfont_get_base_ascent(font)   * font_scale;
+    const float descent     = dfont_get_base_descent(font)  * font_scale;
+    const float line_gap    = dfont_get_base_line_gap(font) * font_scale;
     const float line_height = ascent - descent + line_gap;
 
     float    pen_x      = 0.0f;
@@ -2839,7 +2839,7 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
 
     for (size_t itr = 0; text[itr] != '\0';) {
         uint32_t cp;
-        itr += lfont_utf8_decode(text, itr, &cp);
+        itr += dfont_utf8_decode(text, itr, &cp);
 
         // Handle newline
         if (cp == '\n') {
@@ -2851,10 +2851,10 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
         }
 
         // Kerning between consecutive glyphs on the same line
-        if (prev_cp) pen_x += lfont_get_kerning(font, prev_cp, cp);
+        if (prev_cp) pen_x += dfont_get_kerning(font, prev_cp, cp);
 
         // Write glyph
-        const lfont_glyph g = lfont_get_glyph(font, cp);
+        const dfont_glyph g = dfont_get_glyph(font, cp);
         glyphs[glyph_idx++] = (gpu_glyph){
             .atlas_position = g.atlas_position,
             .off_x          = pen_x + g.bearing_x * font_scale,
