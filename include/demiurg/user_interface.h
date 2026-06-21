@@ -114,28 +114,6 @@ typedef void(dui_cursor_handle_func_signature)(
 typedef dui_cursor_handle_func_signature* dui_cursor_handle_func;
 
 // ===========================
-// Navigation
-
-typedef enum dui_navigation_event {
-    dui_navigation_event_none,
-
-    dui_navigation_event_left,
-    dui_navigation_event_right,
-    dui_navigation_event_up,
-    dui_navigation_event_down,
-
-    dui_navigation_event_next,
-    dui_navigation_event_previous,
-
-    dui_navigation_event_select,
-    dui_navigation_event_info
-} dui_navigation_event;
-
-typedef struct dui_navigation_state {
-    dui_navigation_event event;
-} dui_navigation_state;
-
-// ===========================
 // Node Typedefs
 
 typedef struct dui_node_layout_state {
@@ -421,8 +399,7 @@ void dui_update_cache(
     const dui_node*         root,
     int                     resolution_x,
     int                     resolution_y,
-    dui_cursor_state        cursor_state,
-    dui_navigation_state    navigation_state
+    dui_cursor_state        cursor_state
 );
 
 // ===========================
@@ -2024,8 +2001,7 @@ void dui_update_cache(
     const dui_node*         root,
     int                     resolution_x,
     int                     resolution_y,
-    dui_cursor_state        cursor_state,
-    dui_navigation_state    navigation_state
+    dui_cursor_state        cursor_state
 ) {
     // Init state
     cache->resolution_x             = resolution_x;
