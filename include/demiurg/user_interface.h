@@ -37,7 +37,7 @@ Usage: See dedicated documentation
     typedef struct dui_box_data   dui_box_data;
 
     // returns non-zero at success (if returned is valid pointer)
-    int dui_injection_query_font (const char* font,  dfont_font**       font_out);
+    int dui_injection_query_font (const char* font,  dfont_font**  font_out);
     int dui_injection_query_image(const char* image, dgx_texture** texture_out, dgx_uv_2d* uv_out);
 #endif // DEMIURG_USER_INTERFACE_IMPL
 
@@ -93,6 +93,25 @@ typedef struct dui_color {
 static inline dui_color dui_hex(const char* hex);
 
 // LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
+
+// ===========================
+// Cursor
+
+typedef struct dui_cursor_state {
+    int     left_down,  right_down;
+    int     position_x, position_y;
+    float   scroll_delta;
+} dui_cursor_state;
+
+typedef void(dui_cursor_handle_func_signature)(
+    const void*             node_data,      // node data
+    void*                   auxilary,       // node auxilary buffer if requested by type
+    dui_cursor_state*       state,          // state with fields possibly consumed by previous handles  
+    const dui_cursor_state* raw_state,      // untouched state
+    int                     hovered,        // whether cursor is inside node and no upper node was
+    int                     raw_hovered     // whether cursor is inside node
+);
+typedef dui_cursor_handle_func_signature* dui_cursor_handle_func;
 
 // ===========================
 // Node Typedefs
@@ -356,16 +375,31 @@ typedef struct dui_text_data {
 } dui_text_data;
 
 // ===========================
+// Cursor Input Node Types
+
+// This node sets cursor handle function for subtree to own data
+// Data is dui_cursor_handle_func, single child
+extern const dui_type dui_cursor_input_handle_type;
+
+// This node pushes cursor input box
+// If handle was provided higher in the tree
+// during cache update, callback will be called for this box
+// Data of this node will be passed to callback
+// Data arbitrary, single child
+extern const dui_type dui_cursor_input_box_type;
+
+// ===========================
 // Cache
 
 dui_cache* dui_create_cache();
 void dui_free_cache(dui_cache*);
 
 void dui_update_cache(
-    dui_cache*      cache,
-    const dui_node* root,
-    int             resolution_x,
-    int             resolution_y
+    dui_cache*              cache,
+    const dui_node*         root,
+    int                     resolution_x,
+    int                     resolution_y,
+    dui_cursor_state        cursor_state
 );
 
 // ===========================
@@ -493,6 +527,34 @@ static inline dla_mat2x3 mat2x3_scale(dla_mat2x3 m, float sx, float sy) {
 static inline dla_mat2x3 mat2x3_offset(dla_mat2x3 m, float ox, float oy) {
     m.m[2][0] += ox; m.m[2][1] += oy;
     return m;
+}
+
+int is_point_in_transformed_box(dla_mat2x3 t, float px, float py) {
+    // Translation
+    float tx = t.m[2][0];
+    float ty = t.m[2][1];
+
+    // Linear part (column-major)
+    float a = t.m[0][0];
+    float b = t.m[0][1];
+    float c = t.m[1][0];
+    float d = t.m[1][1];
+
+    // Point relative to box center
+    float x = px - tx;
+    float y = py - ty;
+
+    // Inverse of 2×2 matrix
+    float det = a * d - b * c;
+    if (det == 0.0f) return 0; // degenerate transform
+
+    float inv_det = 1.0f / det;
+
+    // Local coordinates
+    float lx = ( d * x - c * y) * inv_det;
+    float ly = (-b * x + a * y) * inv_det;
+
+    return lx >= -1.0f && lx <= 1.0f && ly >= -1.0f && ly <= 1.0f;
 }
 
 // ===========================
@@ -1147,6 +1209,16 @@ const dui_type dui_text_type = {
 };
 
 // ===========================
+// Cursor Input Handle Type
+// This type is specially handled in pass implementation
+const dui_type dui_cursor_input_handle_type = box_behavior_type;
+
+// ===========================
+// Cursor Input Handle Type
+// This type is specially handled in pass implementation
+const dui_type dui_cursor_input_box_type = box_behavior_type;
+
+// ===========================
 // Node fields reads
 
 static inline const void* get_node_data(const dui_node* node, const char* instance) {
@@ -1201,6 +1273,7 @@ typedef struct auxilary_slot auxilary_slot;
 typedef struct draw_request draw_request;
 typedef struct text_request text_request;
 typedef struct clipbox_request clipbox_request;
+typedef struct cursor_input_box cursor_input_box;
 
 struct dui_cache {
     // Passes constants
@@ -1232,6 +1305,11 @@ struct dui_cache {
     size_t              clipbox_requests_capacity;
     size_t              clipbox_requests_count;
     clipbox_request*    clipbox_requests;
+
+    // Cursor input boxes dynamic array
+    size_t              cursor_input_boxes_capacity;
+    size_t              cursor_input_boxes_count;
+    cursor_input_box*   cursor_input_boxes;
 };
 
 dui_cache* dui_create_cache() {
@@ -1443,6 +1521,14 @@ struct clipbox_request {
     dla_mat2x3              transform;
 };
 
+struct cursor_input_box {
+    node_stable_index       owner;
+    dui_cursor_handle_func  handle;
+    int                     clip_index;
+    short                   depth_index;
+    dla_mat2x3              box_transform;
+};
+
 // Definies one function:
 // void PREFIX##_cache_push (dui_cache* cache, ELEMENT_TYPE element);
 #define DEFINE_DYNAMIC_ARRAY_FUNCS(PREFIX, ELEMENT_TYPE, ARRAY_FIELD, CAP_FIELD, CNT_FIELD)     \
@@ -1470,6 +1556,10 @@ DEFINE_DYNAMIC_ARRAY_FUNCS(
 
 DEFINE_DYNAMIC_ARRAY_FUNCS(
     clipbox_request, clipbox_request, clipbox_requests, clipbox_requests_capacity, clipbox_requests_count
+);
+
+DEFINE_DYNAMIC_ARRAY_FUNCS(
+    cursor_input_box, cursor_input_box, cursor_input_boxes, cursor_input_boxes_capacity, cursor_input_boxes_count
 );
 
 static inline void free_cached_text_requests(dui_cache* cache) {
@@ -1741,33 +1831,66 @@ TOP_DOWN_DFS(
 
 // Renders widget
 // Issues rendering of ui primitives
+// Also renders input boxes into input dynamic array
 // Render pass is safe in terms of hashmap pointers invalidation
 // Since it refers on the pointer only on enter - after visiting any child it is not used
 
-void render_dfs(
-    dui_cache*          cache, 
-    int                 previous_width,
-    int                 previous_height, 
-    const dui_node*     node,
-    dla_mat2x3          transform, 
-    const void*         instance,
-    short               depth_index,
-    int                 clipbox_index
+typedef struct render_dfs_subtree_state {
+    const void*             instance;
+    short                   depth_index;
+    int                     clipbox_index;
+    dui_cursor_handle_func  cursor_handle;
+} render_dfs_subtree_state;
+
+static void render_dfs(
+    dui_cache*                      cache, 
+    int                             previous_width,
+    int                             previous_height, 
+    const dui_node*                 node,
+    dla_mat2x3                      transform, 
+    const render_dfs_subtree_state* state
+);
+
+static inline void render_dfs_recurse(
+    dui_cache*                      cache, 
+    cache_slot*                     own,
+    dla_mat2x3                      transform, 
+    const render_dfs_subtree_state* state
 ) {
-    node_stable_index index = {node, instance};
+    const dui_node* child = get_node_child(own->key.node, own->key.instance);
+
+    // back node dimensions to avoid reading own slot after visiting child
+    int own_width  = own->value_state.given_width;
+    int own_height = own->value_state.given_height;
+
+    // single child
+    if (!own->key.node->type->array_child && child) {
+        render_dfs(cache, own_width, own_height, child, transform, state);
+    }
+    // multiple children
+    else if (child) for (const dui_node* current_child = child; current_child->type != NULL; current_child++) {
+        render_dfs(cache, own_width, own_height, current_child, transform, state);
+    }
+}
+
+static void render_dfs(
+    dui_cache*                      cache, 
+    int                             previous_width,
+    int                             previous_height, 
+    const dui_node*                 node,
+    dla_mat2x3                      transform, 
+    const render_dfs_subtree_state* state
+) {
+    node_stable_index index = {node, state->instance};
 
     // get node data
-    const dui_node* child = get_node_child(node, instance);
-    const void*     data  = get_node_data (node, instance);
+    const void*     data  = get_node_data (node, state->instance);
     cache_slot*     own   = cache_get_utill(cache, index);
     auxilary_slot*  aux   = auxilary_get_utill(cache, index);
 
     // mark used, to avoid garbage collect
     own->last_frame_used_in_render = cache->frame_index;
     if (aux) aux->last_frame_used_in_render = cache->frame_index;
-
-    // change instance for subtree
-    if (node->type == &dui_instance_type) instance = data;
 
     // change transform based on node's position and scale
     float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->resolution_x;
@@ -1785,54 +1908,77 @@ void render_dfs(
         aux
     );
     
-    // special nodes (box, text, depth, clipbox)
-    if (node->type == &dui_box_type){
+    // special nodes
+     // update instance for subtree
+    if (node->type == &dui_instance_type) {
+        render_dfs_subtree_state new_state = *state;
+        new_state.instance = data;
+        render_dfs_recurse(cache, own, transform, &new_state); 
+        return; // recursed
+    }
+    // request box draw
+    else if (node->type == &dui_box_type){
         const dui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
-            .clip_index         = clipbox_index,
-            .depth_index        = depth_index,
+            .clip_index         = state->clipbox_index,
+            .depth_index        = state->depth_index,
             .is_box_not_text    = 1,
             .box_data           = *bdata
         });
     }
+    // request text draw
     else if (node->type == &dui_text_type) {
         const dui_text_data*            tdata = data;
         const text_type_auxilary_state* taux  = aux->state_ptr;
 
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
-            .clip_index         = clipbox_index,
-            .depth_index        = depth_index,
+            .clip_index         = state->clipbox_index,
+            .depth_index        = state->depth_index,
             .is_box_not_text    = 0,
             .text_node          = index
         });
     }
+    // update depth for subtree
     else if (node->type == &dui_depth_type) {
         const dui_depth_data* ddata = data;
-        depth_index += ddata->depth_change;
+        render_dfs_subtree_state new_state = *state;
+        new_state.depth_index += ddata->depth_change;
+        render_dfs_recurse(cache, own, transform, &new_state); 
+        return; // recursed
     }
+    // request clipbox, update clipbox for subtree
     else if (node->type == &dui_clipbox_type) {
-        clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){
-            .transform = transform
+        render_dfs_subtree_state new_state = *state;
+        new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = transform});
+        render_dfs_recurse(cache, own, transform, &new_state); 
+        return; // recursed
+    }
+    // request cursor input box
+    else if (node->type == &dui_cursor_input_box_type) {
+        cursor_input_box_cache_push(cache, (cursor_input_box){
+            .owner          = index,
+            .handle         = state->cursor_handle,
+            .depth_index    = state->depth_index,
+            .clip_index     = state->clipbox_index,
+            .box_transform  = transform
         });
     }
-
-    // back node dimensions to avoid reading own slot after visiting child
-    int own_width  = own->value_state.given_width;
-    int own_height = own->value_state.given_height;
-
-    // single child
-    if (!node->type->array_child && child) {
-        render_dfs(cache, own_width, own_height, child, transform, instance, depth_index, clipbox_index);
+    // update cursor input handle for subtree
+    else if (node->type == &dui_cursor_input_handle_type) { 
+        dui_cursor_handle_func cursor_handle = (dui_cursor_handle_func)data;
+        render_dfs_subtree_state new_state = *state;
+        new_state.cursor_handle = cursor_handle;   
+        render_dfs_recurse(cache, own, transform, &new_state); 
+        return; // recursed
     }
-    // multiple children
-    else if (child) for (const dui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own_width, own_height, current_child, transform, instance, depth_index, clipbox_index);
-    }
+
+    // default recursion without state changes
+    render_dfs_recurse(cache, own, transform, state);
 }
 
-// Helper for draw requests depth sorting
+// Helper for draw requests depth sorting : deepest first
 static inline int helper_draw_requests_greater_depth(const void* av, const void* bv) {
     const draw_request* a = (const draw_request*)av; 
     const draw_request* b = (const draw_request*)bv;
@@ -1840,14 +1986,22 @@ static inline int helper_draw_requests_greater_depth(const void* av, const void*
     return 0;
 }
 
+// Helper for cursor input boxes depth sorting : deepest first
+static inline int helper_cursor_input_boxes_greater_depth(const void* av, const void* bv) {
+    const cursor_input_box* a = (const cursor_input_box*)av; 
+    const cursor_input_box* b = (const cursor_input_box*)bv;
+    if (a->depth_index > b->depth_index) return 1;
+    return 0;
+}
+
 // Main update function
 // Calls passes
-
 void dui_update_cache(
-    dui_cache*      cache,
-    const dui_node* root,
-    int             resolution_x,
-    int             resolution_y
+    dui_cache*              cache,
+    const dui_node*         root,
+    int                     resolution_x,
+    int                     resolution_y,
+    dui_cursor_state        cursor_state
 ) {
     // Init state
     cache->resolution_x             = resolution_x;
@@ -1855,15 +2009,51 @@ void dui_update_cache(
     cache->draw_requests_count      = 0;
     cache->text_requests_count      = 0;
     cache->clipbox_requests_count   = 0;
+    cache->cursor_input_boxes_count = 0;
 
     // Pick next frame index
     cache->frame_index++; if (cache->frame_index < LAST_FRAME_USED_IN_RENDER_FIRST) cache->frame_index = LAST_FRAME_USED_IN_RENDER_FIRST;
 
     // Render pass
-    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), NULL, 0, -1);
+    render_dfs_subtree_state default_subtree_state = {
+        .instance       = NULL,
+        .depth_index    = 0,
+        .clipbox_index  = -1,
+        .cursor_handle  = NULL
+    };
+    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), &default_subtree_state);
 
-    // Sort render requests by depth
-    stable_sort(cache->draw_requests, cache->draw_requests_count, sizeof(draw_request), helper_draw_requests_greater_depth);
+    // Sort render requests and input boxes by depth
+    stable_sort(cache->draw_requests,       cache->draw_requests_count,      sizeof(draw_request),      helper_draw_requests_greater_depth);
+    stable_sort(cache->cursor_input_boxes,  cache->cursor_input_boxes_count, sizeof(cursor_input_box),  helper_cursor_input_boxes_greater_depth);
+
+    // Find out normalized cursor position
+    float norm_cursor_x = -1.0f + 2.0f * ((float)cursor_state.position_x / resolution_x);
+    float norm_cursor_y =  1.0f - 2.0f * ((float)cursor_state.position_y / resolution_y);
+
+    // Do cursor input callbacks, walking from topmost to deepest
+    dui_cursor_state changable_state = cursor_state;
+    int              ever_was_inside = 0;
+    for (size_t i = cache->cursor_input_boxes_count - 1;; i--) {
+        cursor_input_box* ibox = &cache->cursor_input_boxes[i];
+        if (!ibox->handle) continue; // nothing to call
+
+        int cursor_inside  = is_point_in_transformed_box(ibox->box_transform, norm_cursor_x, norm_cursor_y);
+        if (ibox->clip_index != -1) {
+            cursor_inside &= is_point_in_transformed_box(cache->clipbox_requests[ibox->clip_index].transform, norm_cursor_x, norm_cursor_y);
+        }
+
+        ever_was_inside |= cursor_inside;
+
+        ibox->handle(
+            get_node_data(ibox->owner.node, ibox->owner.instance),
+            auxilary_get_utill(cache, ibox->owner),
+            &changable_state, &cursor_state,
+            cursor_inside && ever_was_inside, cursor_inside
+        );
+
+        if (i == 0) break; // break loop at last element
+    }
 
     // Always relayout
     // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots

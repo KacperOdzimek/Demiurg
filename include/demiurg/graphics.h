@@ -274,7 +274,6 @@ typedef struct dgx_uv_2d {
 // Library
 
 typedef struct dgx_library_create_info {
-    int platform_code_enabled;
 } dgx_library_create_info;
 
 typedef struct dgx_library dgx_library;
@@ -1012,11 +1011,7 @@ static inline void* tlom_alloc(uint32_t* iterator, uint32_t block) {
 // Structures Definitions
 
 struct dgx_library {
-    // Vulkan
     VkInstance  instance;
-
-    // Platform
-    int platform_enabled;
 };
 
 struct dgx_hardware_queue {
@@ -3805,25 +3800,22 @@ dgx_library* dgx_create_library(const dgx_library_create_info* info) {
         .ppEnabledExtensionNames    = instance_extensions_array
     };
 
-    if (info->platform_code_enabled) {
-        glfwInit();
+    platform_init();
 
-        uint32_t     extension_count;
-        const char** extension_names;
-        
-        get_platform_required_extensions(&extension_count, &extension_names);
+    uint32_t     extension_count;
+    const char** extension_names;
+    
+    get_platform_required_extensions(&extension_count, &extension_names);
 
-        create_info.enabledExtensionCount   = extension_count;
-        create_info.ppEnabledExtensionNames = extension_names;
-    }
+    create_info.enabledExtensionCount   = extension_count;
+    create_info.ppEnabledExtensionNames = extension_names;
 
     VkInstance instance;
     if (vkCreateInstance(&create_info, 0, &instance) != VK_SUCCESS) return 0x0;
 
     dgx_library* library = calloc(1, sizeof(dgx_library));
     *library = (dgx_library){
-        .instance           = instance,
-        .platform_enabled   = info->platform_code_enabled
+        .instance = instance,
     };
 
     return library;
@@ -3831,11 +3823,7 @@ dgx_library* dgx_create_library(const dgx_library_create_info* info) {
 
 void dgx_free_library(dgx_library* library) {
     vkDestroyInstance(library->instance, 0);
-
-    if (library->platform_enabled) {
-        platform_terminate();
-    }
-    
+    platform_terminate();
     free(library);
 }
 
