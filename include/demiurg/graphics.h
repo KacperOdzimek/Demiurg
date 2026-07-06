@@ -411,7 +411,7 @@ typedef struct dgx_pipeline_create_info {
     dgx_pipeline_input_assembler_state  input_assembler_state;
     dgx_pipeline_rasterizer_state       rasterizer_state;
     dgx_pipeline_blend_state            blend_state;
-    dgx_pipeline_depth_stencil_state    depth_stencil;
+    dgx_pipeline_depth_stencil_state    depth_stencil_state;
 } dgx_pipeline_create_info;
 
 typedef struct dgx_pipeline dgx_pipeline;
@@ -432,15 +432,16 @@ typedef struct dgx_window dgx_window;
 dgx_window* dgx_create_window(dgx_hardware*, const dgx_window_create_info*);
 void dgx_free_window(dgx_window*);
 
-int      dgx_window_query_shall_close(dgx_window*);
-void     dgx_window_query_is_focused(dgx_window*, int* is);
-void     dgx_window_query_cursor_pos(dgx_window*, int* xpos, int* ypos);
-void     dgx_window_query_input(dgx_window*, int* left_pressed, int* right_pressed, float* scroll);
+int  dgx_window_query_shall_close(dgx_window*);
+void dgx_window_query_is_focused(dgx_window*, int* is);
+void dgx_window_query_cursor_pos(dgx_window*, int* xpos, int* ypos);
+void dgx_window_query_input(dgx_window*, int* left_pressed, int* right_pressed, float* scroll);
 
-void     dgx_window_query_size    (dgx_window*, uint32_t* width, uint32_t* height);
+void dgx_window_query_size    (dgx_window*, uint32_t* width, uint32_t* height);
 
-uint32_t dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timeline, uint64_t can_render_signal);
-void     dgx_window_submit_present(dgx_window* window, uint32_t target_index, dgx_timeline* wait_timeline, uint64_t wait_signal);
+// non-zero at success
+int  dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index);
+void dgx_window_submit_present(dgx_window* window, uint32_t target_index, dgx_timeline* wait_timeline, uint64_t wait_signal);
 
 dgx_texture*        dgx_window_get_attachment_color(dgx_window*, uint32_t target_index);
 dgx_texture_format  dgx_window_get_attachment_format(dgx_window*);
@@ -465,15 +466,15 @@ dgx_texture_format  dgx_window_get_attachment_format(dgx_window*);
 void dgx_tcmd_copy_staging_memory_to_buffer(
     dgx_staging_memory*     staging_memory,
     dgx_buffer*             target_buffer,
-    uint32_t                staging_memory_region_offset,
-    uint32_t                buffer_write_region_offset,
-    uint32_t                buffer_write_region_size
+    uint64_t                staging_memory_region_offset,
+    uint64_t                buffer_write_region_offset,
+    uint64_t                buffer_write_region_size
 );
 
 void dgx_tcmd_copy_staging_memory_to_texture(
     dgx_staging_memory*     staging_memory,
     dgx_texture*            target_texture,
-    uint32_t                staging_memory_region_offset,
+    uint64_t                staging_memory_region_offset,
     dgx_texture_dimensions  texture_write_region_offset,
     dgx_texture_dimensions  texture_write_region_size
 );
@@ -502,6 +503,14 @@ void dgx_gcmd_begin_rendering (dgx_gcmd_rendering_info* info);
 void dgx_gcmd_finish_rendering();
 
 void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline);
+
+void dgx_gcmd_set_constants(
+    dgx_pipeline*    pipeline, 
+    dgx_shader_stage stage, 
+    uint64_t         offset, 
+    uint64_t         bytes, 
+    void*            data
+);
 
 void dgx_gcmd_draw(
     uint32_t vertices_base,
@@ -1020,8 +1029,15 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
     // Device Creation
     // Enable required extensions and features
 
+    VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+        .runtimeDescriptorArray                     = VK_TRUE,
+        .shaderStorageBufferArrayNonUniformIndexing = VK_TRUE
+    };
+    
     VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+        .pNext = &descriptor_indexing_features,
         .dynamicRendering = VK_TRUE
     };
 
@@ -2249,8 +2265,8 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
 
     VkPipelineDepthStencilStateCreateInfo depth = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable  = info->depth_stencil.depth_test_enable,
-        .depthWriteEnable = info->depth_stencil.depth_write_enable,
+        .depthTestEnable  = info->depth_stencil_state.depth_test_enable,
+        .depthWriteEnable = info->depth_stencil_state.depth_write_enable,
     };
 
     // Color Blend
@@ -2335,9 +2351,9 @@ void dgx_free_pipeline(dgx_pipeline* pipeline) {
 void dgx_tcmd_copy_staging_memory_to_buffer(
     dgx_staging_memory*     staging_memory,
     dgx_buffer*             target_buffer,
-    uint32_t                staging_memory_region_offset,
-    uint32_t                buffer_write_region_offset,
-    uint32_t                buffer_write_region_size
+    uint64_t                staging_memory_region_offset,
+    uint64_t                buffer_write_region_offset,
+    uint64_t                buffer_write_region_size
 ) {
     VkBufferCopy copy_region = {
         .srcOffset  = staging_memory_region_offset,
@@ -2356,7 +2372,7 @@ void dgx_tcmd_copy_staging_memory_to_buffer(
 void dgx_tcmd_copy_staging_memory_to_texture(
     dgx_staging_memory*     staging_memory,
     dgx_texture*            target_texture,
-    uint32_t                staging_memory_region_offset,
+    uint64_t                staging_memory_region_offset,
     dgx_texture_dimensions  texture_write_region_offset,
     dgx_texture_dimensions  texture_write_region_size
 ) {
@@ -2473,6 +2489,21 @@ void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline) {
         pipeline->layout,
         0, 1, &pipeline->owning_hardware->bindless_descriptor,
         0, NULL
+    );
+}
+
+void dgx_gcmd_set_constants(
+    dgx_pipeline*    pipeline, 
+    dgx_shader_stage stage, 
+    uint64_t         offset, 
+    uint64_t         bytes, 
+    void*            data
+) {
+    vkCmdPushConstants(
+        recording_state_command_list->command_buffer,
+        pipeline->layout,
+        dgx_to_vk_shader_stage(stage),
+        offset, bytes, data
     );
 }
 
@@ -2858,32 +2889,30 @@ dgx_texture_format dgx_window_get_attachment_format(dgx_window* window) {
 
 // Window Present
 
-uint32_t dgx_window_acquire_index(dgx_window* window, dgx_timeline* can_render_timeline, uint64_t can_render_signal) {
+int dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index) {
     // Implicitly update input
     window->scroll_input = 0.0f;
     glfwPollEvents();
-
-    uint32_t attachment_index;
     
     VkResult result = vkAcquireNextImageKHR(
         window->owning_hardware->logical_device, 
         window->swapchain.swapchain, 
-        20 * (uint64_t)1e9, // seconds
+        2 * (uint64_t)1e9, // seconds
         window->acquire_semaphores[window->semaphores_iter],
-        VK_NULL_HANDLE, 
-        &attachment_index
+        VK_NULL_HANDLE,
+        out_index
     );
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         create_swapchain(window);
-        return dgx_window_acquire_index(window, can_render_timeline, can_render_signal);
+        return dgx_window_acquire_index(window, can_render_timeline, can_render_signal, out_index);
     } 
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         return 0; // failed to acquire swap chain image
     }
 
     // Once acquire semaphore is signaled, release timeline signal
-    VkSubmitInfo submit_info = {
+    if (vkQueueSubmit(window->owning_hardware->presentation_queue, 1, &(VkSubmitInfo){
         .sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount     = 1,
         .pWaitSemaphores        = &window->acquire_semaphores[window->semaphores_iter],
@@ -2893,12 +2922,10 @@ uint32_t dgx_window_acquire_index(dgx_window* window, dgx_timeline* can_render_t
         .pNext                  = &(VkTimelineSemaphoreSubmitInfoKHR){
             .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
             .signalSemaphoreValueCount  = can_render_timeline ? 1 : 0,
-            .pSignalSemaphoreValues     = &can_render_signal,
+            .pSignalSemaphoreValues     = &can_render_signal
         },
-    };
-    vkQueueSubmit(window->owning_hardware->presentation_queue, 1, &submit_info, VK_NULL_HANDLE);
-
-    return attachment_index;
+    }, VK_NULL_HANDLE) != VK_SUCCESS) return 0;
+    return 1;
 }
 
 void dgx_window_submit_present(dgx_window* window, uint32_t target_index, dgx_timeline* wait_timeline, uint64_t wait_signal) {

@@ -195,18 +195,17 @@ dfont_font* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
 
     // Create texture
     dgx_texture_create_info texture_create_info = {
-        .type = dgx_texture_type_2d,
-        .usage = dgx_texture_usage_sampled,
+        .type   = dgx_texture_type_2d,
+        .usage  = dgx_texture_usage_sampled,
         .dimensions = (dgx_texture_dimensions){
-            .x = texture_width,
-            .y = texture_height,
-            .z = 1
+            .width  = texture_width,
+            .height = texture_height,
+            .depth  = 1
         },
-        .mipmap_layers   = 1,
-        .array_length    = 1,
-        .format          = dgx_texture_format_r8_unorm,
-        .memory_access   = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-        .memory_strategy = dgx_memory_allocation_strategy_dedicated
+        .mipmap_layers  = 1,
+        .array_length   = 1,
+        .format         = dgx_texture_format_r8_unorm,
+        .memory_access  = dgx_memory_access_staging_write
     };
 
     font->atlas_texture = dgx_create_texture(hardware, &texture_create_info);
