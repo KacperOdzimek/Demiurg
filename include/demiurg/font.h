@@ -212,11 +212,11 @@ dfont_font* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
     if (!font->atlas_texture) goto _fail;
 
     // Upload atlas texture
-    dgx_texture_sync_upload(
+    /*dgx_texture_sync_upload(
         font->atlas_texture, 
         (dgx_texture_dimensions){0, 0, 0}, buf, 
         (dgx_texture_dimensions){texture_width, texture_height, 1}
-    );
+    );*/
 
     return font;
 _fail:

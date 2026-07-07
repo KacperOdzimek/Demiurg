@@ -11,6 +11,7 @@ Code info:
 - linear_algebra.h dependent
 - graphics.h dependent
 - font.h dependent
+- segmenter.h dependent
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
@@ -358,20 +359,20 @@ typedef struct dui_depth_data {
 // Data is dui_box_data, single child
 extern const dui_type dui_box_type;
 typedef struct dui_box_data {
-    dui_color       tint;               // box color
-    const char*     image;              // image name/path, may be NULL
-    uint32_t        shader;             // shader effect index
+    dui_color       tint;       // box color
+    const char*     image;      // image name/path, may be NULL
+    uint32_t        shader;     // shader effect index
 } dui_box_data;
 
 // Text render primitive
 // Data is dui_text_data, single child
 extern const dui_type dui_text_type;
 typedef struct dui_text_data {
-    unsigned int    size;               // font size
-    const char*     font;               // font name/path
-    const char*     text;               // text pointer
-    dui_color       tint;               // text color modyficator
-    uint32_t        shader;             // shader effect index
+    unsigned int    size;       // font size
+    const char*     font;       // font name/path
+    const char*     text;       // text pointer
+    dui_color       tint;       // text color modyficator
+    uint32_t        shader;     // shader effect index
 } dui_text_data;
 
 // ===========================
@@ -406,11 +407,9 @@ void dui_update_cache(
 // Rendering API
 
 typedef struct dui_shared_create_info {
-    dgx_render_target_layout*   pipeline_render_target_layout;
-    uint32_t                    additional_pipeline_descriptors_layouts_count;
-    dgx_descriptor_layout**     additional_pipeline_descriptors_layouts;
-    dgx_shader*                 pipeline_vertex_shader;
-    dgx_shader*                 pipeline_pixel_shader;
+    dgx_pipeline_attachment_state   attachment_state;
+    dgx_shader_create_info          vertex_shader_info;
+    dgx_shader_create_info          pixel_shader_info;
 } dui_shared_create_info;
 
 dui_shared* dui_create_shared(dgx_hardware*, const dui_shared_create_info*);
@@ -418,7 +417,7 @@ void dui_free_shared(dui_shared*);
 
 typedef struct dui_frames_create_info {
     dui_shared* shared;
-    uint32_t    frames_in_flight_count;
+    uint32_t    count;
 } dui_frames_create_info;
 
 dui_frames* dui_create_frames(dgx_hardware*, const dui_frames_create_info*);
@@ -429,17 +428,16 @@ void dui_upload_cache(
     dui_shared*         shared,
     dui_frames*         frames,
     uint32_t            frame_idx,
-    dgx_command_list*   command_list,
-    dgx_hardware_queue* queue_for_uploads,
+    uint8_t             transfer_work_group_index,
+    uint8_t             command_list_allocator_index,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    dgx_cpu_signal*     upload_finished_cpu,
-    dgx_gpu_signal*     upload_finished_gpu
+    dgx_timeline*       signal_timeline,
+    uint64_t            signal_value
 );
 
 void dui_gcmd_render(
-    dgx_command_list*   target,
     dui_frames*         frames,
     uint32_t            frame
 );
@@ -483,6 +481,9 @@ static inline dui_color dui_hex(const char* hex) {
 
 #ifdef DEMIURG_USER_INTERFACE_IMPL
 
+#include <stdlib.h>
+#include "segmenter.h"
+
 // Implementation Notes:
 // 1 - last_frame_used_in_render values reference
 //  last_frame_used_in_render is used to clear hashmap from dead nodes
@@ -497,8 +498,6 @@ static inline dui_color dui_hex(const char* hex) {
 #define LAST_FRAME_USED_IN_RENDER_IMPOSIBLE  1
 #define LAST_FRAME_USED_IN_RENDER_TOMBSTONE  2
 #define LAST_FRAME_USED_IN_RENDER_FIRST      3
-
-#include <stdlib.h>
 
 // ===========================
 // Math helpers
@@ -2034,7 +2033,7 @@ void dui_update_cache(
     // Do cursor input callbacks, walking from topmost to deepest
     dui_cursor_state changable_state = cursor_state;
     int              ever_was_inside = 0;
-    for (size_t i = cache->cursor_input_boxes_count - 1;; i--) {
+    if (cache->cursor_input_boxes_count) for (size_t i = cache->cursor_input_boxes_count - 1; ; i--) {
         cursor_input_box* ibox = &cache->cursor_input_boxes[i];
         if (!ibox->handle) continue; // nothing to call
 
@@ -2099,39 +2098,28 @@ void dui_update_cache(
 // ===========================
 // Rendering Common
 
-#define INTERNAL_TEXTURES_LIMIT                 1024
-
-#define INITIAL_INSTANCES_BUFFER_SIZE           (1024 * sizeof(gpu_instance))
-#define INITIAL_DRAW_ITEM_BUFFER_SIZE           (1024 * sizeof(gpu_draw_item))
-#define INITIAL_CLIPBOXES_BUFFER_SIZE           (16 * sizeof(gpu_clipbox))
-#define INITIAL_GLYPH_BUFFER_SIZE               (2024 * sizeof(gpu_glyph))
-
-#define GLYPH_STRUCTURE_ALIGN                   4
-
-#define PARAMETERS_BUFFER_DESCRIPTOR_BINDING    0
-#define INSTANCES_BUFFER_DESCRIPTOR_BINDING     1
-#define DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING     2
-#define GLYPH_BUFFER_DESCRIPTOR_BINDING         3
-#define CLIPBOXES_BUFFER_DESCRIPTOR_BINDING     4
-#define SAMPLER_DESCRIPTOR_BINDING              5
-#define TEXTURES_ARRAY_DESCRIPTOR_BINDING       6
+#define INITIAL_INSTANCES_BUFFER_SIZE   (1024 * sizeof(gpu_instance))
+#define INITIAL_DRAW_ITEM_BUFFER_SIZE   (1024 * sizeof(gpu_draw_item))
+#define INITIAL_CLIPBOXES_BUFFER_SIZE   (16 * sizeof(gpu_clipbox))
+#define INITIAL_GLYPH_BUFFER_SIZE       (2024 * sizeof(gpu_glyph))
+#define GLYPH_STRUCTURE_ALIGN           4
 
 typedef struct gpu_instance {
-    int item;
-    int glyph;
+    uint32_t    item;
+    uint32_t    glyph;
 } gpu_instance;
 
 typedef struct gpu_draw_item {
     dla_mat2x3  transform;
     dgx_uv_2d   atlas_position;
     int         texture_index;
-    int         clipbox_index;
+    uint32_t    clipbox_index;
+    uint32_t    shader_index;
     float       r, g, b, a;
-    int         shader;
 } gpu_draw_item;
 
 typedef struct gpu_clipbox {
-    dla_mat2x3 transform;
+    dla_mat2x3  transform;
 } gpu_clipbox;
 
 typedef struct gpu_glyph {
@@ -2140,181 +2128,56 @@ typedef struct gpu_glyph {
     float       size_x, size_y;
 } gpu_glyph;
 
-typedef struct gpu_parameters {
-    int         resolution_x;
-    int         resolution_y;
-} gpu_parameters;
+typedef struct gpu_vertex_constants {
+    uint32_t    resolution_width;
+    uint32_t    resolution_height;
+    uint32_t    instances_buffer_index;
+    uint32_t    draw_items_buffer_index;
+    uint32_t    glyphs_buffer_index;
+} gpu_vertex_constants;
 
-static inline dgx_buffer* create_ubo(dgx_hardware* hardware, uint64_t bytes) {
-    return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
-        .size_bytes         = bytes,
-        .usage              = dgx_buffer_usage_uniform,
-        .memory_strategy    = dgx_memory_allocation_strategy_dedicated,
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
-    });
-}
+typedef struct gpu_pixel_constants {
+    uint32_t    resolution_width;
+    uint32_t    resolution_height;
+    uint32_t    clips_buffer_index;
+    uint32_t    sampler_index;
+} gpu_pixel_constants;
+
+// ===========================
+// Helper Methods
 
 static inline dgx_buffer* create_ssbo(dgx_hardware* hardware, uint64_t bytes) {
     return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
-        .size_bytes         = bytes,
-        .usage              = dgx_buffer_usage_storage,
-        .memory_strategy    = dgx_memory_allocation_strategy_dedicated,
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+        .bytes  = bytes,
+        .access = dgx_memory_access_staging_write,
+        .usage  = dgx_buffer_usage_storage
     });
 }
-
-// vec2 position, vec2 uv
-static const float quad_vertices_array[] = {
-    -1.0f, -1.0f, 0.0f, 0.0f,
-     1.0f, -1.0f, 1.0f, 0.0f,
-    -1.0f,  1.0f, 0.0f, 1.0f,
-     1.0f,  1.0f, 1.0f, 1.0f,
-};
-
-static dgx_vertex_input_attribute_info vertex_attributes[] = {
-    {   // position : per vertex
-        .binding    = 0,
-        .location   = 0,
-        .offset     = 0,
-        .type       = dgx_data_type_vec2f32
-    },
-    {   // uv : per vertex
-        .binding    = 0,
-        .location   = 1,
-        .offset     = 2 * 4,
-        .type       = dgx_data_type_vec2f32
-    }
-};
-
-static dgx_vertex_input_binding_info vertex_bindings[] = {
-    {
-        .binding    = 0,
-        .input_rate = dgx_vertex_attribute_input_rate_per_vertex,
-        .stride     = 4 * 4
-    }
-};
-
-static dgx_descriptor_binding descriptor_bindings[] = {
-    {   // the parameters buffer
-        .binding = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_uniform_buffer
-    },
-    {   // the instances buffer
-        .binding = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the draw items buffer
-        .binding = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the glyphs buffer
-        .binding = GLYPH_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the clips buffer
-        .binding = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the sampler
-        .binding = SAMPLER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_sampler,
-    },
-    {   // the textures
-        .binding = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
-        .count   = -1, // Needs to be set per hardware!
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_sampled_texture
-    }
-};
 
 // ===========================
 // Shared Object
 
 struct dui_shared {
-    dgx_hardware*                       owning_hardware;
-
-    dgx_buffer*                         vertex_buffer;
-    dgx_sampler*                        sampler;
-
-    uint32_t                            descriptor_textures_array_length;
-    dgx_descriptor_layout*              descriptor_layout;
-    dgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
-    dgx_pipeline*                       pipeline;
-
-    dpr_partitioner*                    glyph_buffer_partitioner;
-    dgx_buffer*                         glyph_buffer;
+    dgx_hardware*       owning_hardware;
+    dgx_sampler*        sampler;
+    dgx_pipeline*       pipeline;
+    dpr_partitioner*    glyph_buffer_partitioner;
+    dgx_buffer*         glyph_buffer;
 };
 
 dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_info* info) {
     dui_shared* shared = calloc(1, sizeof(dui_shared)); if (!shared) return NULL;
     shared->owning_hardware = hardware;
 
-    // Vertex Buffer
-    shared->vertex_buffer = dgx_create_buffer(hardware, &(dgx_buffer_create_info){
-        .usage              = dgx_buffer_usage_vertex,
-        .size_bytes         = sizeof(quad_vertices_array),
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-        .memory_strategy    = dgx_memory_allocation_strategy_dedicated
-    });
-    if (!shared->vertex_buffer) goto _fail;
-    dgx_buffer_sync_upload(shared->vertex_buffer, 0, quad_vertices_array, sizeof(quad_vertices_array));
-
-    // Query textures limit
-    uint32_t max_textures = dgx_hardware_query_limit(hardware, dgx_hardware_limit_max_descriptor_sampled_images);
-    shared->descriptor_textures_array_length = max_textures > INTERNAL_TEXTURES_LIMIT ? INTERNAL_TEXTURES_LIMIT : max_textures;
-
-    // Copy descriptor bindings info
-    uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(dgx_descriptor_binding);
-    dgx_descriptor_binding* bindings = malloc(bindings_count * sizeof(dgx_descriptor_binding)); 
-    if (!bindings) goto _fail; memcpy(bindings, descriptor_bindings, sizeof(descriptor_bindings));
-
-    // Overwrite textures limit
-    bindings[TEXTURES_ARRAY_DESCRIPTOR_BINDING].count = shared->descriptor_textures_array_length;
-
-    // Descriptor Layout
-    
-    shared->descriptor_layout = dgx_create_descriptor_layout(hardware, &(dgx_descriptor_layout_create_info){
-        .bindings_count = bindings_count,
-        .bindings       = bindings
-    }); free(bindings); if (!shared->descriptor_layout) goto _fail;
-
-    // Pipeline Descriptor Layout
-    uint32_t layouts_count = 1 + info->additional_pipeline_descriptors_layouts_count;
-    dgx_descriptor_layout** layouts = calloc(layouts_count, sizeof(dgx_descriptor_layout*));
-
-    layouts[0] = shared->descriptor_layout;
-    for (uint32_t i = 0; i < info->additional_pipeline_descriptors_layouts_count; i++) {
-        layouts[i + 1] = info->additional_pipeline_descriptors_layouts[i];
-    }
-
-    shared->pipeline_descriptor_layout = dgx_create_pipeline_descriptors_layout(hardware, &(dgx_pipeline_descriptors_layout_create_info){
-        .layouts_count  = layouts_count,
-        .layouts        = layouts
-    }); free(layouts); if (!shared->pipeline_descriptor_layout) goto _fail;
-
     // Sampler
     shared->sampler = dgx_create_sampler(hardware, &(dgx_sampler_create_info){
         .mag_filter                 = dgx_sampler_filter_linear,
         .min_filter                 = dgx_sampler_filter_linear,
         .mipmap_filter              = dgx_sampler_filter_linear,
-
         .x_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .y_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .z_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .unnormalized_coordinates   = 0,
-
         .min_lod                    = 0,
         .max_lod                    = 1,
         .mip_lod_bias               = 0,
@@ -2331,43 +2194,46 @@ dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_in
     }); if (!shared->glyph_buffer_partitioner) goto _fail;
 
     // Pipeline Shaders
-    if (!info->pipeline_vertex_shader || !info->pipeline_pixel_shader) goto _fail;
+    dgx_shader* vertex_shader = dgx_create_shader(shared->owning_hardware, &info->vertex_shader_info);
+    dgx_shader* pixel_shader  = dgx_create_shader(shared->owning_hardware, &info->pixel_shader_info);
+
+    if (!vertex_shader || !pixel_shader) {
+        dgx_free_shader(vertex_shader);
+        dgx_free_shader(pixel_shader);
+        goto _fail;
+    }
 
     // Pipeline
     shared->pipeline = dgx_create_pipeline(shared->owning_hardware, &(dgx_pipeline_create_info){
-        .render_target_layout       = info->pipeline_render_target_layout,
-        .descriptor_layout          = shared->pipeline_descriptor_layout,
-        .vertex_layout = {
-            .attributes_count       = sizeof(vertex_attributes) / sizeof(dgx_vertex_input_attribute_info),
-            .attributes             = vertex_attributes,
-            .bindings_count         = sizeof(vertex_bindings) / sizeof(dgx_vertex_input_binding_info),
-            .bindings               = vertex_bindings,
-        },
+        .attachment_state = info->attachment_state,
         .shader_stages = {
-            .vertex                 = info->pipeline_vertex_shader,
-            .pixel                  = info->pipeline_pixel_shader
+            .shaders[dgx_shader_stage_vertex]   = vertex_shader,
+            .constants[dgx_shader_stage_vertex] = sizeof(gpu_vertex_constants),
+            .shaders[dgx_shader_stage_pixel]    = pixel_shader,
+            .constants[dgx_shader_stage_pixel]  = sizeof(gpu_pixel_constants)
         },
-        .input_assembly = {
-            .topology               = dgx_primitive_topology_triangle_strip
+        .input_assembler_state = {
+            .topology = dgx_primitive_topology_triangle_strip
         },
-        .rasterizer = {
-            .scissor_enable         = 0,
-            .depth_clamp_enable     = 0,
-            .fill_mode              = dgx_fill_mode_solid,
-            .cull_mode              = dgx_cull_mode_none
+        .rasterizer_state = {
+            .scissor_enable     = 0,
+            .depth_clamp_enable = 0,
+            .fill_mode          = dgx_fill_mode_solid,
+            .cull_mode          = dgx_cull_mode_none
         },
-        .blend = {
-            .blend_enable           = 1,
-            .blend_op               = dgx_blend_op_add,
-            .src_factor             = dgx_blend_factor_src_alpha,
-            .dst_factor             = dgx_blend_factor_one_minus_src_alpha,
+        .blend_state = {
+            .blend_enable   = 1,
+            .blend_op       = dgx_blend_op_add,
+            .src_factor     = dgx_blend_factor_src_alpha,
+            .dst_factor     = dgx_blend_factor_one_minus_src_alpha,
         },
-        .depth_stencil = {
+        .depth_stencil_state = {
             .depth_test_enable      = 0,
             .depth_write_enable     = 0,
             .stencil_test_enable    = 0
         }
-    }); if (!shared->pipeline) goto _fail;
+    });  dgx_free_shader(vertex_shader); dgx_free_shader(pixel_shader);
+    if (!shared->pipeline) goto _fail;
 
     return shared;
 
@@ -2378,11 +2244,8 @@ _fail:
 
 void dui_free_shared(dui_shared* shared) {
     if (!shared) return;
-    dgx_free_buffer(shared->vertex_buffer);
     dgx_free_sampler(shared->sampler);
     dgx_free_pipeline(shared->pipeline);
-    dgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
-    dgx_free_descriptor_layout(shared->descriptor_layout);
     dgx_free_buffer(shared->glyph_buffer);
     dpr_free_partitioner(shared->glyph_buffer_partitioner);
     free(shared);
@@ -2392,155 +2255,41 @@ void dui_free_shared(dui_shared* shared) {
 // Frames
 
 typedef struct single_frame {
-    uint32_t                    instances_to_render;
-    dgx_buffer*                 parameters_buffer;
-    dgx_buffer*                 instances_buffer;
-    dgx_buffer*                 draw_items_buffer;
-    dgx_buffer*                 clipboxes_buffer;
-    dgx_descriptor*             descriptor;
-    int                         bound_1_recent;
-    dgx_texture**               descriptor_bound_textures_1;
-    dgx_texture**               descriptor_bound_textures_2;
+    uint32_t                instances_to_render;
+    dgx_buffer*             instances_buffer;
+    dgx_buffer*             draw_items_buffer;
+    dgx_buffer*             clipboxes_buffer;
+    gpu_vertex_constants    vertex_constants;
+    gpu_pixel_constants     pixel_constants;
 } single_frame;
 
 struct dui_frames {
-    dui_shared*                 owning_shared;
-    dgx_descriptor_allocator*   descriptor_allocator;
-    uint32_t                    frames_count;
-    single_frame*               frames;
+    dui_shared*     owning_shared;
+    uint32_t        count;
+    single_frame*   frames;
 };
-
-void frame_descriptor_bind_buffers_and_sampler(dgx_hardware* hardware, dui_shared* shared, single_frame* frame) {
-    dgx_descriptor_write_info           writes[6];
-    dgx_descriptor_buffer_write_info    binfos[5];
-    dgx_descriptor_sampler_write_info   sinfos[1];
-
-    binfos[0] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->parameters_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->parameters_buffer)
-    };
-
-    binfos[1] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->instances_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->instances_buffer)
-    };
-
-    binfos[2] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->draw_items_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->draw_items_buffer)
-    };
-
-    binfos[3] = (dgx_descriptor_buffer_write_info){
-        .buffer = shared->glyph_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(shared->glyph_buffer)
-    };
-
-    binfos[4] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->clipboxes_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->clipboxes_buffer)
-    };
-
-    sinfos[0] = (dgx_descriptor_sampler_write_info){
-        .sampler = shared->sampler
-    };
-
-    writes[0] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_uniform_buffer,
-        .binding_index          = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[0]
-    };
-
-    writes[1] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[1]
-    };
-
-    writes[2] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[2]
-    };
-
-    writes[3] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[3]
-    };
-    
-    writes[4] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[4]
-    };
-
-    writes[5] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_sampler,
-        .binding_index          = SAMPLER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_samplers     = &sinfos[0]
-    };
-    
-    dgx_descriptors_write(hardware, 6, writes);
-}
 
 dui_frames* dui_create_frames(dgx_hardware* hardware, const dui_frames_create_info* info) {
     dui_shared* shared = info->shared;
 
-    dui_frames* frames = calloc(1, sizeof(dui_frames)); 
-    if (!frames) return NULL;
-    
+    dui_frames* frames = calloc(1, sizeof(dui_frames));  if (!frames) return NULL;
     frames->owning_shared = shared;
     
-    // create descriptor allocator
-    frames->descriptor_allocator = dgx_create_descriptor_allocator(hardware, &(dgx_descriptor_allocator_create_info){
-        .descriptor_layout          = shared->descriptor_layout,
-        .max_descriptors_allocated  = info->frames_in_flight_count
-    }); if (!frames->descriptor_allocator) goto _fail;
-
     // create frames
-    frames->frames_count = info->frames_in_flight_count;
-    frames->frames = calloc(info->frames_in_flight_count, sizeof(single_frame));
+    frames->count  = info->count;
+    frames->frames = calloc(info->count, sizeof(single_frame));
     if (!frames->frames) goto _fail;
 
     // populate frames
-    for (uint32_t i = 0; i < info->frames_in_flight_count; i++) {
+    for (uint32_t i = 0; i < info->count; i++) {
         single_frame* frame = &frames->frames[i];
         *frame = (single_frame){
-            .descriptor                  = dgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
-            .parameters_buffer           = create_ubo (hardware, sizeof(gpu_parameters)),
-            .instances_buffer            = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
-            .draw_items_buffer           = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
-            .clipboxes_buffer            = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE),
-            .descriptor_bound_textures_1 = calloc(shared->descriptor_textures_array_length, sizeof(dgx_texture*)),
-            .descriptor_bound_textures_2 = calloc(shared->descriptor_textures_array_length, sizeof(dgx_texture*))
+            .instances_buffer   = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
+            .draw_items_buffer  = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
+            .clipboxes_buffer   = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE)
         };
 
-        if (!frame->descriptor || !frame->parameters_buffer || !frame->instances_buffer || !frame->draw_items_buffer || 
-            !frame->clipboxes_buffer || !frame->descriptor_bound_textures_1 || !frame->descriptor_bound_textures_2) goto _fail;
-        frame_descriptor_bind_buffers_and_sampler(hardware, shared, frame);
+        if (!frame->instances_buffer || !frame->draw_items_buffer || !frame->clipboxes_buffer) goto _fail;
     }
 
     return frames;
@@ -2552,116 +2301,35 @@ _fail:
 
 void dui_free_frames(dui_frames* frames) {
     if (!frames) return;
-
-    for (uint32_t i = 0; i < frames->frames_count; i++) {
+    for (uint32_t i = 0; i < frames->count; i++) {
         single_frame* frame = &frames->frames[i];
-        dgx_free_buffer(frame->parameters_buffer);
         dgx_free_buffer(frame->instances_buffer);
         dgx_free_buffer(frame->draw_items_buffer);
         dgx_free_buffer(frame->clipboxes_buffer);
-        free(frame->descriptor_bound_textures_1);
-        free(frame->descriptor_bound_textures_2);
     }
-
-    // all per-frame descriptors freed with allocator
-    dgx_free_descriptor_allocator(frames->descriptor_allocator);
     free(frames->frames);
-
     free(frames);
 }
 
 // ===========================
 // Rendering Functions
 
-typedef struct texture_writes_dynamic_array {
-    dgx_descriptor*                             descriptor;
-    size_t                                      capacity;
-    size_t                                      position;
-    dgx_descriptor_write_info*                  writes;
-    dgx_descriptor_sampled_texture_write_info*  infos;
-} texture_writes_dynamic_array;
+typedef struct ui_upload_params {
+    uint64_t            count;
+    dgs_upload_request* requests;
+    dgx_staging_memory* staging;
+} ui_upload_params;
 
-static void free_texture_writes_dynamic_array(texture_writes_dynamic_array writes) {
-    free(writes.writes); free(writes.infos);
-}
-
-static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writes, dgx_texture* texture, uint32_t slot) {
-    if (writes->position + 1 > writes->capacity) {
-        size_t new_capacity = writes->capacity ? writes->capacity * 2 : 16;
-
-        dgx_descriptor_write_info* new_writes 
-            = realloc(writes->writes, new_capacity * sizeof(dgx_descriptor_write_info));
-
-        dgx_descriptor_sampled_texture_write_info* new_infos 
-            = realloc(writes->infos,  new_capacity * sizeof(dgx_descriptor_sampled_texture_write_info));
-
-        if (!new_writes || !new_infos) {
-            free(new_writes); free(new_infos);
-            return; // do not store write, no storage
-        }
-
-        writes->capacity = new_capacity;
-        writes->writes   = new_writes;
-        writes->infos    = new_infos;
+static void ui_upload_record(void* raw_params) {
+    ui_upload_params* params = raw_params;
+    uint64_t offset = 0;
+    for (uint64_t i = 0; i < params->count; i++) {
+        dgs_upload_request req = params->requests[i];
+        dgx_tcmd_copy_staging_memory_to_buffer(
+            params->staging, (dgx_buffer*)req.target,
+            offset, req.offset, req.bytes
+        );
     }
-
-    writes->writes[writes->position] = (dgx_descriptor_write_info){
-        .descriptor                 = writes->descriptor,
-        .binding_type               = dgx_descriptor_binding_type_sampled_texture,
-        .binding_index              = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
-        .array_element_index        = slot,
-        .array_elements_count       = 1,
-        // cannot link info now, since infos can be reallocated
-    };
-
-    writes->infos[writes->position] = (dgx_descriptor_sampled_texture_write_info){
-        .sampled_texture = texture
-    };
-
-    writes->position++;
-}
-
-static int clear_write
-(uint32_t texture_slots_count, single_frame* frame) {
-    dgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
-    for (uint32_t i = 0; i < texture_slots_count; i++) write[i] = NULL;
-}
-
-static int push_texture
-(texture_writes_dynamic_array* writes, uint32_t texture_slots_count, single_frame* frame, dgx_texture* texture, int is_font) {
-    if (texture == NULL) return 0;
-
-    dgx_texture** recent = frame->bound_1_recent ? frame->descriptor_bound_textures_1 : frame->descriptor_bound_textures_2;
-    dgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
-
-    // start search at module of texture pointer,
-    // bit shift because pointers may be aligned, will often lead to same slot
-    uint64_t hash = ((size_t)texture >> 4) * 11400714819323198485llu;
-    uint64_t begin = hash % texture_slots_count;
-
-    // search for free slot
-    int itr = begin;
-    do {
-        // same texture already assigned in previous frame generation,
-        // or write alredy requested -> return
-        if (recent[itr] == texture || write[itr] == texture) {
-            write[itr] = texture; // ensure space reserved
-            if (is_font) return -itr - 1;
-            return itr + 1;
-        }
-        // free slot, assing
-        if (write[itr] == NULL) {
-            write[itr] = texture;
-            push_texture_writes_dynamic_array(writes, texture, (uint32_t)itr);
-            if (is_font) return -itr - 1;
-            return itr + 1;
-        }
-        // else continue search
-        itr = (itr + 1) % texture_slots_count;
-    } while(itr != begin);
-
-    // no empty slots left
-    return 0;
 }
 
 void dui_upload_cache(
@@ -2669,40 +2337,23 @@ void dui_upload_cache(
     dui_shared*         shared,
     dui_frames*         frames,
     uint32_t            frame_idx,
-    dgx_command_list*   command_list,
-    dgx_hardware_queue* queue_for_uploads,
+    uint8_t             transfer_work_group_index,
+    uint8_t             command_list_allocator_index,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    dgx_cpu_signal*     upload_finished_cpu,
-    dgx_gpu_signal*     upload_finished_gpu
+    dgx_timeline*       signal_timeline,
+    uint64_t            signal_value
 ) {
     dgx_hardware* hardware = shared->owning_hardware;
     single_frame* frame    = &frames->frames[frame_idx];
 
-    // Prepare render parameters uniform
-
-    gpu_parameters parameters = {
-        .resolution_x = cache->resolution_x,
-        .resolution_y = cache->resolution_y
-    };
-
-    // Prepare texture descriptor update structure
-
-    texture_writes_dynamic_array texture_writes_array = (texture_writes_dynamic_array){
-        .descriptor = frame->descriptor
-    };
-    clear_write(shared->descriptor_textures_array_length, frame);
-
-    // Allocate upload regions descriptors array
-
-    size_t upload_regions_count    = cache->text_requests_count + 4;
-    size_t upload_regions_position = 0;
-    dgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(dgx_buffer_multi_upload_region));
-    if (!upload_regions) goto _cleanup;
+    // Create segmenter
+    dgs_segmenter* segmenter = dgs_create_segmenter(&(dgs_segmenter_create_info){
+        .bandwidth = staging_memory_region_size
+    }); if (!segmenter) goto _cleanup;
 
     // Prepare partitions for text draws
-
     for (size_t i = 0; i < cache->text_requests_count; i++) {
         text_request              req  = cache->text_requests[i];
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
@@ -2724,26 +2375,25 @@ void dui_upload_cache(
             req.glyphs_count * sizeof(gpu_glyph)
         );
 
-        // failed to create partition - create bigger text buffer
+        // Failed to create partition - create bigger text buffer
         if (!aux->owned_glyph_buffer_partition) {
-            // todo
+            // todo rewrite (must sync)
         }
     }
 
     // Generate draw regions for texts
-
     for (size_t i = 0; i < cache->text_requests_count; i++) {
         text_request              req  = cache->text_requests[i];
         text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
         dpr_partition*            prt = aux->owned_glyph_buffer_partition;
         if (!prt) continue; // text empty, nothing to upload
 
-        upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-            .buffer         = shared->glyph_buffer,
-            .buffer_offset  = dpr_partition_query_offset(prt),
-            .source_data    = req.glyphs,
-            .source_bytes   = req.glyphs_count * sizeof(gpu_draw_item)
-        };
+        dgs_segmenter_upload(segmenter, (dgs_upload_request){
+            .target = (uint64_t)shared->glyph_buffer,
+            .offset = dpr_partition_query_offset(prt),
+            .source = req.glyphs,
+            .bytes  = req.glyphs_count * sizeof(gpu_draw_item)
+        });
     }
 
     // Prepare draw items, draw instances, draw clipboxes
@@ -2768,26 +2418,21 @@ void dui_upload_cache(
         draw_request req = cache->draw_requests[i];
 
         if (req.is_box_not_text) {
-            int texture_index = 0; dgx_uv_2d uv;
-            if (req.box_data.image) {
-                dgx_texture* texture; if (dui_injection_query_image(req.box_data.image, &texture, &uv)) {
-                    texture_index = push_texture(
-                        &texture_writes_array, shared->descriptor_textures_array_length, 
-                        frame, texture, 0
-                    );
-                }
+            int texture_index = 0; dgx_texture* texture; dgx_uv_2d uv;
+            if (req.box_data.image && dui_injection_query_image(req.box_data.image, &texture, &uv)) {
+                texture_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_sampled_texture, texture);
             }
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
-                .clipbox_index  = req.clip_index,
-                .texture_index  = texture_index,
                 .atlas_position = uv,
+                .texture_index  = texture_index,
+                .clipbox_index  = req.clip_index,
+                .shader_index   = req.box_data.shader,
                 .r              = (float)req.box_data.tint.r / 255.0f,
                 .g              = (float)req.box_data.tint.g / 255.0f,
                 .b              = (float)req.box_data.tint.b / 255.0f,
-                .a              = (float)req.box_data.tint.a / 255.0f,
-                .shader         = req.box_data.shader
+                .a              = (float)req.box_data.tint.a / 255.0f
             };
 
             instances_count += 1;  // single box
@@ -2801,21 +2446,19 @@ void dui_upload_cache(
             dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
             dfont_font* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
 
-            int texture_index = push_texture(
-                &texture_writes_array, shared->descriptor_textures_array_length, 
-                frame, dfont_get_texture(font), 1
-            );
+            uint32_t texture_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_sampled_texture, dfont_get_texture(font));
+            int signed_texture_index = -(int)texture_index; // is font
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
-                .clipbox_index  = req.clip_index,
-                .texture_index  = texture_index,
                 .atlas_position = (dgx_uv_2d){0, 0, 1, 1},
+                .texture_index  = signed_texture_index,
+                .clipbox_index  = req.clip_index,
+                .shader_index   = text_data.shader,
                 .r              = (float)text_data.tint.r / 255.0f,
                 .g              = (float)text_data.tint.g / 255.0f,
                 .b              = (float)text_data.tint.b / 255.0f,
                 .a              = (float)text_data.tint.a / 255.0f,
-                .shader         = text_data.shader
             };
 
             instances_count += dpr_partition_query_size(part) / sizeof(gpu_glyph);
@@ -2862,118 +2505,136 @@ void dui_upload_cache(
         };
     }
 
-    // Ensure Buffer Sizes
-    int rebind = 0;
-
     // Items buffer
-    if (dgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
+    if (dgx_buffer_query_bytes(frame->draw_items_buffer) < items_bytes) {
         dgx_free_buffer(frame->draw_items_buffer);
         frame->draw_items_buffer = create_ssbo(hardware, items_bytes);
-        rebind = 1;
     }
 
     // Instanced buffer
-    if (dgx_buffer_get_size_bytes(frame->instances_buffer) < instances_bytes) {
+    if (dgx_buffer_query_bytes(frame->instances_buffer) < instances_bytes) {
         dgx_free_buffer(frame->instances_buffer);
         frame->instances_buffer = create_ssbo(hardware, instances_bytes);
-        rebind = 1;
     }
 
     // Clipboxes buffer
-    if (dgx_buffer_get_size_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+    if (dgx_buffer_query_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
         dgx_free_buffer(frame->clipboxes_buffer);
         frame->clipboxes_buffer = create_ssbo(hardware, clipboxes_bytes);
-        rebind = 1;
     }
 
-    // If resize failed return
-    if (!frame->draw_items_buffer || !frame->instances_buffer) return;
-    if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frames->owning_shared, frame);
+    // Uploads requests
+    dgs_segmenter_upload(segmenter, (dgs_upload_request){
+        .target = (uint64_t)frame->draw_items_buffer,
+        .offset = 0,
+        .source = &items,
+        .bytes  = items_count * sizeof(gpu_draw_item)
+    });
 
-    // Upload
+    dgs_segmenter_upload(segmenter, (dgs_upload_request){
+        .target = (uint64_t)frame->clipboxes_buffer,
+        .offset = 0,
+        .source = &clipboxes,
+        .bytes  = clipboxes_count * sizeof(gpu_clipbox)
+    });
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->parameters_buffer,
-        .buffer_offset  = 0,
-        .source_data    = &parameters,
-        .source_bytes   = sizeof(gpu_parameters)
-    };
+    dgs_segmenter_upload(segmenter, (dgs_upload_request){
+        .target = (uint64_t)frame->instances_buffer,
+        .offset = 0,
+        .source = &instances,
+        .bytes  = instances_count * sizeof(gpu_instance)
+    });
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->draw_items_buffer,
-        .buffer_offset  = 0,
-        .source_data    = items,
-        .source_bytes   = items_count * sizeof(gpu_draw_item)
-    };
+    // Perform uploads
+    dgx_timeline* internal = NULL;
+    uint64_t internal_itr = 0;
+    
+    while (!dgx_segmenter_query_empty(segmenter)) {
+        if (internal) dgx_timeline_wait(internal, internal_itr);
+        
+        uint64_t count; dgs_upload_request* requests;
+        dgs_segmenter_continue(segmenter, &count, &requests);
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->clipboxes_buffer,
-        .buffer_offset  = 0,
-        .source_data    = clipboxes,
-        .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
-    };
+        int last_upload = dgx_segmenter_query_empty(segmenter);
+        if (!last_upload && !internal) {
+            internal = dgx_create_timeline(hardware, &(dgx_timeline_create_info){
+                .initial_value = 0
+            });
+        }
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->instances_buffer,
-        .buffer_offset  = 0,
-        .source_data    = instances,
-        .source_bytes   = instances_count * sizeof(gpu_instance)
-    };
+        // copy to staging memory
+        char* mapped = dgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
+        uint64_t offset = 0;
+        for (uint64_t i = 0; i < count; i++) {
+            dgs_upload_request req = requests[i];
+            memcpy(mapped + offset, req.source, req.bytes);
+            offset += req.bytes;
+        }
+        dgx_staging_memory_unmap(staging_memory);
 
-    // Write all buffers
-    dgx_buffer_multi_upload(
-        upload_regions,
-        upload_regions_position,
-        command_list, 
-        queue_for_uploads,
-        staging_memory,
-        staging_memory_region_offset,
-        staging_memory_region_size,
-        upload_finished_cpu,
-        upload_finished_gpu
-    );
+        // record rewrite list
+        dgx_command_list* list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+            .domain = dgx_command_domain_transfer,
+            .aindex = command_list_allocator_index,
+            .parent = NULL,
+            .record = ui_upload_record,
+            .params = &(ui_upload_params){
+                .count    = count,
+                .requests = requests,
+                .staging  = staging_memory
+            }
+        });
 
-    // Walk and link texture descriptor writes
-    // Do it here, since earlier those could have been reallocated
-    for (size_t i = 0; i < texture_writes_array.position; i++) {
-        texture_writes_array.writes[i].infos.for_sampled_textures = &texture_writes_array.infos[i];
+        // submit gpu work
+        dgx_command_list_submit(list, &(dgx_submit_info){
+            .domain_work_group  = transfer_work_group_index,
+            .signal_timeline    = last_upload ? signal_timeline : internal,
+            .signal_value       = last_upload ? signal_value    : ++internal_itr
+        });
     }
 
-    // Update textures descriptor    
-    dgx_descriptors_write(
-        hardware, texture_writes_array.position, texture_writes_array.writes
-    );
+    if (internal) dgx_free_timeline(internal);
+
+    // Set render parameters since buffer are ready
+    frame->vertex_constants = (gpu_vertex_constants){
+        .resolution_width        = cache->resolution_x,
+        .resolution_height       = cache->resolution_y,
+        .instances_buffer_index  = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->instances_buffer),
+        .draw_items_buffer_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->draw_items_buffer),
+        .glyphs_buffer_index     = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, shared->glyph_buffer),
+    };
+    frame->pixel_constants = (gpu_pixel_constants){
+        .resolution_width   = cache->resolution_x,
+        .resolution_height  = cache->resolution_y,
+        .clips_buffer_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->clipboxes_buffer),
+        .sampler_index      = dgx_hardware_resource_bind(hardware, dgx_resource_type_sampler, shared->sampler),
+    };
 
     // Mark to render
     frame->instances_to_render = instances_count;
 
-_cleanup:
-    // Free text requests
-    free_cached_text_requests(cache);
-
-    // Free allocated memory
-    free(items); free(clipboxes); free(instances); free(upload_regions);
-    free_texture_writes_dynamic_array(texture_writes_array);
-
-    // Toggle recent bound in frame
-    frame->bound_1_recent = !frame->bound_1_recent;
+_cleanup: 
+    free_cached_text_requests(cache);               // Free text requests
+    free(items); free(clipboxes); free(instances);  // Free allocated memory
 }
 
 void dui_gcmd_render(
-    dgx_command_list*   target,
-    dui_frames*         frames,
-    uint32_t            frame_idx
+    dui_frames* frames,
+    uint32_t    frame_idx
 ) {
-    single_frame* frame = &frames->frames[frame_idx % frames->frames_count];
+    single_frame* frame = &frames->frames[frame_idx % frames->count];
     if (frame->instances_to_render) {
-        dgx_gcmd_bind_graphics_pipeline(target, frames->owning_shared->pipeline);
-        dgx_gcmd_bind_graphics_pipeline_descriptors(
-            target, 
-            frames->owning_shared->pipeline_descriptor_layout, 
-            0, 1, &frame->descriptor
+        dgx_gcmd_bind_graphics_pipeline(frames->owning_shared->pipeline);
+
+        dgx_gcmd_write_constants(
+            frames->owning_shared->pipeline, dgx_shader_stage_vertex, 0, sizeof(gpu_vertex_constants), &frame->vertex_constants
         );
-        dgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frames->owning_shared->vertex_buffer, 0, 0);
-        dgx_gcmd_draw_vertices(target, 4, 0, frame->instances_to_render, 0);
+
+        dgx_gcmd_write_constants(
+            frames->owning_shared->pipeline, dgx_shader_stage_pixel, 0, sizeof(gpu_pixel_constants), &frame->pixel_constants
+        );
+
+        dgx_gcmd_draw(0, 4, 0, frame->instances_to_render);
     }
 }
 
