@@ -93,10 +93,6 @@ void dgx_free_hardware(dgx_hardware*);
 // Wait till all hardware have no work at all
 void dgx_hardware_wait_idle(dgx_hardware*);
 
-// Shader access
-uint32_t dgx_hardware_resource_bind  (dgx_hardware*, dgx_resource_type type, void*  resource);
-void     dgx_hardware_resource_unbind(dgx_hardware*, dgx_resource_type type, uint32_t access);
-
 // ===========================
 // Timeline
 
@@ -292,6 +288,10 @@ typedef struct dgx_shader_create_info {
 typedef struct dgx_shader dgx_shader;
 dgx_shader* dgx_create_shader(dgx_hardware*, const dgx_shader_create_info* info);
 void dgx_free_shader(dgx_shader* shader);
+
+// Returns handle user can use to access resource in shader
+// success value will be and'ed with 1 in case of success and 0 zero otherwise
+uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type, void* resource, int* success);
 
 // ===========================
 // Graphics Pipeline
@@ -1462,13 +1462,14 @@ VkImageView get_native_texture_handle(dgx_texture* texture);
 VkSampler   get_native_sampler_handle(dgx_sampler* sampler);
 
 // Thread safe operation
-uint32_t dgx_hardware_resource_bind(dgx_hardware* hardware, dgx_resource_type type, void* resource) {
+uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type, void* resource, int* success) {
     bindless_allocator* ba = &hardware->bindless_allocators[type];
 
     // Find and take free index
     mtx_lock(&ba->mutex);
     if (ba->free_count == 0) {
-        mtx_unlock(&ba->mutex); return 0;
+        mtx_unlock(&ba->mutex); 
+        *success &= 0; return 0;   // Arbitrary
     }
     uint32_t idx = ba->free_stack[ba->free_count - 1];
     ba->free_count--;
@@ -1524,6 +1525,7 @@ uint32_t dgx_hardware_resource_bind(dgx_hardware* hardware, dgx_resource_type ty
         .pTexelBufferView   = NULL
     }, 0, NULL);
     
+    *success &= 1;
     return idx;
 }
 

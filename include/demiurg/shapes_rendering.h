@@ -66,8 +66,9 @@ void dshp_reset(
     dshp_context* context
 );
 
-// uploads draw requests to gpu
-void dshp_upload(
+// Uploads draw requests to gpu
+// Returns non-zero at success
+int dshp_upload(
     dshp_context*       context,
     uint8_t             transfer_work_group_index,
     uint8_t             command_list_allocator_index,
@@ -292,7 +293,7 @@ static uint64_t min_u64(uint64_t l, uint64_t r) {
     return l < r ? l : r;
 }
 
-void dshp_upload(
+int dshp_upload(
     dshp_context*       context,
     uint8_t             transfer_work_group_index,
     uint8_t             command_list_allocator_index,
@@ -307,8 +308,11 @@ void dshp_upload(
 
     // Nothing to upload
     if (frame->position == 0) {
-        dgx_timeline_signal(signal_timeline, signal_value); return;
+        dgx_timeline_signal(signal_timeline, signal_value); return 1;
     }
+
+    // Whether succeeded to bind resources
+    int bind_success = 1;
 
     // Ensure buffer space
     if (!frame->buffer || dgx_buffer_query_bytes(frame->buffer) < frame->position * sizeof(gpu_instance)) {
@@ -325,13 +329,13 @@ void dshp_upload(
         if (new_buffer) {
             dgx_free_buffer(frame->buffer);
             frame->buffer = new_buffer;
-            frame->bind = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, new_buffer);
+            frame->bind = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, new_buffer, &bind_success);
         }
     }
 
     // Safe return
     if (!frame->buffer) {
-        dgx_timeline_signal(signal_timeline, signal_value); return;
+        dgx_timeline_signal(signal_timeline, signal_value); return 0;
     }
 
     // Cap written instances to buffer capacity
@@ -386,6 +390,9 @@ void dshp_upload(
 
     // Free temporary
     dgx_free_timeline(internal);
+
+    // Successful if succeeded to bind
+    return bind_success;
 }
 
 void dshp_gcmd_render(dshp_context* context) {

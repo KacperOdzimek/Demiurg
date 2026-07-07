@@ -423,7 +423,8 @@ typedef struct dui_frames_create_info {
 dui_frames* dui_create_frames(dgx_hardware*, const dui_frames_create_info*);
 void dui_free_frames(dui_frames*);
 
-void dui_upload_cache(
+// Returns non-zero at success
+int dui_upload_cache(
     dui_cache*          cache,
     dui_shared*         shared,
     dui_frames*         frames,
@@ -2336,7 +2337,7 @@ static void ui_upload_record(void* raw_params) {
     }
 }
 
-void dui_upload_cache(
+int dui_upload_cache(
     dui_cache*          cache,
     dui_shared*         shared,
     dui_frames*         frames,
@@ -2351,6 +2352,9 @@ void dui_upload_cache(
 ) {
     dgx_hardware* hardware = shared->owning_hardware;
     single_frame* frame    = &frames->frames[frame_idx];
+
+    // Function-wide success flag
+    int success = 1;
 
     // Create segmenter
     dgs_segmenter* segmenter = dgs_create_segmenter(&(dgs_segmenter_create_info){
@@ -2424,7 +2428,9 @@ void dui_upload_cache(
         if (req.is_box_not_text) {
             int texture_index = 0; dgx_texture* texture; dgx_uv_2d uv;
             if (req.box_data.image && dui_injection_query_image(req.box_data.image, &texture, &uv)) {
-                texture_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_sampled_texture, texture);
+                texture_index = dgx_shader_resource_bind(
+                    hardware, dgx_resource_type_sampled_texture, texture, &success
+                );
             }
 
             items[i] = (gpu_draw_item){
@@ -2450,7 +2456,9 @@ void dui_upload_cache(
             dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
             dfont_font* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
 
-            uint32_t texture_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_sampled_texture, dfont_get_texture(font));
+            uint32_t texture_index = dgx_shader_resource_bind(
+                hardware, dgx_resource_type_sampled_texture, dfont_get_texture(font), &success
+            );
             int signed_texture_index = -(int)texture_index; // is font
 
             items[i] = (gpu_draw_item){
@@ -2511,20 +2519,26 @@ void dui_upload_cache(
 
     // Items buffer
     if (dgx_buffer_query_bytes(frame->draw_items_buffer) < items_bytes) {
+        dgx_buffer* new_buffer = create_ssbo(hardware, items_bytes);
+        if (!new_buffer) {success = 0; goto _cleanup;}
         dgx_free_buffer(frame->draw_items_buffer);
-        frame->draw_items_buffer = create_ssbo(hardware, items_bytes);
+        frame->draw_items_buffer = new_buffer;
     }
 
     // Instanced buffer
     if (dgx_buffer_query_bytes(frame->instances_buffer) < instances_bytes) {
+        dgx_buffer* new_buffer = create_ssbo(hardware, instances_bytes);
+        if (!new_buffer) {success = 0; goto _cleanup;}
         dgx_free_buffer(frame->instances_buffer);
-        frame->instances_buffer = create_ssbo(hardware, instances_bytes);
+        frame->instances_buffer = new_buffer;
     }
 
     // Clipboxes buffer
     if (dgx_buffer_query_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+        dgx_buffer* new_buffer = create_ssbo(hardware, clipboxes_bytes);
+        if (!new_buffer) {success = 0; goto _cleanup;}
         dgx_free_buffer(frame->clipboxes_buffer);
-        frame->clipboxes_buffer = create_ssbo(hardware, clipboxes_bytes);
+        frame->clipboxes_buffer = new_buffer;
     }
 
     // Uploads requests
@@ -2548,6 +2562,21 @@ void dui_upload_cache(
         .source = instances,
         .bytes  = instances_count * sizeof(gpu_instance)
     });
+
+    // Set render parameters since buffer are ready
+    frame->vertex_constants = (gpu_vertex_constants){
+        .resolution_width        = cache->resolution_x,
+        .resolution_height       = cache->resolution_y,
+        .instances_buffer_index  = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->instances_buffer, &success),
+        .draw_items_buffer_index = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->draw_items_buffer, &success),
+        .glyphs_buffer_index     = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, shared->glyph_buffer, &success),
+    };
+    frame->pixel_constants = (gpu_pixel_constants){
+        .resolution_width   = cache->resolution_x,
+        .resolution_height  = cache->resolution_y,
+        .clips_buffer_index = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->clipboxes_buffer, &success),
+        .sampler_index      = dgx_shader_resource_bind(hardware, dgx_resource_type_sampler, shared->sampler, &success),
+    };
 
     // Perform uploads
     dgx_timeline* internal = NULL;
@@ -2600,21 +2629,6 @@ void dui_upload_cache(
 
     if (internal) dgx_free_timeline(internal);
 
-    // Set render parameters since buffer are ready
-    frame->vertex_constants = (gpu_vertex_constants){
-        .resolution_width        = cache->resolution_x,
-        .resolution_height       = cache->resolution_y,
-        .instances_buffer_index  = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->instances_buffer),
-        .draw_items_buffer_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->draw_items_buffer),
-        .glyphs_buffer_index     = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, shared->glyph_buffer),
-    };
-    frame->pixel_constants = (gpu_pixel_constants){
-        .resolution_width   = cache->resolution_x,
-        .resolution_height  = cache->resolution_y,
-        .clips_buffer_index = dgx_hardware_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->clipboxes_buffer),
-        .sampler_index      = dgx_hardware_resource_bind(hardware, dgx_resource_type_sampler, shared->sampler),
-    };
-
     // Mark to render
     frame->instances_to_render = instances_count;
 
@@ -2622,6 +2636,8 @@ _cleanup:
     dgs_free_segmenter(segmenter);                  // Free segmenter
     free_cached_text_requests(cache);               // Free text requests
     free(items); free(clipboxes); free(instances);  // Free allocated memory
+
+    return success;
 }
 
 void dui_gcmd_render(
