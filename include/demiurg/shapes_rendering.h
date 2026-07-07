@@ -392,11 +392,11 @@ void dshp_gcmd_render(dshp_context* context) {
     if (frame->to_draw) {
         dgx_gcmd_bind_graphics_pipeline(context->frames->owning_shared->pipeline);
         gpu_constants constants = {.buffer_index = frame->bind};
-        dgx_gcmd_set_constants(
+        dgx_gcmd_write_constants(
             context->frames->owning_shared->pipeline, dgx_shader_stage_vertex, 0, (sizeof(gpu_constants)), &constants
         );
-        dgx_gcmd_set_constants(
-            context->frames->owning_shared->pipeline, dgx_shader_stage_pixel, 4, (sizeof(gpu_constants)), &constants
+        dgx_gcmd_write_constants(
+            context->frames->owning_shared->pipeline, dgx_shader_stage_pixel, 0, (sizeof(gpu_constants)), &constants
         );
         dgx_gcmd_draw(0, 3, 0, frame->to_draw);
     }

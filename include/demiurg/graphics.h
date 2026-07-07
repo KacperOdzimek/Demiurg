@@ -504,11 +504,11 @@ void dgx_gcmd_finish_rendering();
 
 void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline);
 
-void dgx_gcmd_set_constants(
+void dgx_gcmd_write_constants(
     dgx_pipeline*    pipeline, 
     dgx_shader_stage stage, 
-    uint64_t         offset, 
-    uint64_t         bytes, 
+    uint32_t         offset,
+    uint32_t         bytes, 
     void*            data
 );
 
@@ -2155,6 +2155,7 @@ struct dgx_pipeline {
     dgx_hardware*       owning_hardware;
     VkPipeline          pipeline;
     VkPipelineLayout    layout;
+    uint32_t            constants_offset[dgx_shader_stage_count];
 };
 
 dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_create_info* info) {
@@ -2177,6 +2178,7 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
             .offset     = constants_offset,
             .size       = info->shader_stages.constants[stage],
         };
+        pipeline->constants_offset[stage] = constants_offset;
         constants_offset += info->shader_stages.constants[stage];
     }
 
@@ -2492,18 +2494,18 @@ void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline) {
     );
 }
 
-void dgx_gcmd_set_constants(
+void dgx_gcmd_write_constants(
     dgx_pipeline*    pipeline, 
     dgx_shader_stage stage, 
-    uint64_t         offset, 
-    uint64_t         bytes, 
+    uint32_t         offset,
+    uint32_t         bytes, 
     void*            data
 ) {
     vkCmdPushConstants(
         recording_state_command_list->command_buffer,
         pipeline->layout,
         dgx_to_vk_shader_stage(stage),
-        offset, bytes, data
+        pipeline->constants_offset[stage] + offset, bytes, data
     );
 }
 
