@@ -2261,6 +2261,7 @@ typedef struct single_frame {
     dgx_buffer*             clipboxes_buffer;
     gpu_vertex_constants    vertex_constants;
     gpu_pixel_constants     pixel_constants;
+    dgx_command_list*       upload_list;
 } single_frame;
 
 struct dui_frames {
@@ -2306,6 +2307,7 @@ void dui_free_frames(dui_frames* frames) {
         dgx_free_buffer(frame->instances_buffer);
         dgx_free_buffer(frame->draw_items_buffer);
         dgx_free_buffer(frame->clipboxes_buffer);
+        dgx_free_command_list(frame->upload_list);
     }
     free(frames->frames);
     free(frames);
@@ -2575,10 +2577,10 @@ void dui_upload_cache(
         dgx_staging_memory_unmap(staging_memory);
 
         // record rewrite list
-        dgx_command_list* list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+        frame->upload_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
             .domain = dgx_command_domain_transfer,
             .aindex = command_list_allocator_index,
-            .parent = NULL,
+            .parent = frame->upload_list,
             .record = ui_upload_record,
             .params = &(ui_upload_params){
                 .count    = count,
@@ -2589,7 +2591,7 @@ void dui_upload_cache(
         });
 
         // submit gpu work
-        dgx_command_list_submit(list, &(dgx_submit_info){
+        dgx_command_list_submit(frame->upload_list, &(dgx_submit_info){
             .domain_work_group  = transfer_work_group_index,
             .signal_timeline    = last_upload ? signal_timeline : internal,
             .signal_value       = last_upload ? signal_value    : ++internal_itr

@@ -218,12 +218,13 @@ void dshp_free_shared(dshp_shared* shared) {
 */
 
 typedef struct single_frame {
-    uint64_t        position;   // Arena position in gpu instances
-    uint64_t        capacity;   // Arena capacity in gpu instances
-    gpu_instance*   arena;      // Arena data
-    uint32_t        to_draw;    // GPU instances to draw
-    dgx_buffer*     buffer;     // GPU instances buffer
-    uint32_t        bind;       // Buffer bind point
+    uint64_t            position;       // Arena position in gpu instances
+    uint64_t            capacity;       // Arena capacity in gpu instances
+    gpu_instance*       arena;          // Arena data
+    uint32_t            to_draw;        // GPU instances to draw
+    dgx_buffer*         buffer;         // GPU instances buffer
+    uint32_t            bind;           // Buffer bind point
+    dgx_command_list*   upload_list;    // List used to upload instances
 } single_frame;
 
 struct dshp_frames {
@@ -260,6 +261,7 @@ void dshp_free_frames(dshp_frames* frames) {
     if (!frames) return;
     for (uint32_t i = 0; i < frames->in_flight; i++) {
         dgx_free_buffer(frames->frames[i].buffer);
+        dgx_free_command_list(frames->frames[i].upload_list);
         free(frames->frames[i].arena);
     }
     free(frames->frames);
@@ -344,7 +346,6 @@ void dshp_upload(
     uint64_t internal_itr = 0;
 
     // Upload loop
-    dgx_command_list* command_list = NULL;
     while (instances_to_write) {
         uint64_t upload = min_u64(instances_to_write, staging_capacity);
 
@@ -352,10 +353,10 @@ void dshp_upload(
         memcpy(mem, &frame->arena[buffer_uploaded], upload * sizeof(gpu_instance));
         dgx_staging_memory_unmap(staging_memory);
 
-        command_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+        frame->upload_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
             .domain = dgx_command_domain_transfer,
             .aindex = command_list_allocator_index,
-            .parent = command_list,
+            .parent = frame->upload_list,
             .record = upload_record,
             .params = &(upload_params){
                 .staging  = staging_memory,
@@ -367,7 +368,7 @@ void dshp_upload(
 
         int last_upload = instances_to_write <= staging_capacity;
 
-        dgx_command_list_submit(command_list, &(dgx_submit_info){
+        dgx_command_list_submit(frame->upload_list, &(dgx_submit_info){
             .domain_work_group  = transfer_work_group_index,
             .signal_timeline    = last_upload ? signal_timeline : internal,
             .signal_value       = last_upload ? signal_value    : ++internal_itr
