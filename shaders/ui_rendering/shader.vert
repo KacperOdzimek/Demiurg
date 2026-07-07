@@ -28,8 +28,8 @@ struct gpu_draw_item {
     lgx_uv_2d   atlas_position;
     int         texture_index;
     int         clipbox_index;
+    uint        shader_index;
     float       r, g, b, a;
-    int         shader;
 };
 
 struct gpu_clipbox {

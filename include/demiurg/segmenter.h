@@ -61,7 +61,7 @@ struct dgs_segmenter {
 };
 
 dgs_segmenter* dgs_create_segmenter(dgs_segmenter_create_info* info) {
-    if (info->bandwidth == 0) {free(info->parent); return NULL;}
+    if (info->bandwidth == 0) {dgs_free_segmenter(info->parent); return NULL;}
     if (info->parent) {
         info->parent->uploads_count = 0;
         info->parent->uploads_first = 0;
@@ -115,20 +115,25 @@ void dgs_segmenter_continue(dgs_segmenter* segmenter, uint64_t* out_uploads_coun
     uint64_t bytes_budget = segmenter->bandwidth;
     *out_first_upload = &segmenter->uploads[segmenter->uploads_first];
     dgs_upload_request* first = *out_first_upload;
-    
+
     if (segmenter->first_trimmed) {
         first->source += first->bytes;              // previously uploaded
         first->offset += first->bytes;              // advance
         first->bytes   = segmenter->first_trimmed;  // left to upload
     }
 
-    uint32_t itr = 0; segmenter->first_trimmed = 0;
-    while (bytes_budget && segmenter->uploads_count) {
-        uint32_t pos = (segmenter->uploads_first + itr) % segmenter->uploads_capacity;
+    uint64_t itr = 0;
+    segmenter->first_trimmed = 0;
+
+    // Never cross the physical end of the ring buffer in one batch —
+    // out_first_upload must stay a contiguous array for the caller.
+    uint64_t contiguous_limit = segmenter->uploads_capacity - segmenter->uploads_first;
+    while (bytes_budget && itr < segmenter->uploads_count && itr < contiguous_limit) {
+        uint64_t pos = segmenter->uploads_first + itr;
         dgs_upload_request* upload = &segmenter->uploads[pos];
         if (upload->bytes <= bytes_budget) {
             bytes_budget -= upload->bytes;
-            itr++; segmenter->uploads_count--; 
+            itr++;
             continue;
         }
         segmenter->first_trimmed = upload->bytes - bytes_budget;
@@ -136,6 +141,7 @@ void dgs_segmenter_continue(dgs_segmenter* segmenter, uint64_t* out_uploads_coun
         break;
     }
 
+    segmenter->uploads_count -= itr;
     segmenter->uploads_first  = (segmenter->uploads_first + itr) % segmenter->uploads_capacity;
     *out_uploads_count = (itr + (segmenter->first_trimmed ? 1 : 0));
 }

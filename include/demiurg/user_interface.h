@@ -2105,15 +2105,15 @@ void dui_update_cache(
 #define GLYPH_STRUCTURE_ALIGN           4
 
 typedef struct gpu_instance {
-    uint32_t    item;
-    uint32_t    glyph;
+    int item;
+    int glyph;
 } gpu_instance;
 
 typedef struct gpu_draw_item {
     dla_mat2x3  transform;
     dgx_uv_2d   atlas_position;
     int         texture_index;
-    uint32_t    clipbox_index;
+    int         clipbox_index;
     uint32_t    shader_index;
     float       r, g, b, a;
 } gpu_draw_item;
@@ -2318,6 +2318,7 @@ typedef struct ui_upload_params {
     uint64_t            count;
     dgs_upload_request* requests;
     dgx_staging_memory* staging;
+    uint64_t            offset;
 } ui_upload_params;
 
 static void ui_upload_record(void* raw_params) {
@@ -2327,8 +2328,9 @@ static void ui_upload_record(void* raw_params) {
         dgs_upload_request req = params->requests[i];
         dgx_tcmd_copy_staging_memory_to_buffer(
             params->staging, (dgx_buffer*)req.target,
-            offset, req.offset, req.bytes
+            params->offset + offset, req.offset, req.bytes
         );
+        offset += req.bytes;
     }
 }
 
@@ -2392,7 +2394,7 @@ void dui_upload_cache(
             .target = (uint64_t)shared->glyph_buffer,
             .offset = dpr_partition_query_offset(prt),
             .source = req.glyphs,
-            .bytes  = req.glyphs_count * sizeof(gpu_draw_item)
+            .bytes  = req.glyphs_count * sizeof(gpu_glyph)
         });
     }
 
@@ -2496,7 +2498,7 @@ void dui_upload_cache(
 
     // Generate GPU Clipboxes
     clipboxes_count = cache->clipbox_requests_count;
-    clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_draw_item);
+    clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_clipbox);
     clipboxes       = malloc(clipboxes_bytes); if (!clipboxes) goto _cleanup;
     for (uint32_t i = 0; i < clipboxes_count; i++) {
         clipbox_request req = cache->clipbox_requests[i];
@@ -2527,21 +2529,21 @@ void dui_upload_cache(
     dgs_segmenter_upload(segmenter, (dgs_upload_request){
         .target = (uint64_t)frame->draw_items_buffer,
         .offset = 0,
-        .source = &items,
+        .source = items,
         .bytes  = items_count * sizeof(gpu_draw_item)
     });
 
     dgs_segmenter_upload(segmenter, (dgs_upload_request){
         .target = (uint64_t)frame->clipboxes_buffer,
         .offset = 0,
-        .source = &clipboxes,
+        .source = clipboxes,
         .bytes  = clipboxes_count * sizeof(gpu_clipbox)
     });
 
     dgs_segmenter_upload(segmenter, (dgs_upload_request){
         .target = (uint64_t)frame->instances_buffer,
         .offset = 0,
-        .source = &instances,
+        .source = instances,
         .bytes  = instances_count * sizeof(gpu_instance)
     });
 
@@ -2581,7 +2583,8 @@ void dui_upload_cache(
             .params = &(ui_upload_params){
                 .count    = count,
                 .requests = requests,
-                .staging  = staging_memory
+                .staging  = staging_memory,
+                .offset   = staging_memory_region_offset
             }
         });
 
@@ -2614,6 +2617,7 @@ void dui_upload_cache(
     frame->instances_to_render = instances_count;
 
 _cleanup: 
+    dgs_free_segmenter(segmenter);                  // Free segmenter
     free_cached_text_requests(cache);               // Free text requests
     free(items); free(clipboxes); free(instances);  // Free allocated memory
 }
