@@ -1467,7 +1467,9 @@ uint32_t dgx_hardware_resource_bind(dgx_hardware* hardware, dgx_resource_type ty
 
     // Find and take free index
     mtx_lock(&ba->mutex);
-    if (ba->free_count == 0) return 0;
+    if (ba->free_count == 0) {
+        mtx_unlock(&ba->mutex); return 0;
+    }
     uint32_t idx = ba->free_stack[ba->free_count - 1];
     ba->free_count--;
     mtx_unlock(&ba->mutex);
@@ -2012,7 +2014,7 @@ dgx_sampler* dgx_create_sampler(dgx_hardware* hardware, const dgx_sampler_create
     dgx_sampler* sampler = malloc(sizeof(dgx_sampler)); if (!sampler) goto _fail;
     *sampler = (dgx_sampler){.owning_hardware = hardware};
 
-    VkSampler vksampler; if (vkCreateSampler(hardware->logical_device, &(VkSamplerCreateInfo){
+    if (vkCreateSampler(hardware->logical_device, &(VkSamplerCreateInfo){
         .sType  = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter               = dgx_to_vk_filter(info->mag_filter),
         .minFilter               = dgx_to_vk_filter(info->min_filter),
@@ -2029,7 +2031,7 @@ dgx_sampler* dgx_create_sampler(dgx_hardware* hardware, const dgx_sampler_create
         .maxLod                  = info->max_lod,
         .borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
         .unnormalizedCoordinates = info->unnormalized_coordinates ? VK_TRUE : VK_FALSE
-    }, 0, &vksampler) != VK_SUCCESS) goto _fail;
+    }, 0, &sampler->sampler) != VK_SUCCESS) goto _fail;
 
     return sampler;
 _fail: dgx_free_sampler(sampler); return NULL;
