@@ -369,26 +369,60 @@ static inline void merge_free_partitions(dpr_partitioner* partitioner, dpr_parti
     physical_update_first_partition(partitioner, partition);
 }
 
-// tries to find suitable free partition
+// Tries to find suitable free partition
+// returns non zero at success
+// Tries to find suitable free partition
 // returns non zero at success
 static inline int find_free_partition_for_size(dpr_partitioner* partitioner, size_t size, locant* loc_out) {
     locant loc = binmap_up(partitioner, size);
 
+    // Try to find suitable bins O(1)
     size_t minor_bins_bitmap = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];
     minor_bins_bitmap &= (~((size_t)0) << loc.minor_bin_index); // mask-out all minor bins to small
+    if (minor_bins_bitmap == 0) goto _find_higher_major;        // no free minor bin inside major bin
 
-    if (minor_bins_bitmap == 0) {                                                       // no free minor bin inside major bin
-        size_t major_bins_bitmap = partitioner->major_bins_free_bitmap;
-        major_bins_bitmap &= (~((size_t)0) << (loc.major_bin_index + 1));               // mask-out all bitmap smaller than first found
-        if (major_bins_bitmap == 0) return 0;                                           // no free major row either; failure
-        loc.major_bin_index = bit_scan_lsb(major_bins_bitmap);                          // take first greater major bitmap
-        minor_bins_bitmap = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];  // update minor bins bitmap var
-    }
+    loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
+    *loc_out = loc;
+    return 1;
 
+    // Try to find other suitable major bin, since this is all occupied, O(1)
+_find_higher_major: {
+    size_t major_bins_bitmap = partitioner->major_bins_free_bitmap;
+    major_bins_bitmap &= (~((size_t)0) << (loc.major_bin_index + 1)); // mask-out all bitmap smaller than first found
+    if (major_bins_bitmap == 0) goto _fallback_down_bin; // no free major row either
+
+    loc.major_bin_index = bit_scan_lsb(major_bins_bitmap);          // take first greater major bitmap
+    minor_bins_bitmap   = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];
     loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
 
     *loc_out = loc;
     return 1;
+}
+
+    // No higher major row either. Fall back to the request's own
+    // down-bin: binmap_up() may have overshot past a same-or-lower
+    // major row that still holds an adequate block - O(minor_bins_count).
+_fallback_down_bin: {
+    locant down_loc = binmap_down(partitioner, size);
+
+    size_t fallback_bitmap = partitioner->minor_bins_free_bitmaps[down_loc.major_bin_index];
+    fallback_bitmap &= (~((size_t)0) << down_loc.minor_bin_index); // skip provably-too-small minor bins
+
+    while (fallback_bitmap != 0) {
+        size_t minor = bit_scan_lsb(fallback_bitmap);
+        locant candidate_loc = (locant){ .major_bin_index = down_loc.major_bin_index, .minor_bin_index = minor };
+        dpr_partition* head = partitioner->minor_bins_free_partitions[get_flat_minor_bin_index(partitioner, candidate_loc)];
+
+        if (head && head->size >= size) {
+            *loc_out = candidate_loc;
+            return 1;
+        }
+
+        bitmap_set(&fallback_bitmap, minor, 0); // Clear and try next set bit
+    }
+
+    return 0; // No adequate block anywhere; failure
+}
 }
 
 // ===========================
