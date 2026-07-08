@@ -1457,22 +1457,62 @@ void hardware_free_shader_access(dgx_hardware* hardware) {
     free(hardware->bindless_allocators);
 }
 
+typedef struct resource_bind_cache {
+    uint32_t bind_mask;                         // bit[resource type index] -> whether was bound
+    uint32_t indices[dgx_resource_type_count];  // bind index
+} resource_bind_cache;
+
+resource_bind_cache* get_buffer_resource_bind_cache (dgx_buffer*  buffer);
+resource_bind_cache* get_texture_resource_bind_cache(dgx_texture* texture);
+resource_bind_cache* get_sampler_resource_bind_cache(dgx_sampler* sampler);
+
 VkBuffer    get_native_buffer_handle (dgx_buffer*  buffer);
 VkImageView get_native_texture_handle(dgx_texture* texture);
 VkSampler   get_native_sampler_handle(dgx_sampler* sampler);
 
 // Thread safe operation
 uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type, void* resource, int* success) {
-    bindless_allocator* ba = &hardware->bindless_allocators[type];
+    bindless_allocator*  ba = &hardware->bindless_allocators[type];
+    resource_bind_cache* bc;
+    switch (type) {
+        case dgx_resource_type_uniform_buffer: case dgx_resource_type_storage_buffer: {
+            bc = get_buffer_resource_bind_cache(resource);
+        } break;
+        case dgx_resource_type_sampled_texture: case dgx_resource_type_storage_texture: {
+            bc = get_texture_resource_bind_cache(resource);
+        } break;
+        case dgx_resource_type_sampler: {
+            bc = get_sampler_resource_bind_cache(resource);
+        } break;
+    }
+
+    // Was bound
+    if ((bc->bind_mask >> type) & 1U) {
+        return bc->indices[type];
+    }
 
     // Find and take free index
     mtx_lock(&ba->mutex);
-    if (ba->free_count == 0) {
-        mtx_unlock(&ba->mutex); 
-        *success &= 0; return 0;   // Arbitrary
+
+    // Check again if bound
+    // May happen if two threds try to bind the same resource for the first time
+    if ((bc->bind_mask >> type) & 1U) {
+        mtx_unlock(&ba->mutex); return bc->indices[type];
     }
+
+    // Failed to allocate index
+    if (ba->free_count == 0) {
+        mtx_unlock(&ba->mutex); *success &= 0; return 0; // Arbitrary
+    }
+
+    // Obtain index
     uint32_t idx = ba->free_stack[ba->free_count - 1];
     ba->free_count--;
+
+    // Assign bind index
+    bc->indices[type] = idx;
+    bc->bind_mask |= (1U << type);
+
     mtx_unlock(&ba->mutex);
     
     // Resouce Info
@@ -1530,13 +1570,16 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
 }
 
 // Thread safe operation
-void dgx_hardware_resource_unbind(dgx_hardware* hardware, dgx_resource_type type, uint32_t access) {
-    bindless_allocator* ba = &hardware->bindless_allocators[type];
+void shader_resource_unbind(dgx_hardware* hardware, resource_bind_cache* bc) {
+    for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
+        bindless_allocator* ba = &hardware->bindless_allocators[type];
+        if (!((bc->bind_mask >> type) & 1U)) continue; // Was not bound
 
-    // Release index
-    mtx_lock(&ba->mutex);
-    ba->free_stack[ba->free_count++] = access;
-    mtx_unlock(&ba->mutex);
+        // Release index
+        mtx_lock(&ba->mutex);
+        ba->free_stack[ba->free_count++] = bc->indices[type];
+        mtx_unlock(&ba->mutex);
+    }
 }
 
 // ===========================
@@ -1798,10 +1841,15 @@ struct dgx_buffer {
     dgx_hardware*       owning_hardware;
     memory_allocation   allocation;
     VkBuffer            buffer;
+    resource_bind_cache bind_cache;
 };
 
 VkBuffer get_native_buffer_handle(dgx_buffer* buffer) {
     return buffer->buffer;
+}
+
+resource_bind_cache* get_buffer_resource_bind_cache (dgx_buffer*  buffer) {
+    return &buffer->bind_cache;
 }
 
 dgx_buffer* dgx_create_buffer(dgx_hardware* hardware, const dgx_buffer_create_info* info) {
@@ -1834,9 +1882,9 @@ _fail: dgx_free_buffer(buffer); return NULL;
 
 void dgx_free_buffer(dgx_buffer* buffer) {
     if (!buffer) return;
+    shader_resource_unbind(buffer->owning_hardware, &buffer->bind_cache);
     vkDestroyBuffer(buffer->owning_hardware->logical_device, buffer->buffer, 0);
     hardware_free_memory(buffer->owning_hardware, buffer->allocation);
-    // free accesor
     free(buffer);
 }
 
@@ -1853,10 +1901,15 @@ struct dgx_texture {
     dgx_texture_dimensions  dimensions;
     VkImage                 image;
     VkImageView             view;
+    resource_bind_cache     bind_cache;
 };
 
 VkImageView get_native_texture_handle(dgx_texture* texture) {
     return texture->view;
+}
+
+resource_bind_cache* get_texture_resource_bind_cache(dgx_texture* texture) {
+    return &texture->bind_cache;
 }
 
 static inline VkFormat dgx_to_vk_texture_format(dgx_texture_format format) {
@@ -1964,6 +2017,7 @@ _fail: dgx_free_texture(texture); return NULL;
 
 void dgx_free_texture(dgx_texture* texture) {
     if (!texture) return;
+    shader_resource_unbind(texture->owning_hardware, &texture->bind_cache);
     vkDestroyImageView(texture->owning_hardware->logical_device, texture->view, NULL);
     vkDestroyImage(texture->owning_hardware->logical_device, texture->image, NULL);
     hardware_free_memory(texture->owning_hardware, texture->allocation);
@@ -2004,12 +2058,17 @@ static inline VkSamplerAddressMode dgx_to_vk_sampler_wrapping(dgx_sampler_wrappi
 }
 
 struct dgx_sampler {
-    dgx_hardware* owning_hardware;
-    VkSampler     sampler;
+    dgx_hardware*       owning_hardware;
+    VkSampler           sampler;
+    resource_bind_cache bind_cache;
 };
 
 VkSampler get_native_sampler_handle(dgx_sampler* sampler) {
     return sampler->sampler;
+}
+
+resource_bind_cache* get_sampler_resource_bind_cache(dgx_sampler* sampler) {
+    return &sampler->bind_cache;
 }
 
 dgx_sampler* dgx_create_sampler(dgx_hardware* hardware, const dgx_sampler_create_info* info) {
@@ -2041,6 +2100,7 @@ _fail: dgx_free_sampler(sampler); return NULL;
 
 void dgx_free_sampler(dgx_sampler* sampler) {
     if (!sampler) return;
+    shader_resource_unbind(sampler->owning_hardware, &sampler->bind_cache);
     vkDestroySampler(sampler->owning_hardware->logical_device, sampler->sampler, 0);
     free(sampler);
 }
