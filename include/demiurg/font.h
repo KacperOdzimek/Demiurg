@@ -15,6 +15,7 @@ Code info:
 ----------------------------------------------------------------
 Usage:
 - Create font object, with a valid demiurg-font-file linked in create info
+- Lookup info->out fields to get atlas position within file; upload to font texture (no offset, full dimensions)
 - Use get functions to query font/glyph metrics
 - dfont_get_glyph and dfont_get_kerning are O(log n) operations
 - rest of get operations are O(1)
@@ -57,11 +58,13 @@ typedef struct dfont_glyph {
 typedef struct dfont_create_info {
     size_t                  demiurg_font_format_file_length;
     const unsigned char*    demiurg_font_format_file_data;
+    uint64_t*               out_font_texture_bytes;
+    const unsigned char**   out_font_texture_begin;
 } dfont_create_info;
 
 typedef struct dfont_font dfont_font;
 
-dfont_font* dfont_create_font(dgx_hardware*, dfont_create_info*);
+dfont_font* dfont_create_font(dgx_hardware*, const dfont_create_info*);
 void dfont_free_font(dfont_font*);
 
 dgx_texture* dfont_get_texture(const dfont_font*);
@@ -146,7 +149,7 @@ static inline uint32_t deserialize_reg_32(const unsigned char* b) {
     );
 }
 
-dfont_font* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
+dfont_font* dfont_create_font(dgx_hardware* hardware, const dfont_create_info* info) {
     dfont_font* font = calloc(1, sizeof(dfont_font));
     if (!font) return NULL;
     font->owning_hardware = hardware;
@@ -211,12 +214,9 @@ dfont_font* dfont_create_font(dgx_hardware* hardware, dfont_create_info* info) {
     font->atlas_texture = dgx_create_texture(hardware, &texture_create_info);
     if (!font->atlas_texture) goto _fail;
 
-    // Upload atlas texture
-    /*dgx_texture_sync_upload(
-        font->atlas_texture, 
-        (dgx_texture_dimensions){0, 0, 0}, buf, 
-        (dgx_texture_dimensions){texture_width, texture_height, 1}
-    );*/
+    // Return info on how to upload atlas texture
+    *info->out_font_texture_begin = buf;
+    *info->out_font_texture_bytes = texture_width * texture_height * 1;
 
     return font;
 _fail:
