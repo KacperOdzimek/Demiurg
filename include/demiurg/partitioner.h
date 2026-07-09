@@ -1,7 +1,7 @@
 /*
 ----------------------------------------------------------------
 Contents
-This file provides partitioner object, allowing performant memory partitioning, with TLSF algorithm.
+This file provides partitioner object, allowing memory partitioning, with TLSF algorithm and linear search fallback.
 
 ----------------------------------------------------------------
 Code info:
