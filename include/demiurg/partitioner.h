@@ -424,7 +424,28 @@ dpr_partitioner* create_partitioner_brand_new(const dpr_partitioner_create_info*
 }
 
 dpr_partitioner* create_partitioner_from_old(const dpr_partitioner_create_info* info) {
-    return NULL;    // Will do
+    if (info->memory_bytes < info->old_partitioner->memory_bytes)  return NULL;
+    if (info->memory_bytes == info->old_partitioner->memory_bytes) return info->old_partitioner;
+
+    dpr_partition* last_part = info->old_partitioner->physical_first_partition;
+    while (last_part->next_physical) last_part = last_part->next_physical;
+
+    // Add partition with extra space at the end
+    dpr_partition* extra_space = malloc(sizeof(dpr_partition));
+    if (!extra_space) return NULL;
+    *extra_space = (dpr_partition){
+        .size           = info->memory_bytes - info->old_partitioner->memory_bytes,
+        .offset         = last_part->offset + last_part->size,
+        .prev_physical  = last_part,
+        .next_physical  = NULL
+    };
+    last_part->next_physical = extra_space;
+    dpr_partitioner_free_partition(info->old_partitioner, extra_space);
+
+    // Update partitioner info
+    info->old_partitioner->memory_bytes = info->memory_bytes;
+
+    return info->old_partitioner;
 }
 
 // ===========================
