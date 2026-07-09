@@ -319,14 +319,13 @@ _find_higher_major: {
 }
     // There is no partition bigger or equal to size + align
     // We can still check partitions of size >= than required, if they can be aligned
-    // This is O(major bins between * minor bins * partitions) search
+    // This is O(free partitions) search
 _fallback_down_bin: {
-    locant up_loc   = binmap_up(partitioner, size);
-    locant down_loc = binmap_down(partitioner, size);
-    for (size_t major = down_loc.major_bin_index; major <= up_loc.major_bin_index; major++) {
+    for (size_t major = 0; major <= MAJOR_BINS_COUNT; major++) {
+        if (!bitmap_get(partitioner->major_bins_free_bitmap, major)) continue; // Skip entire empty major bin
         for (size_t minor = 0; minor < MINOR_BINS_COUNT; minor++) {
-            locant test_loc = {.major_bin_index = major, .minor_bin_index = minor};
-            dpr_partition* part = partitioner->minor_bins_free_partitions[test_loc.major_bin_index][test_loc.minor_bin_index];
+            if (!bitmap_get(partitioner->minor_bins_free_bitmaps[major], minor)) continue;  // Skip empty minor bin
+            dpr_partition* part = partitioner->minor_bins_free_partitions[major][minor];
             while (part) {
                 size_t aligned_offset = align_up(part->offset, align);
                 size_t padding = aligned_offset - part->offset;
