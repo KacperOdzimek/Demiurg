@@ -235,7 +235,7 @@ typedef struct dgx_texture dgx_texture;
 dgx_texture* dgx_create_texture(dgx_hardware*, const dgx_texture_create_info* info);
 void dgx_free_texture(dgx_texture* texture);
 
-dgx_texture_dimensions dgx_texture_get_dimensions(dgx_texture*);
+dgx_texture_dimensions dgx_texture_query_dimensions(dgx_texture*);
 
 // ==========================
 // Sampler
@@ -1971,7 +1971,7 @@ static inline VkImageUsageFlags dgx_texture_usage_to_vk_image_usage(dgx_texture_
 
 dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create_info* info) {
     dgx_texture* texture = malloc(sizeof(dgx_texture));
-    *texture = (dgx_texture){.owning_hardware = hardware,};
+    *texture = (dgx_texture){.owning_hardware = hardware, .dimensions = info->dimensions};
 
     if (vkCreateImage(hardware->logical_device, &(VkImageCreateInfo){
         .sType          = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -2024,7 +2024,7 @@ void dgx_free_texture(dgx_texture* texture) {
     free(texture);
 }
 
-dgx_texture_dimensions dgx_texture_get_dimensions(dgx_texture* texture) {
+dgx_texture_dimensions dgx_texture_query_dimensions(dgx_texture* texture) {
     return texture->dimensions;
 }
 
