@@ -1212,7 +1212,6 @@ typedef struct memory_pool {
 struct memory_allocator {
     mtx_t               mutex;          // allocator mutex
     VkDeviceSize        minimal_size;   // typical alloc size
-    VkDeviceSize        allocs_align;   // align within memory
     memory_pool*        first_pool;     // first memory pool
 };
 
@@ -1286,7 +1285,7 @@ int hardware_get_memory(
         dpr_partition* partition = NULL;
         memory_pool*   pool = ma->first_pool;
         while (pool) {
-            partition = dpr_partitioner_alloc_partition(pool->partitioner, requirements.size);
+            partition = dpr_partitioner_alloc_partition(pool->partitioner, requirements.size, requirements.alignment);
             if (partition)          break;  // succeeded to suballocate
             if (pool->next == NULL) break;  // no next pool
             pool = pool->next;              // advance
@@ -1312,7 +1311,6 @@ int hardware_get_memory(
 
             // Create partitioner
             new_pool->partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
-                .align_bytes  = ma->allocs_align,
                 .memory_bytes = new_size
             }); if (!new_pool->partitioner) {
                 vkFreeMemory(hardware->logical_device, new_pool->memory, NULL);
@@ -1324,7 +1322,7 @@ int hardware_get_memory(
             else      ma->first_pool = new_pool;
 
             // Suballocate new pool
-            partition = dpr_partitioner_alloc_partition(new_pool->partitioner, requirements.size);
+            partition = dpr_partitioner_alloc_partition(new_pool->partitioner, requirements.size, requirements.alignment);
             pool = new_pool;
         }
 

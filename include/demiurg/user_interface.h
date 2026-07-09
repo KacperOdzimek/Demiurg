@@ -2190,8 +2190,7 @@ dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_in
 
     // Glyph buffer partitioner
     shared->glyph_buffer_partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
-        .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE,
-        .align_bytes  = GLYPH_STRUCTURE_ALIGN
+        .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE
     }); if (!shared->glyph_buffer_partitioner) goto _fail;
 
     // Pipeline Shaders
@@ -2380,7 +2379,8 @@ int dui_upload_cache(
         // request new partition
         aux->owned_glyph_buffer_partition = dpr_partitioner_alloc_partition(
             shared->glyph_buffer_partitioner,
-            req.glyphs_count * sizeof(gpu_glyph)
+            req.glyphs_count * sizeof(gpu_glyph), 
+            GLYPH_STRUCTURE_ALIGN
         );
 
         // Failed to create partition - create bigger text buffer
