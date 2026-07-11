@@ -221,6 +221,7 @@ typedef enum dui_flag {
     dui_flag_ignore_min_height  = 1 << 3,
     dui_flag_ignore_max_width   = 1 << 4,
     dui_flag_ignore_max_height  = 1 << 5,
+    dui_flag_clipbox            = 1 << 6,
 } dui_flag;
 
 typedef struct dui_node {
@@ -342,10 +343,6 @@ typedef struct dui_column_data {
 
 // ===========================
 // Rendering Node Types
-
-// Constrains rendering to own dimensions
-// No data, single child
-extern const dui_type dui_clipbox_type;
 
 // Adds node depth offset
 // Decreasing depth means going 'into' the screen
@@ -1136,11 +1133,6 @@ const dui_type dui_column_type = {
 };
 
 // ===========================
-// Clipbox Type
-// This type is specially handled in pass implementation
-const dui_type dui_clipbox_type = box_behavior_type;
-
-// ===========================
 // Depth Type
 // This type is specially handled in pass implementation
 const dui_type dui_depth_type = box_behavior_type;
@@ -1907,17 +1899,10 @@ static void render_dfs(
         cache->resolution_y,
         aux
     );
-    
-    // special nodes
-     // update instance for subtree
-    if (node->type == &dui_instance_type) {
-        render_dfs_subtree_state new_state = *state;
-        new_state.instance = data;
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
-    }
-    // request box draw
-    else if (node->type == &dui_box_type){
+
+    // Render Nodes
+    // Request box draw
+    if (node->type == &dui_box_type){
         const dui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
@@ -1927,11 +1912,10 @@ static void render_dfs(
             .box_data           = *bdata
         });
     }
-    // request text draw
+    // Request text draw
     else if (node->type == &dui_text_type) {
         const dui_text_data*            tdata = data;
         const text_type_auxilary_state* taux  = aux->state_ptr;
-
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
             .clip_index         = state->clipbox_index,
@@ -1940,23 +1924,28 @@ static void render_dfs(
             .text_node          = index
         });
     }
-    // update depth for subtree
+
+    // New state for subtree
+    render_dfs_subtree_state new_state = *state;
+
+    // Special nodes
+    // Update instance for subtree
+    if (node->type == &dui_instance_type) {
+        new_state.instance = data;
+    }
+    // Update depth for subtree
     else if (node->type == &dui_depth_type) {
         const dui_depth_data* ddata = data;
-        render_dfs_subtree_state new_state = *state;
         new_state.depth_index += ddata->depth_change;
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
     }
-    // request clipbox, update clipbox for subtree
-    else if (node->type == &dui_clipbox_type) {
-        render_dfs_subtree_state new_state = *state;
+
+    // Clipbox flag
+    if (node->flags & dui_flag_clipbox) {
         new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = transform});
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
     }
-    // request cursor input box
-    else if (node->type == &dui_cursor_input_box_type) {
+    
+    // Request cursor input box
+    if (node->type == &dui_cursor_input_box_type) {
         cursor_input_box_cache_push(cache, (cursor_input_box){
             .owner          = index,
             .handle         = state->cursor_handle,
@@ -1965,17 +1954,15 @@ static void render_dfs(
             .box_transform  = transform
         });
     }
-    // update cursor input handle for subtree
+    // Update cursor input handle for subtree
     else if (node->type == &dui_cursor_input_handle_type) { 
         dui_cursor_handle_func cursor_handle = (dui_cursor_handle_func)data;
         render_dfs_subtree_state new_state = *state;
-        new_state.cursor_handle = cursor_handle;   
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
+        new_state.cursor_handle = cursor_handle;
     }
 
-    // default recursion without state changes
-    render_dfs_recurse(cache, own, transform, state);
+    // Default recursion without state changes
+    render_dfs_recurse(cache, own, transform, &new_state);
 }
 
 // Helper for draw requests depth sorting : deepest first
