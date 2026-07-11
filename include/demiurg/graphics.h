@@ -1897,6 +1897,8 @@ struct dgx_texture {
     dgx_hardware*           owning_hardware;
     memory_allocation       allocation;
     dgx_texture_dimensions  dimensions;
+    uint32_t                mip_levels;
+    uint32_t                layers;
     VkImage                 image;
     VkImageView             view;
     resource_bind_cache     bind_cache;
@@ -1969,7 +1971,12 @@ static inline VkImageUsageFlags dgx_texture_usage_to_vk_image_usage(dgx_texture_
 
 dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create_info* info) {
     dgx_texture* texture = malloc(sizeof(dgx_texture));
-    *texture = (dgx_texture){.owning_hardware = hardware, .dimensions = info->dimensions};
+    *texture = (dgx_texture){
+        .owning_hardware = hardware, 
+        .dimensions = info->dimensions,
+        .mip_levels = info->mipmap_layers,
+        .layers     = info->array_length
+    };
 
     if (vkCreateImage(hardware->logical_device, &(VkImageCreateInfo){
         .sType          = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -2440,6 +2447,32 @@ void dgx_tcmd_copy_staging_memory_to_texture(
     dgx_texture_dimensions  texture_write_region_offset,
     dgx_texture_dimensions  texture_write_region_size
 ) {
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = target_texture->image,
+        .subresourceRange = {
+            .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = target_texture->mip_levels,
+            .baseArrayLayer = 0,
+            .layerCount     = target_texture->layers,
+        },
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(
+        recording_state_command_list->command_buffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, NULL, 0, NULL,
+        1, &barrier
+    );
+
     VkBufferImageCopy region = {
         .bufferOffset       = staging_memory_region_offset,
         .bufferRowLength    = 0,

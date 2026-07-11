@@ -2432,6 +2432,7 @@ int dui_upload_cache(
                     hardware, dgx_resource_type_sampled_texture, texture, &success
                 );
             }
+            texture_index++; // offset so idx 0 is no texture in shader
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
@@ -2460,6 +2461,7 @@ int dui_upload_cache(
                 hardware, dgx_resource_type_sampled_texture, dfont_get_texture(font), &success
             );
             int signed_texture_index = -(int)texture_index; // is font
+            signed_texture_index--; // offset so idx 0 is no texture in shader
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
