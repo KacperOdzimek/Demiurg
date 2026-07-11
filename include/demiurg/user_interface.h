@@ -90,10 +90,10 @@ typedef struct dui_color {
 // runtime hex to dui_color conversion
 // letters case does not matter, '#' prefix is required
 // if hex[7] is not '\0', then alpha channel is read, else it is set to FF
-// LUI_HEX <- compile time alternative
+// DUI_HEX <- compile time alternative
 static inline dui_color dui_hex(const char* hex);
 
-// LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
+// DUI_HEX <- compile time DUI_HEX alternative (definied later in the file)
 
 // ===========================
 // Cursor
@@ -153,7 +153,7 @@ typedef struct dui_type {
     // Structure
 
     // Whether child pointer in node means single node
-    // Or and array terminated with LUI_ARRAY_END
+    // Or and array terminated with DUI_ARRAY_END
     int     array_child;
 
     // This field can be used to request a cache-owned state per node, sized exactly auxilary_bytes bytes.
@@ -239,7 +239,7 @@ typedef struct dui_node {
 } dui_node;
 
 // Sentinel value to mark array end
-#define LUI_ARRAY_END (dui_node){.type = NULL, .child = NULL, .data = NULL}
+#define DUI_ARRAY_END (dui_node){.type = NULL, .child = NULL, .data = NULL}
 
 // ===========================
 // Predefinied Functions
@@ -447,21 +447,21 @@ void dui_gcmd_render(
 // Hex to Ui Color Implementations
 
 // convert single hex char to value at compile time
-#define LUI_HEX_VAL(c) ( ((c) >= '0' && (c) <= '9') ? ((c)-'0') :    \
+#define DUI_HEX_VAL(c) ( ((c) >= '0' && (c) <= '9') ? ((c)-'0') :    \
                         ((c) >= 'a' && (c) <= 'f') ? ((c)-'a'+10) : \
                         ((c) >= 'A' && (c) <= 'F') ? ((c)-'A'+10) : 0 )
 
 // convert two hex chars to byte at compile time
-#define LUI_HEX_BYTE(c1, c2) ((LUI_HEX_VAL(c1) << 4) | LUI_HEX_VAL(c2))
+#define DUI_HEX_BYTE(c1, c2) ((DUI_HEX_VAL(c1) << 4) | DUI_HEX_VAL(c2))
 
 static inline dui_color dui_hex(const char* hex) {
     dui_color result;
-    result.r = LUI_HEX_BYTE(hex[1], hex[2]);
-    result.g = LUI_HEX_BYTE(hex[3], hex[4]);
-    result.b = LUI_HEX_BYTE(hex[5], hex[6]);
+    result.r = DUI_HEX_BYTE(hex[1], hex[2]);
+    result.g = DUI_HEX_BYTE(hex[3], hex[4]);
+    result.b = DUI_HEX_BYTE(hex[5], hex[6]);
 
     // if 8 digits after #, read alpha
-    if (hex[7] != '\0' && hex[8] != '\0') result.a = LUI_HEX_BYTE(hex[7], hex[8]);
+    if (hex[7] != '\0' && hex[8] != '\0') result.a = DUI_HEX_BYTE(hex[7], hex[8]);
     else result.a = 0xFF;
 
     return result;
@@ -471,11 +471,11 @@ static inline dui_color dui_hex(const char* hex) {
 // allows both lower and upper case letters
 // may include alpha (8 hex digits) or not (6 hex digits)
 // '#' prefix required
-#define LUI_HEX(s) (dui_color){ \
-    LUI_HEX_BYTE(s[1], s[2]), \
-    LUI_HEX_BYTE(s[3], s[4]), \
-    LUI_HEX_BYTE(s[5], s[6]), \
-    (sizeof(s) > 8 ? LUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
+#define DUI_HEX(s) (dui_color){ \
+    DUI_HEX_BYTE(s[1], s[2]), \
+    DUI_HEX_BYTE(s[3], s[4]), \
+    DUI_HEX_BYTE(s[5], s[6]), \
+    (sizeof(s) > 8 ? DUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
 }
 
 #endif // DEMIURG_USER_INTERFACE_H
