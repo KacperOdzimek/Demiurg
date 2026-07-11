@@ -2431,8 +2431,8 @@ int dui_upload_cache(
                 texture_index = dgx_shader_resource_bind(
                     hardware, dgx_resource_type_sampled_texture, texture, &success
                 );
+                texture_index++; // offset so idx 0 is no texture in shader
             }
-            texture_index++; // offset so idx 0 is no texture in shader
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
