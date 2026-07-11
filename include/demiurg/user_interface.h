@@ -1878,7 +1878,7 @@ static void render_dfs(
         data, &transform, 
         cache->resolution_x, 
         cache->resolution_y,
-        aux
+        aux->state_ptr
     );
 
     // Render Nodes
@@ -2009,7 +2009,7 @@ void dui_update_cache(
 
         ibox->handle(
             get_node_data(ibox->owner.node, ibox->owner.instance),
-            auxilary_get_utill(cache, ibox->owner),
+            auxilary_get_utill(cache, ibox->owner)->state_ptr,
             &changable_state, &cursor_state,
             cursor_inside && ever_was_inside, cursor_inside
         );
