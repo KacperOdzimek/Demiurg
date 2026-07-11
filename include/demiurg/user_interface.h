@@ -104,16 +104,6 @@ typedef struct dui_cursor_state {
     float   scroll_delta;
 } dui_cursor_state;
 
-typedef void(dui_cursor_handle_func_signature)(
-    const void*             node_data,      // node data
-    void*                   auxilary,       // node auxilary buffer if requested by type
-    dui_cursor_state*       state,          // state with fields possibly consumed by previous handles  
-    const dui_cursor_state* raw_state,      // untouched state
-    int                     hovered,        // whether cursor is inside node and no upper node was
-    int                     raw_hovered     // whether cursor is inside node
-);
-typedef dui_cursor_handle_func_signature* dui_cursor_handle_func;
-
 // ===========================
 // Node Typedefs
 
@@ -148,6 +138,16 @@ typedef void(dui_node_render_func_signature)(
     void*                   auxilary            // node auxilary buffer if requested by type
 );
 typedef dui_node_render_func_signature* dui_node_render_func;
+
+typedef void(dui_node_cursor_func_signature)(
+    const void*             node_data,          // node data
+    void*                   auxilary,           // node auxilary buffer if requested by type
+    dui_cursor_state*       state,              // state with fields possibly consumed by previous handles  
+    const dui_cursor_state* raw_state,          // untouched state
+    int                     hovered,            // whether cursor is inside node and no upper node was
+    int                     raw_hovered         // whether cursor is inside node
+);
+typedef dui_node_cursor_func_signature* dui_node_cursor_func;
 
 typedef struct dui_type {
     // Structure
@@ -212,6 +212,12 @@ typedef struct dui_type {
     // IN:  [complete layout states, parent render transform]
     // OUT: [own and children render transform]
     dui_node_render_func    transform;
+
+    // Cursor Input
+
+    // Funtion solving cursor input
+    // Called every frame after render
+    dui_node_cursor_func    cursor;
 } dui_type;
 
 typedef enum dui_flag {
@@ -371,20 +377,6 @@ typedef struct dui_text_data {
     dui_color       tint;       // text color modyficator
     uint32_t        shader;     // shader effect index
 } dui_text_data;
-
-// ===========================
-// Cursor Input Node Types
-
-// This node sets cursor handle function for subtree to own data
-// Data is dui_cursor_handle_func, single child
-extern const dui_type dui_cursor_input_handle_type;
-
-// This node pushes cursor input box
-// If handle was provided higher in the tree
-// during cache update, callback will be called for this box
-// Data of this node will be passed to callback
-// Data arbitrary, single child
-extern const dui_type dui_cursor_input_box_type;
 
 // ===========================
 // Cache
@@ -1201,16 +1193,6 @@ const dui_type dui_text_type = {
 };
 
 // ===========================
-// Cursor Input Handle Type
-// This type is specially handled in pass implementation
-const dui_type dui_cursor_input_handle_type = box_behavior_type;
-
-// ===========================
-// Cursor Input Handle Type
-// This type is specially handled in pass implementation
-const dui_type dui_cursor_input_box_type = box_behavior_type;
-
-// ===========================
 // Node fields reads
 
 static inline const void* get_node_data(const dui_node* node, const char* instance) {
@@ -1515,7 +1497,7 @@ struct clipbox_request {
 
 struct cursor_input_box {
     node_stable_index       owner;
-    dui_cursor_handle_func  handle;
+    dui_node_cursor_func    handle;
     int                     clip_index;
     short                   depth_index;
     dla_mat2x3              box_transform;
@@ -1831,7 +1813,6 @@ typedef struct render_dfs_subtree_state {
     const void*             instance;
     short                   depth_index;
     int                     clipbox_index;
-    dui_cursor_handle_func  cursor_handle;
 } render_dfs_subtree_state;
 
 static void render_dfs(
@@ -1925,6 +1906,18 @@ static void render_dfs(
         });
     }
 
+    // Cursor
+    // Request cursor input box
+    if (node->type->cursor) {
+        cursor_input_box_cache_push(cache, (cursor_input_box){
+            .owner          = index,
+            .handle         = node->type->cursor,
+            .depth_index    = state->depth_index,
+            .clip_index     = state->clipbox_index,
+            .box_transform  = transform
+        });
+    }
+
     // New state for subtree
     render_dfs_subtree_state new_state = *state;
 
@@ -1942,23 +1935,6 @@ static void render_dfs(
     // Clipbox flag
     if (node->flags & dui_flag_clipbox) {
         new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = transform});
-    }
-    
-    // Request cursor input box
-    if (node->type == &dui_cursor_input_box_type) {
-        cursor_input_box_cache_push(cache, (cursor_input_box){
-            .owner          = index,
-            .handle         = state->cursor_handle,
-            .depth_index    = state->depth_index,
-            .clip_index     = state->clipbox_index,
-            .box_transform  = transform
-        });
-    }
-    // Update cursor input handle for subtree
-    else if (node->type == &dui_cursor_input_handle_type) { 
-        dui_cursor_handle_func cursor_handle = (dui_cursor_handle_func)data;
-        render_dfs_subtree_state new_state = *state;
-        new_state.cursor_handle = cursor_handle;
     }
 
     // Default recursion without state changes
@@ -2005,8 +1981,7 @@ void dui_update_cache(
     render_dfs_subtree_state default_subtree_state = {
         .instance       = NULL,
         .depth_index    = 0,
-        .clipbox_index  = -1,
-        .cursor_handle  = NULL
+        .clipbox_index  = -1
     };
     render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), &default_subtree_state);
 
