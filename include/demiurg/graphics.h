@@ -127,14 +127,18 @@ dgx_command_list* dgx_create_command_list(dgx_hardware*, const dgx_command_list_
 void dgx_free_command_list(dgx_command_list*);
 
 typedef struct dgx_submit_info {
-    uint8_t         domain_work_group;  // target work group
-    dgx_timeline*   wait_timeline;
-    uint64_t        wait_value;
-    dgx_timeline*   signal_timeline;
-    uint64_t        signal_value;
+    uint8_t          domain_work_group;   // target work group
+
+    uint32_t         wait_count;
+    dgx_timeline**   wait_timelines;
+    uint64_t*        wait_values;
+
+    uint32_t         signal_count;
+    dgx_timeline**   signal_timelines;
+    uint64_t*        signal_values;
 } dgx_submit_info;
 
-void dgx_command_list_submit(dgx_command_list*, dgx_submit_info*);
+void dgx_command_list_submit(uint32_t count, dgx_command_list** lists, const dgx_submit_info* info);
 
 // ==========================
 // Staging Memory
@@ -1726,31 +1730,60 @@ void dgx_free_command_list(dgx_command_list* list) {
     free(list);
 }
 
-void dgx_command_list_submit(dgx_command_list* list, dgx_submit_info* info) {
-    VkQueue queue = list->owning_hardware->work_group_queue[list->command_domain][info->domain_work_group];
+void dgx_command_list_submit(uint32_t count, dgx_command_list** lists, const dgx_submit_info* info) {
+    if (count == 0) return;
+
+    VkQueue queue = lists[0]->owning_hardware->work_group_queue[lists[0]->command_domain][info->domain_work_group];
     if (queue == VK_NULL_HANDLE) return;
 
+    VkCommandBuffer* command_buffers = malloc(count * sizeof(VkCommandBuffer));
+    for (uint32_t i = 0; i < count; i++) {
+        command_buffers[i] = lists[i]->command_buffer;
+    }
+
+    VkSemaphore*            wait_semaphores  = NULL;
+    VkPipelineStageFlags*   wait_stages      = NULL;
+    if (info->wait_count > 0) {
+        wait_semaphores = malloc(info->wait_count * sizeof(VkSemaphore));
+        wait_stages     = malloc(info->wait_count * sizeof(VkPipelineStageFlags));
+        for (uint32_t i = 0; i < info->wait_count; i++) {
+            wait_semaphores[i] = info->wait_timelines[i]->timeline_semaphore;
+            wait_stages[i]     = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        }
+    }
+
+    VkSemaphore* signal_semaphores = NULL;
+    if (info->signal_count > 0) {
+        signal_semaphores = malloc(info->signal_count * sizeof(VkSemaphore));
+        for (uint32_t i = 0; i < info->signal_count; i++) {
+            signal_semaphores[i] = info->signal_timelines[i]->timeline_semaphore;
+        }
+    }
+
     VkTimelineSemaphoreSubmitInfoKHR timeline_info = {
-        .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-        .waitSemaphoreValueCount    = info->wait_timeline ? 1 : 0,
-        .pWaitSemaphoreValues       = &info->wait_value,
-        .signalSemaphoreValueCount  = info->signal_timeline ? 1 : 0,
-        .pSignalSemaphoreValues     = &info->signal_value,
+        .sType                      = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+        .waitSemaphoreValueCount    = info->wait_count,
+        .pWaitSemaphoreValues       = info->wait_values,
+        .signalSemaphoreValueCount  = info->signal_count,
+        .pSignalSemaphoreValues     = info->signal_values,
     };
 
     VkSubmitInfo submit_info = {
         .sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pNext                  = &timeline_info,
-        .commandBufferCount     = 1,
-        .pCommandBuffers        = &list->command_buffer,
-        .waitSemaphoreCount     = info->wait_timeline   ? 1 : 0,
-        .pWaitSemaphores        = &info->wait_timeline->timeline_semaphore,
-        .signalSemaphoreCount   = info->signal_timeline ? 1 : 0,
-        .pSignalSemaphores      = &info->signal_timeline->timeline_semaphore,
-        .pWaitDstStageMask      = (VkPipelineStageFlags[]){VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}
+        .commandBufferCount     = count,
+        .pCommandBuffers        = command_buffers,
+        .waitSemaphoreCount     = info->wait_count,
+        .pWaitSemaphores        = wait_semaphores,
+        .pWaitDstStageMask      = wait_stages,
+        .signalSemaphoreCount   = info->signal_count,
+        .pSignalSemaphores      = signal_semaphores,
     };
 
     vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+
+    free(command_buffers);  free(wait_semaphores);
+    free(wait_stages);      free(signal_semaphores);
 }
 
 // ===========================

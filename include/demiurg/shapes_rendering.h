@@ -372,10 +372,12 @@ int dshp_upload(
 
         int last_upload = instances_to_write <= staging_capacity;
 
-        dgx_command_list_submit(frame->upload_list, &(dgx_submit_info){
+        dgx_timeline* timeline = last_upload ? signal_timeline : internal;
+        dgx_command_list_submit(1, &frame->upload_list, &(dgx_submit_info){
             .domain_work_group  = transfer_work_group_index,
-            .signal_timeline    = last_upload ? signal_timeline : internal,
-            .signal_value       = last_upload ? signal_value    : ++internal_itr
+            .signal_count       = timeline ? 1 : 0,
+            .signal_timelines   = &timeline,
+            .signal_values      = last_upload ? &signal_value    : (uint64_t[]){++internal_itr}
         });
 
         // Wait for upload to end
