@@ -116,17 +116,11 @@ typedef struct dui_node_layout_state {
     int                     vert_offset;        // node center vertical offset from parent center
 } dui_node_layout_state;
 
-typedef void (dui_node_auxilary_destructor_func_signature)(
-    void*                   auxilary            // node auxilary buffer - do not free it
-);
-typedef dui_node_auxilary_destructor_func_signature* dui_node_auxilary_destructor_func;
-
 typedef void(dui_node_layout_func_signature)(
     const void*             node_data,          // node data
     dui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
-    dui_node_layout_state** children_states,    // node children states
-    void*                   auxilary            // node auxilary buffer if requested by type
+    dui_node_layout_state** children_states     // node children states
 );
 typedef dui_node_layout_func_signature* dui_node_layout_func;
 
@@ -134,14 +128,12 @@ typedef void(dui_node_render_func_signature)(
     const void*             node_data,          // node data
     dla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
-    int                     resolution_y,       // screen resolution y
-    void*                   auxilary            // node auxilary buffer if requested by type
+    int                     resolution_y        // screen resolution y
 );
 typedef dui_node_render_func_signature* dui_node_render_func;
 
 typedef void(dui_node_cursor_func_signature)(
     const void*             node_data,          // node data
-    void*                   auxilary,           // node auxilary buffer if requested by type
     dui_cursor_state*       state,              // state with fields possibly consumed by previous handles  
     const dui_cursor_state* raw_state,          // untouched state
     int                     hovered,            // whether cursor is inside node and no upper node was
@@ -154,24 +146,7 @@ typedef struct dui_type {
 
     // Whether child pointer in node means single node
     // Or and array terminated with DUI_ARRAY_END
-    int     array_child;
-
-    // This field can be used to request a cache-owned state per node, sized exactly auxilary_bytes bytes.
-    // This state will be shared across all node passes, and given to user in callback functions. 
-    // If state_bytes == 0, the pointer will be NULL.
-    size_t  auxilary_bytes;
-
-    // This function will be called when auxilary storage is freed
-    // You can use it to free some auxilary-owned memory
-    dui_node_auxilary_destructor_func auxilary_destructor;
-
-    // Auxilary Stage
-
-    // Auxilary stage
-    // Allow for node own data changes (eg. caching some preprocessed state)
-    // Unless it is convenient, this pass shall not be used, to preserve data-oriented-design,
-    // and composability. Used to generate text format for GPU in implementation.
-    dui_node_layout_func    auxilary;
+    int array_child;
 
     // Layout Stages
 
@@ -280,7 +255,7 @@ extern const dui_type dui_instance_type;
 // No data, single child
 extern const dui_type dui_invalidation_type;
 typedef enum dui_invalidation_flag {
-    dui_invalidation_flag_auxilary          = 63,
+    dui_invalidation_flag_text              = 63,
     dui_invalidation_flag_width_measure     = 62,
     dui_invalidation_flag_width_distribute  = 60,
     dui_invalidation_flag_height_measure    = 56,
@@ -552,8 +527,6 @@ int is_point_in_transformed_box(dla_mat2x3 t, float px, float py) {
 
 #define box_behavior_type (dui_type){                           \
     .array_child        = 0,                                    \
-    .auxilary_bytes     = 0,                                    \
-    .auxilary           = NULL,                                 \
     .width_measure      = dui_overlay_width_measure_func,       \
     .width_distribute   = dui_overlay_width_distribute_func,    \
     .height_measure     = dui_overlay_height_measure_func,      \
@@ -579,10 +552,9 @@ void dui_overlay_width_measure_func(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary; dui_length own = {0, 0, 0.0f};
+    (void)node_data; dui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
         dui_length child = children_states[i]->measured_width;
@@ -598,10 +570,9 @@ void dui_overlay_width_distribute_func(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary;
+    (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_width = limit_length(node_state->given_width, children_states[i]->measured_width);
@@ -612,11 +583,9 @@ void dui_overlay_height_measure_func(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary; dui_length own = {0, 0, 0.0f};
-
+    (void)node_data; dui_length own = {0, 0, 0.0f}; 
     for (size_t i = 0; i < children_count; ++i) {
         dui_length child = children_states[i]->measured_height;
         own.min  = max_int(own.min, child.min);
@@ -631,12 +600,9 @@ void dui_overlay_height_distribute_func(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary;
-
-    for (size_t i = 0; i < children_count; ++i) {
+    (void)node_data; for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_height = limit_length(node_state->given_height, children_states[i]->measured_height);
     }
 }
@@ -645,12 +611,9 @@ void dui_overlay_position_func(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary;
-
-    for (size_t i = 0; i < children_count; ++i) {
+    (void)node_data; for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->hori_offset = 0;
         children_states[i]->vert_offset = 0;
     }
@@ -658,8 +621,6 @@ void dui_overlay_position_func(
 
 const dui_type dui_overlay_type = {
     .array_child        = 1,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = dui_overlay_width_measure_func,
     .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = dui_overlay_height_measure_func,
@@ -675,11 +636,10 @@ void sizebox_width_measure(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
     const dui_sizebox_data* data = node_data;
-    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states);
     if (data->flag & dui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
     if (data->flag & dui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
     if (data->flag & dui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
@@ -689,11 +649,10 @@ void sizebox_height_measure(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
     const dui_sizebox_data* data = node_data;
-    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states);
     if (data->flag & dui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
     if (data->flag & dui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
     if (data->flag & dui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
@@ -701,8 +660,6 @@ void sizebox_height_measure(
 
 const dui_type dui_sizebox_type = {
     .array_child        = 0,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = sizebox_width_measure,
     .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = sizebox_height_measure,
@@ -742,10 +699,8 @@ void padding_width_measure(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary;
     const dui_padding_data* data = node_data;
     dui_length own = {0, 0, 0.0f};
     
@@ -769,10 +724,9 @@ void padding_width_distribute(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; if (children_count == 0) return;
+    if (children_count == 0) return;
     const dui_padding_data* data = node_data;
     dui_node_layout_state* child = children_states[0];
 
@@ -798,11 +752,9 @@ void padding_height_measure(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_padding_data* data = node_data;
-
+    const dui_padding_data* data = node_data;
     int child_min = 0, child_max = 0;
     if (children_count > 0) {
         child_min = children_states[0]->measured_height.min;
@@ -823,10 +775,9 @@ void padding_height_distribute(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; if (children_count == 0) return;
+    if (children_count == 0) return;
     const dui_padding_data* data = node_data;
     dui_node_layout_state* child = children_states[0];
 
@@ -850,8 +801,6 @@ void padding_height_distribute(
 
 const dui_type dui_padding_type = {
     .array_child        = 0,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = padding_width_measure,
     .width_distribute   = padding_width_distribute,
     .height_measure     = padding_height_measure,
@@ -867,10 +816,8 @@ void row_width_measure(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; 
     const dui_row_data* data = (const dui_row_data*)node_data;
     dui_length          own  = {0, 0, 0.0f};
 
@@ -893,10 +840,9 @@ void row_width_distribute(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_row_data* data = (const dui_row_data*)node_data;
+    const dui_row_data* data = (const dui_row_data*)node_data;
 
     // Find spaces count
     size_t spaces_count = children_count ? children_count - 1 : 0;
@@ -968,10 +914,9 @@ void row_position(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_row_data* data = (const dui_row_data*)node_data;
+    const dui_row_data* data = (const dui_row_data*)node_data;
 
     // Position children in vertial axis
     for (size_t i = 0; i < children_count; ++i) {
@@ -982,8 +927,6 @@ void row_position(
 
 const dui_type dui_row_type = {
     .array_child        = 1,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = row_width_measure,
     .width_distribute   = row_width_distribute,
     .height_measure     = dui_overlay_height_measure_func,
@@ -999,10 +942,8 @@ void column_height_measure(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary;
     const dui_column_data* data = (const dui_column_data*)node_data;
     dui_length             own  = {0, 0, 0.0f};
 
@@ -1025,10 +966,8 @@ void column_height_distribute(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary;
     const dui_column_data* data = (const dui_column_data*)node_data;
 
     // Find spaces count
@@ -1101,10 +1040,9 @@ void column_position(
     const void*             node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_column_data* data = (const dui_column_data*)node_data;
+    const dui_column_data* data = (const dui_column_data*)node_data;
 
     // Position children in horizontal axis
     for (size_t i = 0; i < children_count; ++i) {
@@ -1115,8 +1053,6 @@ void column_position(
 
 const dui_type dui_column_type = {
     .array_child        = 1,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = dui_overlay_width_measure_func,
     .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = column_height_measure,
@@ -1138,60 +1074,7 @@ const dui_type dui_box_type = box_behavior_type;
 // ===========================
 // Text type
 // This type is specially handled in pass implementation
-
-typedef struct text_type_auxilary_state {
-    dpr_partitioner*    partitioner;
-    dpr_partition*      owned_glyph_buffer_partition;
-    float               text_width;
-    float               text_height;
-} text_type_auxilary_state;
-
-void text_auxilary_destructor(void* auxilary) {
-    text_type_auxilary_state* aux = auxilary;
-    if (aux->owned_glyph_buffer_partition) dpr_partitioner_free_partition(aux->partitioner, aux->owned_glyph_buffer_partition);
-    aux->owned_glyph_buffer_partition = NULL;
-}
-
-void text_width_measure(
-    const void*             node_data,
-    dui_node_layout_state*  node_state,
-    size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
-) {
-    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
-    text_type_auxilary_state* aux = auxilary;
-    node_state->measured_width.min = max_int(node_state->measured_width.min, (int)aux->text_width);
-    node_state->measured_width.max = max_int(node_state->measured_width.max, (int)aux->text_width);
-    if (node_state->measured_width.min != node_state->measured_width.max) node_state->measured_width.flex = 1.0f;
-}
-
-void text_height_measure(
-    const void*             node_data,
-    dui_node_layout_state*  node_state,
-    size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
-) {
-    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
-    text_type_auxilary_state* aux = auxilary;
-    node_state->measured_height.min = max_int(node_state->measured_height.min, (int)aux->text_height);
-    node_state->measured_height.max = max_int(node_state->measured_height.max, (int)aux->text_height);
-    if (node_state->measured_height.min != node_state->measured_height.max) node_state->measured_height.flex = 1.0f;
-}
-
-const dui_type dui_text_type = {
-    .array_child            = 0,
-    .auxilary_bytes         = sizeof(text_type_auxilary_state),
-    .auxilary               = NULL,
-    .auxilary_destructor    = text_auxilary_destructor,
-    .width_measure          = text_width_measure,
-    .width_distribute       = dui_overlay_width_distribute_func,
-    .height_measure         = text_height_measure,
-    .height_distribute      = dui_overlay_height_distribute_func,
-    .position               = dui_overlay_position_func,
-    .transform              = NULL
-};
+const dui_type dui_text_type = (dui_type){0};   // No functions
 
 // ===========================
 // Node fields reads
@@ -1244,7 +1127,7 @@ void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void
 // Cache Object
 
 typedef struct cache_slot cache_slot;
-typedef struct auxilary_slot auxilary_slot;
+typedef struct text_cache_slot text_cache_slot;
 typedef struct draw_request draw_request;
 typedef struct text_request text_request;
 typedef struct clipbox_request clipbox_request;
@@ -1261,10 +1144,10 @@ struct dui_cache {
     size_t              cache_fill;
     cache_slot*         cache_slots;
 
-    // Nodes auxilary state hashmap
-    size_t              auxilary_capacity;
-    size_t              auxilary_fill;
-    auxilary_slot*      auxilary_slots;
+    // Text cache hashmap
+    size_t              text_cache_capacity;
+    size_t              text_cache_fill;
+    text_cache_slot*    text_cache_slots;
     
     // Draw requests dynamic array
     size_t              draw_requests_capacity;
@@ -1292,20 +1175,14 @@ dui_cache* dui_create_cache() {
     return cache;
 }
 
-static void auxilary_hashmap_garbage_collect(dui_cache* cache);
 static void free_cached_text_requests(dui_cache* cache);
 void dui_free_cache(dui_cache* cache) {
     if (!cache) return;
-
-    // Free all auxilary slots by using impossible value
-    cache->frame_index = LAST_FRAME_USED_IN_RENDER_IMPOSIBLE;
-    auxilary_hashmap_garbage_collect(cache);
 
     // Free all cached textes
     free_cached_text_requests(cache);
 
     free(cache->cache_slots);
-    free(cache->auxilary_slots);
     free(cache->draw_requests);
     free(cache->text_requests);
     free(cache->clipbox_requests);
@@ -1324,15 +1201,17 @@ typedef struct cache_slot {
     node_stable_index       key;
     size_t                  value_child_count;
     dui_node_layout_state   value_state;
-    unsigned char           last_frame_used_in_render;  
+    unsigned char           last_frame_used_in_render;
 } cache_slot;
 
-typedef struct auxilary_slot {
+typedef struct text_cache_slot {
     node_stable_index       key;
-    const dui_type*         state_type;
-    void*                   state_ptr;
-    unsigned char           last_frame_used_in_render;  
-} auxilary_slot;
+    dpr_partitioner*        glyphs_partitioner;
+    dpr_partition*          glyphs_partition;
+    int                     text_width;
+    int                     text_height;
+    unsigned char           last_frame_used_in_render;
+} text_cache_slot;
 
 static uint64_t hash_ptr(const void* p) {
     uint64_t x = (uint64_t)(uintptr_t)p;
@@ -1435,16 +1314,11 @@ DEFINE_HASHMAP_FUNCS(
 #undef HASHMAP_SLOT_INITIALIZER
 #undef HASHMAP_SLOT_DESTRUCTOR
 
-static inline void auxilary_hashmap_slot_destructor(auxilary_slot* slot) {
-    if (slot->key.node->type->auxilary_destructor) {
-        slot->key.node->type->auxilary_destructor(slot->state_ptr); 
-    } free(slot->state_ptr); slot->state_ptr = NULL;
-}
-
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_type = NULL, .state_ptr = NULL}
-#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) auxilary_hashmap_slot_destructor(slot_ptr)
+#define HASHMAP_SLOT_INITIALIZER {.key = key}
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) \
+    {dpr_partitioner_free_partition(slot_ptr->glyphs_partitioner, slot_ptr->glyphs_partition); slot_ptr->glyphs_partition = NULL; }
 DEFINE_HASHMAP_FUNCS(
-    auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
+    text_cache, text_cache_slot, text_cache_slots, text_cache_capacity, text_cache_fill
 );
 
 // Gets slot, always inserts, as cache must always exist for node
@@ -1452,24 +1326,9 @@ static inline cache_slot* cache_get_utill(dui_cache* cache, node_stable_index in
     return cache_hashmap_get(cache, index, 1);
 }
 
-// Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
-static inline auxilary_slot* auxilary_get_utill(dui_cache* cache, node_stable_index index) {
-    if (!index.node->type->auxilary_bytes) return NULL; // none desired
-    auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
-
-    // handle case where node type has changed
-    if (slot->state_type && slot->state_type != index.node->type) {
-        if (index.node->type->auxilary_destructor) index.node->type->auxilary_destructor(slot->state_ptr);
-        free(slot->state_ptr); slot->state_ptr = NULL;
-    }
-    
-    // allocate state
-    if (!slot->state_ptr) {
-        slot->state_ptr  = calloc(1, index.node->type->auxilary_bytes);
-        slot->state_type = index.node->type;
-    }
-
-    return slot;
+// Gets slot, always inserts, as cache must always exist for node
+static inline text_cache_slot* text_cache_get_utill(dui_cache* cache, node_stable_index index) {
+    return text_cache_hashmap_get(cache, index, 1);
 }
 
 // ===========================
@@ -1550,7 +1409,7 @@ static inline void free_cached_text_requests(dui_cache* cache) {
 // Invalidation Node Gate
 
 typedef enum invalidation_flag_only {
-    invalidation_flag_only_auxilary          = 1,
+    invalidation_flag_only_text              = 1,
     invalidation_flag_only_width_measure     = 2,
     invalidation_flag_only_width_distribute  = 4,
     invalidation_flag_only_height_measure    = 8,
@@ -1575,7 +1434,7 @@ static inline int find_shall_recurse(cache_slot* node_slot, const void* data, in
 // Cache Walk Pass
 // Called on remeasure
 // Computes: 
-// - walk order (the order layout and auxilary caches are visited, to avoid hashmaping multiple times)
+// - walk order (the order layout caches are visited, to avoid hashmaping multiple times)
 // - nodes children count (simplify implementations)
 // - nodes subtree size (including self, to easily skip on invalidation nodes)
 
@@ -1586,7 +1445,6 @@ typedef struct caches_walk_order {
     size_t                  position;   // in cache_slot pointers
     cache_slot**            slots;      // sized capacity, node cache slots in enter order
     dui_node_layout_state** states;     // sized capacity, node layout states in children oreder
-    auxilary_slot**         auxilary;   // sized capacity, node auxilary slots in enter order
     size_t*                 subtree;    // sized capacity, node subtree size, including self
 } caches_walk_order;
 
@@ -1595,23 +1453,21 @@ typedef struct caches_walk_order {
 void free_caches_walk_order(caches_walk_order* order) {
     free(order->slots);     order->slots    = NULL;
     free(order->states);    order->states   = NULL;
-    free(order->auxilary);  order->auxilary = NULL;
     free(order->subtree);   order->subtree  = NULL;
     order->capacity = 0;    order->position = 0;
 }
 
 // Returns non-zero at success
-static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot, void* auxilary) {
+static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot) {
     if (walk_order->position + 1 > walk_order->capacity) {
         size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
     
         cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
         dui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(dui_node_layout_state*));
-        auxilary_slot**         new_aux = realloc(walk_order->auxilary, new_cap * sizeof(auxilary_slot*));
         size_t*                 new_sub = realloc(walk_order->subtree,  new_cap * sizeof(size_t));
 
-        if (!new_slt || !new_sts || !new_aux || !new_sub) {
-            free(new_slt); free(new_sts); free(new_aux); free(new_sub);
+        if (!new_slt || !new_sts || !new_sub) {
+            free(new_slt); free(new_sts); free(new_sub);
             free_caches_walk_order(walk_order);
             return 0; // failed to realloc -> failed to push -> entire layout fails
         }
@@ -1619,13 +1475,11 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
         walk_order->capacity = new_cap;
         walk_order->slots    = new_slt;
         walk_order->states   = new_sts;
-        walk_order->auxilary = new_aux;
         walk_order->subtree  = new_sub;
     }
 
     walk_order->slots   [walk_order->position]  = slot;
     walk_order->states  [walk_order->position]  = &slot->value_state;
-    walk_order->auxilary[walk_order->position]  = auxilary;
     walk_order->subtree [walk_order->position]  = 1; // included node itself
     walk_order->position++;
 
@@ -1653,13 +1507,11 @@ int caches_walk_dfs(
 
     if (!node->type->array_child && child) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){child, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){child, instance});
-        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+        scc &= caches_walk_order_push(walk_order, child_slot); count++;
     }
     else if (child) for (const dui_node* cc = child; cc->type != NULL; cc++) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){cc, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){cc, instance});
-        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+        scc &= caches_walk_order_push(walk_order, child_slot); count++;
     }
 
     // recurse
@@ -1676,49 +1528,44 @@ int caches_walk_dfs(
 // Generic layout dfs generation macros
 
 // Definies function:
-// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, size_t first_child)
 // Exec order: recurse -> own function -> additional code
 #define BOTTOM_UP_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                              \
 void PREFIX##_dfs(                                                                                  \
     caches_walk_order*  walk_order,                                                                 \
     cache_slot*         current,                                                                    \
-    auxilary_slot*      auxilary,                                                                   \
     size_t              first_child                                                                 \
 ) {                                                                                                 \
     cache_slot**    children    = &walk_order->slots[first_child];                                  \
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
     size_t*         subtrees    = &walk_order->subtree[first_child];                                \
     const void*     data        = get_node_data(current->key.node, current->key.instance);          \
 \
     if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
         size_t child_first_child = first_child + current->value_child_count;                        \
         for (size_t i = 0; i < current->value_child_count; i++) {                                   \
-            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            PREFIX##_dfs(walk_order, children[i], child_first_child);                               \
             child_first_child += subtrees[i] - 1;                                                   \
         }                                                                                           \
     }                                                                                               \
 \
     dui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
     if (func != NULL) func(                                                                         \
-        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
-        auxilary ? auxilary->state_ptr : NULL                                                       \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child]   \
     );                                                                                              \
 \
     __VA_ARGS__                                                                                     \
 }
 
 // Definies function:
-// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, size_t first_child)
 // Exec order: additional code -> own function -> recurse
 #define TOP_DOWN_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                               \
 void PREFIX##_dfs(                                                                                  \
     caches_walk_order*  walk_order,                                                                 \
     cache_slot*         current,                                                                    \
-    auxilary_slot*      auxilary,                                                                   \
     size_t              first_child                                                                 \
 ) {                                                                                                 \
     cache_slot**    children    = &walk_order->slots[first_child];                                  \
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
     size_t*         subtrees    = &walk_order->subtree[first_child];                                \
     const void*     data        = get_node_data(current->key.node, current->key.instance);          \
 \
@@ -1726,14 +1573,13 @@ void PREFIX##_dfs(                                                              
 \
     dui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
     if (func != NULL) func(                                                                         \
-        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
-        auxilary ? auxilary->state_ptr : NULL                                                       \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child]   \
     );                                                                                              \
 \
     if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
         size_t child_first_child = first_child + current->value_child_count;                        \
         for (size_t i = 0; i < current->value_child_count; i++) {                                   \
-            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            PREFIX##_dfs(walk_order, children[i], child_first_child);                               \
             child_first_child += subtrees[i] - 1;                                                   \
         }                                                                                           \
     }                                                                                               \
@@ -1743,17 +1589,35 @@ void PREFIX##_dfs(                                                              
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
 
-void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
+void create_text_request(dui_cache* cache, text_cache_slot* slot);
 
-// auxilary pass, additionaly update text buffer
-TOP_DOWN_DFS(
-    auxilary, auxilary, invalidation_flag_only_auxilary,
-    if (current->key.node->type == &dui_text_type) {
-        create_text_request(walk_order->cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
+// Text generate pass
+void text_gen_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    size_t              first_child
+) {
+    cache_slot**    children    = &walk_order->slots[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    const void*     data        = get_node_data(current->key.node, current->key.instance);
+
+    if (find_shall_recurse(current, data, invalidation_flag_only_text)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            text_gen_dfs(walk_order, children[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
-);
 
-// width measure pass, additionaly handle ignore flags
+    if (current->key.node->type == &dui_text_type) {
+        text_cache_slot* text_cache = text_cache_get_utill(walk_order->cache, current->key);
+        create_text_request(walk_order->cache, text_cache);
+        current->value_state.measured_width  = (dui_length){text_cache->text_width,  text_cache->text_width, 1};
+        current->value_state.measured_height = (dui_length){text_cache->text_height, text_cache->text_height, 1};
+    }
+}
+
+// Width measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     width_measure, width_measure, invalidation_flag_only_width_measure,
     if (current->key.node->flags & dui_flag_ignore_min_width) {
@@ -1766,7 +1630,7 @@ BOTTOM_UP_DFS(
     }
 );
 
-// width distribute pass, additionaly ensure received width
+// Width distribute pass, additionaly ensure received width
 // is within node measured limits
 TOP_DOWN_DFS(
     width_distribute, width_distribute, invalidation_flag_only_width_distribute,
@@ -1776,7 +1640,7 @@ TOP_DOWN_DFS(
     );
 );
 
-// height measure pass, additionaly handle ignore flags
+// Height measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     height_measure, height_measure, invalidation_flag_only_height_measure,
     if (current->key.node->flags & dui_flag_ignore_min_height) {
@@ -1789,7 +1653,7 @@ BOTTOM_UP_DFS(
     }
 );
 
-// height distribute pass, additionaly ensure received height 
+// Height distribute pass, additionaly ensure received height 
 // is within node measured limits
 TOP_DOWN_DFS(
     height_distribute, height_distribute, invalidation_flag_only_height_distribute,
@@ -1799,7 +1663,7 @@ TOP_DOWN_DFS(
     );
 );
 
-// position pass, no additional code
+// Position pass, no additional code
 TOP_DOWN_DFS(
     position, position, invalidation_flag_only_position
 );
@@ -1858,13 +1722,11 @@ static void render_dfs(
     node_stable_index index = {node, state->instance};
 
     // get node data
-    const void*     data  = get_node_data (node, state->instance);
-    cache_slot*     own   = cache_get_utill(cache, index);
-    auxilary_slot*  aux   = auxilary_get_utill(cache, index);
+    const void* data = get_node_data (node, state->instance);
+    cache_slot* own  = cache_get_utill(cache, index);
 
     // mark used, to avoid garbage collect
     own->last_frame_used_in_render = cache->frame_index;
-    if (aux) aux->last_frame_used_in_render = cache->frame_index;
 
     // change transform based on node's position and scale
     float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->resolution_x;
@@ -1878,8 +1740,7 @@ static void render_dfs(
     if (node->type->transform) node->type->transform(
         data, &transform, 
         cache->resolution_x, 
-        cache->resolution_y,
-        aux->state_ptr
+        cache->resolution_y
     );
 
     // Push pinkbox request
@@ -1911,8 +1772,12 @@ static void render_dfs(
     }
     // Request text draw
     else if (node->type == &dui_text_type) {
-        const dui_text_data*            tdata = data;
-        const text_type_auxilary_state* taux  = aux->state_ptr;
+        const dui_text_data* tdata = data;
+
+        // Prevent text garbage collection
+        text_cache_slot* text_cache = text_cache_get_utill(cache, index);
+        if (text_cache) text_cache->last_frame_used_in_render = cache->frame_index;
+
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
             .clip_index         = state->clipbox_index,
@@ -2023,7 +1888,6 @@ void dui_update_cache(
 
         ibox->handle(
             get_node_data(ibox->owner.node, ibox->owner.instance),
-            auxilary_get_utill(cache, ibox->owner)->state_ptr,
             &changable_state, &cursor_state,
             cursor_inside && !ever_was_inside, cursor_inside
         );
@@ -2037,8 +1901,7 @@ void dui_update_cache(
     // This is important so hashmap pointers does not get invalidated during passes
     // This means we are one frame behind with layout, but it is not a big deal actually.
     if (1) {
-        cache_slot*    root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
-        auxilary_slot* root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
+        cache_slot* root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
 
         // Give root entire screen
         // Will auto bound to desired at distribute
@@ -2054,12 +1917,12 @@ void dui_update_cache(
         }
         
         // Perform all passes
-        auxilary_dfs(&walk_order, root_cache, root_auxlr, 0);
-        width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
-        width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-        height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
-        height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-        position_dfs(&walk_order, root_cache, root_auxlr, 0);
+        text_gen_dfs(&walk_order, root_cache, 0);
+        width_measure_dfs(&walk_order, root_cache, 0);
+        width_distribute_dfs(&walk_order, root_cache, 0);
+        height_measure_dfs(&walk_order, root_cache, 0);
+        height_distribute_dfs(&walk_order, root_cache, 0);
+        position_dfs(&walk_order, root_cache, 0);
 
         free_caches_walk_order(&walk_order);
     }
@@ -2069,7 +1932,7 @@ void dui_update_cache(
     // Do every 16 frames not to spend to much time on it
     if (cache->frame_index % 16 == 0) {
         cache_hashmap_garbage_collect(cache);
-        auxilary_hashmap_garbage_collect(cache);
+        text_cache_hashmap_garbage_collect(cache);
     }
 }
 
@@ -2339,39 +2202,40 @@ int dui_upload_cache(
 
     // Prepare partitions for text draws
     for (size_t i = 0; i < cache->text_requests_count; i++) {
-        text_request              req  = cache->text_requests[i];
-        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+        text_request     req  = cache->text_requests[i];
+        text_cache_slot* slot = text_cache_get_utill(cache, req.owning_node);
 
-        aux->partitioner = shared->glyph_buffer_partitioner;
+        // Store partitioner to return partition to
+        slot->glyphs_partitioner = shared->glyph_buffer_partitioner;
 
         // always free owned partition to reduce fragmentation
-        if (aux->owned_glyph_buffer_partition) {
-            dpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
-            aux->owned_glyph_buffer_partition = NULL;
+        if (slot->glyphs_partition) {
+            dpr_partitioner_free_partition(shared->glyph_buffer_partitioner, slot->glyphs_partition);
+            slot->glyphs_partition = NULL;
         }
 
         // new text is empty - creation of 0 bytes partition is forbidden
         if (!req.glyphs_count) continue;
 
         // request new partition
-        aux->owned_glyph_buffer_partition = dpr_partitioner_alloc_partition(
+        slot->glyphs_partition = dpr_partitioner_alloc_partition(
             shared->glyph_buffer_partitioner,
             req.glyphs_count * sizeof(gpu_glyph), 
             GLYPH_STRUCTURE_ALIGN
         );
 
         // Failed to create partition - create bigger text buffer
-        if (!aux->owned_glyph_buffer_partition) {
+        if (!slot->glyphs_partition) {
             // todo rewrite (must sync)
         }
     }
 
     // Generate draw regions for texts
     for (size_t i = 0; i < cache->text_requests_count; i++) {
-        text_request              req  = cache->text_requests[i];
-        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
-        dpr_partition*            prt = aux->owned_glyph_buffer_partition;
-        if (!prt) continue; // text empty, nothing to upload
+        text_request     req  = cache->text_requests[i];
+        text_cache_slot* slot = text_cache_get_utill(cache, req.owning_node);
+        dpr_partition*   prt  = slot->glyphs_partition;
+        if (!prt) continue; // Text empty, nothing to upload
 
         dgs_segmenter_upload(segmenter, (dgs_upload_request){
             .target = (uint64_t)shared->glyph_buffer,
@@ -2426,9 +2290,8 @@ int dui_upload_cache(
             instances_count += 1;  // single box
         }
         else {
-            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
-            text_type_auxilary_state* aux  = slot->state_ptr;
-            dpr_partition*            part = aux->owned_glyph_buffer_partition;
+            text_cache_slot* slot = text_cache_get_utill(cache, req.text_node);
+            dpr_partition*   part = slot->glyphs_partition;
             if (!part) continue;
 
             dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
@@ -2469,9 +2332,8 @@ int dui_upload_cache(
             };
         }
         else {
-            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
-            text_type_auxilary_state* aux  = slot->state_ptr;
-            dpr_partition*            part = aux->owned_glyph_buffer_partition;
+            text_cache_slot* slot = text_cache_get_utill(cache, req.text_node);
+            dpr_partition*   part = slot->glyphs_partition;
             if (!part) continue;
             
             size_t first  = dpr_partition_query_offset(part) / sizeof(gpu_glyph);
@@ -2644,7 +2506,7 @@ void dui_gcmd_render(
 // ===========================
 // Text layout generation
 
-void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
+void create_text_request(dui_cache* cache, text_cache_slot* slot) {
     const dui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
     dfont_font* font; if (!dui_injection_query_font(tdata->font, &font)) return;
     const char* text = tdata->text;
@@ -2729,8 +2591,8 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     float text_height = -pen_y + ascent;
 
     // Store text dimensions
-    aux->text_width  = text_width;
-    aux->text_height = text_height;
+    slot->text_width  = text_width;
+    slot->text_height = text_height;
 
     // Request text upload
     text_request req = {
