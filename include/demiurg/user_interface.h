@@ -1179,13 +1179,19 @@ static void free_cached_text_requests(dui_cache* cache);
 void dui_free_cache(dui_cache* cache) {
     if (!cache) return;
 
+    // Free all cached texts by using impossible value
+    cache->frame_index = LAST_FRAME_USED_IN_RENDER_IMPOSIBLE;
+    text_cache_hashmap_garbage_collect(cache);
+
     // Free all cached textes
     free_cached_text_requests(cache);
 
     free(cache->cache_slots);
+    free(cache->text_cache_slots);
     free(cache->draw_requests);
     free(cache->text_requests);
     free(cache->clipbox_requests);
+    free(cache->cursor_input_boxes);
     free(cache);
 }
 
