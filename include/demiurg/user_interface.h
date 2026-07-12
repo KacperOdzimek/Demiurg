@@ -228,8 +228,8 @@ typedef enum dui_flag {
     dui_flag_ignore_max_width   = 1 << 4,   // Max width  of this node is set to inf
     dui_flag_ignore_max_height  = 1 << 5,   // Max height of this node is set to inf
     dui_flag_clipbox            = 1 << 6,   // Children of this node on render are clipped to this node boundary
-    dui_flag_inherit_auxilary   = 1 << 7,   // This node auxilary = parent auxilary
-    dui_flag_instance_auxilary  = 1 << 8,   // This node instance = auxilary (possibly inherited)
+    dui_flag_auxilary_inherit   = 1 << 7,   // This node auxilary = parent auxilary
+    dui_flag_auxilary_instance  = 1 << 8,   // This node instance = auxilary (possibly inherited)
     dui_flag_pink_box           = 1 << 9,   // Render pink box in node boundary - for debugging
 } dui_flag;
 
@@ -1455,17 +1455,21 @@ static inline cache_slot* cache_get_utill(dui_cache* cache, node_stable_index in
 }
 
 // Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
-static inline auxilary_slot* auxilary_get_utill(dui_cache* cache, node_stable_index index) {
-    if (!index.node->type->auxilary_bytes) return NULL; // none desired
+static inline auxilary_slot* auxilary_get_utill(dui_cache* cache, node_stable_index index, auxilary_slot* parent_auxilary) {
+    // Inherit auxilary if this is desired
+    if (index.node->flags == dui_flag_auxilary_inherit) return parent_auxilary;
+
+    // Get own auxilary
+    if (!index.node->type->auxilary_bytes) return NULL; // None desired
     auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
 
-    // handle case where node type has changed
+    // Handle case where node type has changed
     if (slot->state_type && slot->state_type != index.node->type) {
         if (index.node->type->auxilary_destructor) index.node->type->auxilary_destructor(slot->state_ptr);
         free(slot->state_ptr); slot->state_ptr = NULL;
     }
     
-    // allocate state
+    // Allocate state
     if (!slot->state_ptr) {
         slot->state_ptr  = calloc(1, index.node->type->auxilary_bytes);
         slot->state_type = index.node->type;
@@ -1483,15 +1487,21 @@ struct draw_request {
     short                   depth_index;
     char                    is_box_not_text;
     union {
-        dui_box_data        box_data;
-        node_stable_index   text_node;
+        struct {
+            dui_box_data                data;
+        } box;
+        struct {
+            dui_text_data               data;
+            text_type_auxilary_state*   aux;
+        } text;
     };
 };
 
 struct text_request {
-    node_stable_index       owning_node;
-    size_t                  glyphs_count;
-    struct gpu_glyph*       glyphs;
+    node_stable_index           owning_node;
+    text_type_auxilary_state*   auxilary;
+    size_t                      glyphs_count;
+    struct gpu_glyph*           glyphs;
 };
 
 struct clipbox_request {
@@ -1500,6 +1510,7 @@ struct clipbox_request {
 
 struct cursor_input_box {
     node_stable_index       owner;
+    auxilary_slot*          auxilary;
     dui_node_cursor_func    handle;
     int                     clip_index;
     short                   depth_index;
@@ -1640,6 +1651,7 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
 int caches_walk_dfs(
     caches_walk_order*  walk_order, 
     cache_slot*         current, 
+    auxilary_slot*      current_aux,
     size_t*             subtree_size_target, 
     const void*         instance
 ) {
@@ -1648,26 +1660,29 @@ int caches_walk_dfs(
     size_t          count = 0;
     int             scc   = 1;
 
-    // change instance for subtree
+    // Change instance for subtree
     if (node->type == &dui_instance_type) {
         instance = get_node_data(current->key.node, instance);
     }
 
+    // Push current node children
     if (!node->type->array_child && child) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){child, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){child, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){child, instance}, current_aux);
         scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
     }
     else if (child) for (const dui_node* cc = child; cc->type != NULL; cc++) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){cc, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){cc, instance});
+        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){cc, instance}, current_aux);
         scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
     }
 
-    // recurse
+    // Recurse
     size_t begin_pos = walk_order->position - count;
     for (size_t i = 0; i < count; i++) {
-        scc &= caches_walk_dfs(walk_order, walk_order->slots[begin_pos + i], &walk_order->subtree[begin_pos + i], instance);
+        scc &= caches_walk_dfs(
+            walk_order, walk_order->slots[begin_pos + i], walk_order->auxilary[begin_pos + i], &walk_order->subtree[begin_pos + i], instance
+        );
         *subtree_size_target += walk_order->subtree[begin_pos + i];
     }
 
@@ -1822,6 +1837,7 @@ static void render_dfs(
     dui_cache*                      cache, 
     int                             previous_width,
     int                             previous_height, 
+    auxilary_slot*                  previous_auxilary,
     const dui_node*                 node,
     dla_mat2x3                      transform, 
     const render_dfs_subtree_state* state
@@ -1830,6 +1846,7 @@ static void render_dfs(
 static inline void render_dfs_recurse(
     dui_cache*                      cache, 
     cache_slot*                     own,
+    auxilary_slot*                  own_auxilary,
     dla_mat2x3                      transform, 
     const render_dfs_subtree_state* state
 ) {
@@ -1841,11 +1858,11 @@ static inline void render_dfs_recurse(
 
     // single child
     if (!own->key.node->type->array_child && child) {
-        render_dfs(cache, own_width, own_height, child, transform, state);
+        render_dfs(cache, own_width, own_height, own_auxilary, child, transform, state);
     }
     // multiple children
     else if (child) for (const dui_node* current_child = child; current_child->type != NULL; current_child++) {
-        render_dfs(cache, own_width, own_height, current_child, transform, state);
+        render_dfs(cache, own_width, own_height, own_auxilary, current_child, transform, state);
     }
 }
 
@@ -1853,6 +1870,7 @@ static void render_dfs(
     dui_cache*                      cache, 
     int                             previous_width,
     int                             previous_height, 
+    auxilary_slot*                  previous_auxilary,
     const dui_node*                 node,
     dla_mat2x3                      transform, 
     const render_dfs_subtree_state* state
@@ -1862,7 +1880,7 @@ static void render_dfs(
     // get node data
     const void*     data  = get_node_data (node, state->instance);
     cache_slot*     own   = cache_get_utill(cache, index);
-    auxilary_slot*  aux   = auxilary_get_utill(cache, index);
+    auxilary_slot*  aux   = auxilary_get_utill(cache, index, previous_auxilary);
 
     // mark used, to avoid garbage collect
     own->last_frame_used_in_render = cache->frame_index;
@@ -1891,7 +1909,7 @@ static void render_dfs(
             .clip_index         = state->clipbox_index,
             .depth_index        = state->depth_index,
             .is_box_not_text    = 1,
-            .box_data           = (dui_box_data){
+            .box.data           = (dui_box_data){
                 .image  = NULL,
                 .shader = 0,
                 .tint   = DUI_HEX("#df04ba")
@@ -1908,7 +1926,7 @@ static void render_dfs(
             .clip_index         = state->clipbox_index,
             .depth_index        = state->depth_index,
             .is_box_not_text    = 1,
-            .box_data           = *bdata
+            .box.data           = *bdata
         });
     }
     // Request text draw
@@ -1920,7 +1938,8 @@ static void render_dfs(
             .clip_index         = state->clipbox_index,
             .depth_index        = state->depth_index,
             .is_box_not_text    = 0,
-            .text_node          = index
+            .text.data          = *tdata,
+            .text.aux           = aux->state_ptr
         });
     }
 
@@ -1929,6 +1948,7 @@ static void render_dfs(
     if (node->type->cursor) {
         cursor_input_box_cache_push(cache, (cursor_input_box){
             .owner          = index,
+            .auxilary       = aux,
             .handle         = node->type->cursor,
             .depth_index    = state->depth_index,
             .clip_index     = state->clipbox_index,
@@ -1956,7 +1976,7 @@ static void render_dfs(
     }
 
     // Default recursion without state changes
-    render_dfs_recurse(cache, own, transform, &new_state);
+    render_dfs_recurse(cache, own, aux, transform, &new_state);
 }
 
 // Helper for draw requests depth sorting : deepest first
@@ -2001,7 +2021,7 @@ void dui_update_cache(
         .depth_index    = 0,
         .clipbox_index  = -1
     };
-    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), &default_subtree_state);
+    render_dfs(cache, cache->resolution_x, cache->resolution_y, NULL, root, dla_mat2x3_identity(), &default_subtree_state);
 
     // Sort render requests and input boxes by depth
     stable_sort(cache->draw_requests,       cache->draw_requests_count,      sizeof(draw_request),      helper_draw_requests_greater_depth);
@@ -2025,7 +2045,7 @@ void dui_update_cache(
 
         ibox->handle(
             get_node_data(ibox->owner.node, ibox->owner.instance),
-            auxilary_get_utill(cache, ibox->owner)->state_ptr,
+            ibox->auxilary->state_ptr,
             &changable_state, &cursor_state,
             cursor_inside && !ever_was_inside, cursor_inside
         );
@@ -2040,7 +2060,7 @@ void dui_update_cache(
     // This means we are one frame behind with layout, but it is not a big deal actually.
     if (1) {
         cache_slot*    root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
-        auxilary_slot* root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
+        auxilary_slot* root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL}, NULL);
 
         // Give root entire screen
         // Will auto bound to desired at distribute
@@ -2050,7 +2070,7 @@ void dui_update_cache(
         // Find walk order
         caches_walk_order walk_order    = {.cache = cache};
         size_t            root_subtree  = 1; // root itself included
-        if (!caches_walk_dfs(&walk_order, root_cache, &root_subtree, NULL)) {
+        if (!caches_walk_dfs(&walk_order, root_cache, root_auxlr, &root_subtree, NULL)) {
             free_caches_walk_order(&walk_order);
             return;
         }
@@ -2341,8 +2361,8 @@ int dui_upload_cache(
 
     // Prepare partitions for text draws
     for (size_t i = 0; i < cache->text_requests_count; i++) {
-        text_request              req  = cache->text_requests[i];
-        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+        text_request              req = cache->text_requests[i];
+        text_type_auxilary_state* aux = req.auxilary;
 
         aux->partitioner = shared->glyph_buffer_partitioner;
 
@@ -2371,7 +2391,7 @@ int dui_upload_cache(
     // Generate draw regions for texts
     for (size_t i = 0; i < cache->text_requests_count; i++) {
         text_request              req  = cache->text_requests[i];
-        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+        text_type_auxilary_state* aux = req.auxilary;
         dpr_partition*            prt = aux->owned_glyph_buffer_partition;
         if (!prt) continue; // text empty, nothing to upload
 
@@ -2406,7 +2426,7 @@ int dui_upload_cache(
 
         if (req.is_box_not_text) {
             int texture_index = 0; dgx_texture* texture; dgx_uv_2d uv;
-            if (req.box_data.image && dui_injection_query_image(req.box_data.image, &texture, &uv)) {
+            if (req.box.data.image && dui_injection_query_image(req.box.data.image, &texture, &uv)) {
                 texture_index = dgx_shader_resource_bind(
                     hardware, dgx_resource_type_sampled_texture, texture, &success
                 );
@@ -2418,23 +2438,21 @@ int dui_upload_cache(
                 .atlas_position = uv,
                 .texture_index  = texture_index,
                 .clipbox_index  = req.clip_index,
-                .shader_index   = req.box_data.shader,
-                .r              = (float)req.box_data.tint.r / 255.0f,
-                .g              = (float)req.box_data.tint.g / 255.0f,
-                .b              = (float)req.box_data.tint.b / 255.0f,
-                .a              = (float)req.box_data.tint.a / 255.0f
+                .shader_index   = req.box.data.shader,
+                .r              = (float)req.box.data.tint.r / 255.0f,
+                .g              = (float)req.box.data.tint.g / 255.0f,
+                .b              = (float)req.box.data.tint.b / 255.0f,
+                .a              = (float)req.box.data.tint.a / 255.0f
             };
 
             instances_count += 1;  // single box
         }
         else {
-            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
-            text_type_auxilary_state* aux  = slot->state_ptr;
+            text_type_auxilary_state* aux  = req.text.aux;
             dpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
 
-            dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
-            dfont_font* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
+            dfont_font* font; if (!dui_injection_query_font(req.text.data.font, &font)) continue;
 
             uint32_t texture_index = dgx_shader_resource_bind(
                 hardware, dgx_resource_type_sampled_texture, dfont_get_texture(font), &success
@@ -2447,11 +2465,11 @@ int dui_upload_cache(
                 .atlas_position = (dgx_uv_2d){0, 0, 1, 1},
                 .texture_index  = signed_texture_index,
                 .clipbox_index  = req.clip_index,
-                .shader_index   = text_data.shader,
-                .r              = (float)text_data.tint.r / 255.0f,
-                .g              = (float)text_data.tint.g / 255.0f,
-                .b              = (float)text_data.tint.b / 255.0f,
-                .a              = (float)text_data.tint.a / 255.0f,
+                .shader_index   = req.text.data.shader,
+                .r              = (float)req.text.data.tint.r / 255.0f,
+                .g              = (float)req.text.data.tint.g / 255.0f,
+                .b              = (float)req.text.data.tint.b / 255.0f,
+                .a              = (float)req.text.data.tint.a / 255.0f,
             };
 
             instances_count += dpr_partition_query_size(part) / sizeof(gpu_glyph);
@@ -2471,8 +2489,7 @@ int dui_upload_cache(
             };
         }
         else {
-            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
-            text_type_auxilary_state* aux  = slot->state_ptr;
+            text_type_auxilary_state* aux  = req.text.aux;
             dpr_partition*            part = aux->owned_glyph_buffer_partition;
             if (!part) continue;
             
@@ -2656,6 +2673,7 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     if (!text || !font) {
         text_request req = {
             .owning_node  = slot->key,
+            .auxilary     = aux,
             .glyphs_count = 0,
             .glyphs       = NULL,
         };
@@ -2674,7 +2692,12 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     // Allocate glyphs buffer
     gpu_glyph* glyphs = glyph_count ? malloc(sizeof(gpu_glyph) * glyph_count) : NULL;
     if (glyph_count && !glyphs) {
-        text_request req = { .owning_node = slot->key, .glyphs_count = 0, .glyphs = NULL };
+        text_request req = { 
+            .owning_node    = slot->key, 
+            .auxilary       = aux,
+            .glyphs_count   = 0, 
+            .glyphs         = NULL 
+        };
         text_request_cache_push(cache, req); return;
     }
 
@@ -2737,6 +2760,7 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     // Request text upload
     text_request req = {
         .owning_node  = slot->key,
+        .auxilary     = aux,
         .glyphs_count = glyph_count,
         .glyphs       = glyphs,
     };
