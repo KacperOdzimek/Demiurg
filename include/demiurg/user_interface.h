@@ -221,14 +221,16 @@ typedef struct dui_type {
 } dui_type;
 
 typedef enum dui_flag {
-    dui_flag_instanced_data     = 1 << 0,
-    dui_flag_instanced_child    = 1 << 1,
-    dui_flag_ignore_min_width   = 1 << 2,
-    dui_flag_ignore_min_height  = 1 << 3,
-    dui_flag_ignore_max_width   = 1 << 4,
-    dui_flag_ignore_max_height  = 1 << 5,
-    dui_flag_clipbox            = 1 << 6,
-    dui_flag_pink_box           = 1 << 7
+    dui_flag_instanced_data     = 1 << 0,   // This node data  = instance + data_offset
+    dui_flag_instanced_child    = 1 << 1,   // This node child = instance + child_offset
+    dui_flag_ignore_min_width   = 1 << 2,   // Min width  of this node is set to 0
+    dui_flag_ignore_min_height  = 1 << 3,   // Min height of this node is set to 0
+    dui_flag_ignore_max_width   = 1 << 4,   // Max width  of this node is set to inf
+    dui_flag_ignore_max_height  = 1 << 5,   // Max height of this node is set to inf
+    dui_flag_clipbox            = 1 << 6,   // Children of this node on render are clipped to this node boundary
+    dui_flag_inherit_auxilary   = 1 << 7,   // This node auxilary = parent auxilary
+    dui_flag_instance_auxilary  = 1 << 8,   // This node instance = auxilary (possibly inherited)
+    dui_flag_pink_box           = 1 << 9,   // Render pink box in node boundary - for debugging
 } dui_flag;
 
 typedef struct dui_node {
