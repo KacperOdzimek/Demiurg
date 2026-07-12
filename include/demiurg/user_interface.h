@@ -104,6 +104,15 @@ typedef struct dui_cursor_state {
     float   scroll_delta;
 } dui_cursor_state;
 
+typedef struct dui_node_cursor_input {
+    dui_cursor_state*       mutable_state;      // State with fields possibly consumed by previous handles  
+    const dui_cursor_state* raw_state;          // Untouched state
+    const dui_cursor_state* prev_raw_state;     // Previous frame raw state
+    int                     hovered;            // Whether cursor is inside node and no upper node was
+    int                     raw_hovered;        // Whether cursor is inside node
+    float                   delta_time;         // Time in seconds since last frame
+} dui_node_cursor_input;
+
 // ===========================
 // Node Typedefs
 
@@ -134,11 +143,7 @@ typedef dui_node_render_func_signature* dui_node_render_func;
 
 typedef void(dui_node_cursor_func_signature)(
     void*                   node_data,          // node data
-    dui_cursor_state*       state,              // state with fields possibly consumed by previous handles  
-    const dui_cursor_state* raw_state,          // untouched state
-    const dui_cursor_state* prev_raw_state,     // previous frame raw state
-    int                     hovered,            // whether cursor is inside node and no upper node was
-    int                     raw_hovered         // whether cursor is inside node
+    dui_node_cursor_input*  node_input          // cursor input
 );
 typedef dui_node_cursor_func_signature* dui_node_cursor_func;
 
@@ -368,6 +373,14 @@ extern const dui_type dui_cursor_handle_type;
 extern const dui_type dui_cursor_input_type;
 
 // ===========================
+// Miscellaneous Node Types
+
+// Indirect type
+// This type does not change any state nor render anything
+// Simply jumps to it's single child, usefull with arrays
+extern const dui_type dui_indirect_type;
+
+// ===========================
 // Predefinied UI structures
 
 // Button
@@ -397,6 +410,13 @@ typedef struct dui_button_data {
     unsigned char   pressed;
 } dui_button_data;
 
+// Scrollbox
+
+extern const dui_node dui_vertical_scrollbox_structure[];
+typedef struct dui_scrollbox_data {
+
+} dui_scrollbox_data;
+
 // ===========================
 // Cache
 
@@ -404,11 +424,12 @@ dui_cache* dui_create_cache();
 void dui_free_cache(dui_cache*);
 
 void dui_update_cache(
-    dui_cache*              cache,
-    const dui_node*         root,
-    int                     resolution_x,
-    int                     resolution_y,
-    dui_cursor_state        cursor_state
+    dui_cache*          cache,
+    const dui_node*     root,
+    int                 resolution_x,
+    int                 resolution_y,
+    dui_cursor_state    cursor_state,
+    float               delta_time
 );
 
 // ===========================
@@ -1128,6 +1149,10 @@ const dui_type dui_cursor_handle_type = box_behavior_type;
 // Cursor input type
 // This type is specially handled in pass implementation
 const dui_type dui_cursor_input_type = box_behavior_type;
+
+// ===========================
+// Indirect Type
+const dui_type dui_indirect_type = box_behavior_type;
 
 // ===========================
 // Node fields reads
@@ -1918,11 +1943,12 @@ static inline int helper_cursor_input_boxes_greater_depth(const void* av, const 
 // Main update function
 // Calls passes
 void dui_update_cache(
-    dui_cache*              cache,
-    const dui_node*         root,
-    int                     resolution_x,
-    int                     resolution_y,
-    dui_cursor_state        cursor_state
+    dui_cache*          cache,
+    const dui_node*     root,
+    int                 resolution_x,
+    int                 resolution_y,
+    dui_cursor_state    cursor_state,
+    float               delta_time
 ) {
     // Init state
     cache->resolution_x             = resolution_x;
@@ -1953,7 +1979,14 @@ void dui_update_cache(
 
     // Do cursor input callbacks, walking from topmost to deepest
     dui_cursor_state changable_state = cursor_state;
-    int              ever_was_inside = 0;
+    dui_node_cursor_input input_data = {
+        .mutable_state  = &changable_state,
+        .raw_state      = &cursor_state,
+        .prev_raw_state = &cache->previous_frame_cursor_state,
+        .delta_time     = delta_time
+    };
+    
+    int ever_was_inside = 0;
     if (cache->cursor_input_boxes_count) for (size_t i = cache->cursor_input_boxes_count - 1; ; i--) {
         cursor_input_box* ibox = &cache->cursor_input_boxes[i];
         if (!ibox->handle) continue; // nothing to call
@@ -1963,11 +1996,9 @@ void dui_update_cache(
             cursor_inside &= is_point_in_transformed_box(cache->clipbox_requests[ibox->clip_index].transform, norm_cursor_x, norm_cursor_y);
         }
 
-        ibox->handle(
-            get_node_data(ibox->owner.node, ibox->owner.instance),
-            &changable_state, &cursor_state, &cache->previous_frame_cursor_state,
-            cursor_inside && !ever_was_inside, cursor_inside
-        );
+        input_data.hovered     = cursor_inside && !ever_was_inside;
+        input_data.raw_hovered = cursor_inside;
+        ibox->handle(get_node_data(ibox->owner.node, ibox->owner.instance), &input_data);
 
         ever_was_inside |= cursor_inside;
         if (i == 0) break; // break loop at last element
@@ -2686,33 +2717,36 @@ void create_text_request(dui_cache* cache, text_cache_slot* slot) {
 // ===========================
 // Predefinied UI structures
 
-static void button_cursor_func(
-    void* node_data, dui_cursor_state* state, const dui_cursor_state* raw_state, const dui_cursor_state* prev_raw_state, int hovered, int raw_hovered
-) {
+// Button
+
+static void button_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
     dui_button_data* data = node_data;
 
-    char just_pressed  = state->left_down  && !prev_raw_state->left_down;
-    char just_released = !state->left_down && prev_raw_state->left_down;
+    dui_cursor_state crr = *node_input->mutable_state;
+    dui_cursor_state prv = *node_input->prev_raw_state;
 
-    if (just_pressed && hovered) {            // press started
+    char just_pressed  = crr.left_down  && !prv.left_down;
+    char just_released = !crr.left_down && prv.left_down;
+
+    if (just_pressed && node_input->hovered) {  // press started
         data->pressed = 1;
         data->current_style = data->pressed_style;
         if (data->on_clicked) data->on_clicked(data->payload);
-        state->left_down = 0;
+        crr.left_down = 0;
     }
-    else if (state->left_down && data->pressed) {    // held
+    else if (crr.left_down && data->pressed) {    // held
         data->current_style = data->pressed_style;
         if (data->on_held) data->on_held(data->payload);
-        state->left_down = 0;
+        crr.left_down = 0;
     }
     else if (just_released && data->pressed) {   // released
         data->pressed = 0;
-        if (hovered)    data->current_style = data->hovered_style;
-        else            data->current_style = data->default_style;
+        if (node_input->hovered) data->current_style = data->hovered_style;
+        else data->current_style = data->default_style;
         if (data->on_released)  data->on_released(data->payload);
     }
-    else if (hovered) data->current_style = data->hovered_style;        // hover
-    else                    data->current_style = data->default_style;  // idle
+    else if (node_input->hovered) data->current_style = data->hovered_style;    // hover
+    else data->current_style = data->default_style;  // idle
 }
 
 const dui_node dui_button_structure[] = {
@@ -2734,5 +2768,7 @@ const dui_node dui_button_structure[] = {
         .child_offset = offsetof(dui_button_data, child)
     }
 };
+
+// Scrollbox
 
 #endif // DEMIURG_USER_INTERFACE_IMPL
