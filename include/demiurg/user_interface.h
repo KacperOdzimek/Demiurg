@@ -2005,15 +2005,14 @@ void dui_update_cache(
             cursor_inside &= is_point_in_transformed_box(cache->clipbox_requests[ibox->clip_index].transform, norm_cursor_x, norm_cursor_y);
         }
 
-        ever_was_inside |= cursor_inside;
-
         ibox->handle(
             get_node_data(ibox->owner.node, ibox->owner.instance),
             auxilary_get_utill(cache, ibox->owner)->state_ptr,
             &changable_state, &cursor_state,
-            cursor_inside && ever_was_inside, cursor_inside
+            cursor_inside && !ever_was_inside, cursor_inside
         );
 
+        ever_was_inside |= cursor_inside;
         if (i == 0) break; // break loop at last element
     }
 
