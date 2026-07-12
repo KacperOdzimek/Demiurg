@@ -228,9 +228,7 @@ typedef enum dui_flag {
     dui_flag_ignore_max_width   = 1 << 4,   // Max width  of this node is set to inf
     dui_flag_ignore_max_height  = 1 << 5,   // Max height of this node is set to inf
     dui_flag_clipbox            = 1 << 6,   // Children of this node on render are clipped to this node boundary
-    dui_flag_inherit_auxilary   = 1 << 7,   // This node auxilary = parent auxilary
-    dui_flag_instance_auxilary  = 1 << 8,   // This node instance = auxilary (possibly inherited)
-    dui_flag_pink_box           = 1 << 9,   // Render pink box in node boundary - for debugging
+    dui_flag_pink_box           = 1 << 7,   // Render pink box in node boundary - for debugging
 } dui_flag;
 
 typedef struct dui_node {
