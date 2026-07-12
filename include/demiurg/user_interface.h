@@ -136,6 +136,7 @@ typedef void(dui_node_cursor_func_signature)(
     void*                   node_data,          // node data
     dui_cursor_state*       state,              // state with fields possibly consumed by previous handles  
     const dui_cursor_state* raw_state,          // untouched state
+    const dui_cursor_state* prev_raw_state,     // previous frame raw state
     int                     hovered,            // whether cursor is inside node and no upper node was
     int                     raw_hovered         // whether cursor is inside node
 );
@@ -365,6 +366,36 @@ extern const dui_type dui_cursor_handle_type;
 // Cursor input type
 // Creates an input box, which will call dui_node_cursor_func provided by parent handle type
 extern const dui_type dui_cursor_input_type;
+
+// ===========================
+// Predefinied UI structures
+
+// Button
+
+typedef void(dui_button_func_signature)(
+    void* payload
+);
+typedef dui_button_func_signature* dui_button_func;
+
+// Instance this with dui_button_data for button structure
+// This button tries to fill entire given space (flex = 1, max = inf)
+// On events calls callbacks from data if provided
+extern const dui_node dui_button_structure[];
+typedef struct dui_button_data {
+    // Config
+    void*           payload;
+    dui_button_func on_clicked;
+    dui_button_func on_released;
+    dui_button_func on_held;
+    dui_box_data    default_style;
+    dui_box_data    hovered_style;
+    dui_box_data    pressed_style;
+    const dui_node* child;
+
+    // State
+    dui_box_data    current_style;
+    unsigned char   pressed;
+} dui_button_data;
 
 // ===========================
 // Cache
@@ -1190,6 +1221,9 @@ struct dui_cache {
     size_t              cursor_input_boxes_capacity;
     size_t              cursor_input_boxes_count;
     cursor_input_box*   cursor_input_boxes;
+
+    // Previous frame cursor state
+    dui_cursor_state    previous_frame_cursor_state;
 };
 
 dui_cache* dui_create_cache() {
@@ -1931,13 +1965,16 @@ void dui_update_cache(
 
         ibox->handle(
             get_node_data(ibox->owner.node, ibox->owner.instance),
-            &changable_state, &cursor_state,
+            &changable_state, &cursor_state, &cache->previous_frame_cursor_state,
             cursor_inside && !ever_was_inside, cursor_inside
         );
 
         ever_was_inside |= cursor_inside;
         if (i == 0) break; // break loop at last element
     }
+
+    // Current state in now previous cursor state
+    cache->previous_frame_cursor_state = cursor_state;
 
     // Always relayout
     // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
@@ -2645,5 +2682,57 @@ void create_text_request(dui_cache* cache, text_cache_slot* slot) {
     };
     text_request_cache_push(cache, req);
 }
+
+// ===========================
+// Predefinied UI structures
+
+static void button_cursor_func(
+    void* node_data, dui_cursor_state* state, const dui_cursor_state* raw_state, const dui_cursor_state* prev_raw_state, int hovered, int raw_hovered
+) {
+    dui_button_data* data = node_data;
+
+    char just_pressed  = state->left_down  && !prev_raw_state->left_down;
+    char just_released = !state->left_down && prev_raw_state->left_down;
+
+    if (just_pressed && hovered) {            // press started
+        data->pressed = 1;
+        data->current_style = data->pressed_style;
+        if (data->on_clicked) data->on_clicked(data->payload);
+        state->left_down = 0;
+    }
+    else if (state->left_down && data->pressed) {    // held
+        data->current_style = data->pressed_style;
+        if (data->on_held) data->on_held(data->payload);
+        state->left_down = 0;
+    }
+    else if (just_released && data->pressed) {   // released
+        data->pressed = 0;
+        if (hovered)    data->current_style = data->hovered_style;
+        else            data->current_style = data->default_style;
+        if (data->on_released)  data->on_released(data->payload);
+    }
+    else if (hovered) data->current_style = data->hovered_style;        // hover
+    else                    data->current_style = data->default_style;  // idle
+}
+
+const dui_node dui_button_structure[] = {
+    {   // Set handle to button func
+        .type   = &dui_cursor_handle_type,
+        .data   = button_cursor_func,
+        .child  = &dui_button_structure[1]
+    },
+    {   // Do logic
+        .type   = &dui_cursor_input_type,
+        .flags  = dui_flag_instanced_data,
+        .child  = &dui_button_structure[2],
+        .data_offset = 0,   // Instance itself
+    },
+    {   // Box, style = hitbox auxilary current style
+        .type   = &dui_box_type,
+        .flags  = dui_flag_instanced_data | dui_flag_instanced_child | dui_flag_ignore_max_width | dui_flag_ignore_max_height,
+        .data_offset  = offsetof(dui_button_data, current_style),
+        .child_offset = offsetof(dui_button_data, child)
+    }
+};
 
 #endif // DEMIURG_USER_INTERFACE_IMPL
