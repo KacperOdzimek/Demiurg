@@ -117,7 +117,7 @@ typedef struct dui_node_layout_state {
 } dui_node_layout_state;
 
 typedef void(dui_node_layout_func_signature)(
-    const void*             node_data,          // node data
+    void*                   node_data,          // node data
     dui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
     dui_node_layout_state** children_states     // node children states
@@ -125,7 +125,7 @@ typedef void(dui_node_layout_func_signature)(
 typedef dui_node_layout_func_signature* dui_node_layout_func;
 
 typedef void(dui_node_render_func_signature)(
-    const void*             node_data,          // node data
+    void*                   node_data,          // node data
     dla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
     int                     resolution_y        // screen resolution y
@@ -133,7 +133,7 @@ typedef void(dui_node_render_func_signature)(
 typedef dui_node_render_func_signature* dui_node_render_func;
 
 typedef void(dui_node_cursor_func_signature)(
-    const void*             node_data,          // node data
+    void*                   node_data,          // node data
     dui_cursor_state*       state,              // state with fields possibly consumed by previous handles  
     const dui_cursor_state* raw_state,          // untouched state
     int                     hovered,            // whether cursor is inside node and no upper node was
@@ -216,8 +216,8 @@ typedef struct dui_node {
     };
 
     union {
-        const void*     data;
-        size_t          data_offset;
+        void*   data;
+        size_t  data_offset;
     };
 } dui_node;
 
@@ -353,6 +353,18 @@ typedef struct dui_text_data {
     dui_color       tint;       // text color modyficator
     uint32_t        shader;     // shader effect index
 } dui_text_data;
+
+// ===========================
+// Cursor Node Types
+// Those can be used to add input, without writing a new node type
+
+// Cursor handle type
+// Sets callback for children cursor input nodes to own data (shall be dui_node_cursor_func)
+extern const dui_type dui_cursor_handle_type;
+
+// Cursor input type
+// Creates an input box, which will call dui_node_cursor_func provided by parent handle type
+extern const dui_type dui_cursor_input_type;
 
 // ===========================
 // Cache
@@ -549,7 +561,7 @@ const dui_type dui_invalidation_type = box_behavior_type;
 // Overlay Type
 
 void dui_overlay_width_measure_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -567,7 +579,7 @@ void dui_overlay_width_measure_func(
 }
 
 void dui_overlay_width_distribute_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -580,7 +592,7 @@ void dui_overlay_width_distribute_func(
 }
 
 void dui_overlay_height_measure_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -597,7 +609,7 @@ void dui_overlay_height_measure_func(
 }
 
 void dui_overlay_height_distribute_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -608,7 +620,7 @@ void dui_overlay_height_distribute_func(
 }
 
 void dui_overlay_position_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -633,7 +645,7 @@ const dui_type dui_overlay_type = {
 // Sizebox Type
 
 void sizebox_width_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -646,7 +658,7 @@ void sizebox_width_measure(
 }
 
 void sizebox_height_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -696,7 +708,7 @@ static inline int padding_distribute_length(
 }
 
 void padding_width_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -721,7 +733,7 @@ void padding_width_measure(
 }
 
 void padding_width_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -749,7 +761,7 @@ void padding_width_distribute(
 }
 
 void padding_height_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -772,7 +784,7 @@ void padding_height_measure(
 }
 
 void padding_height_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -813,7 +825,7 @@ const dui_type dui_padding_type = {
 // Row Type
 
 void row_width_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -837,7 +849,7 @@ void row_width_measure(
 }
 
 void row_width_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -911,7 +923,7 @@ void row_width_distribute(
 }
 
 void row_position(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -939,7 +951,7 @@ const dui_type dui_row_type = {
 // Column Type
 
 void column_height_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -963,7 +975,7 @@ void column_height_measure(
 }
 
 void column_height_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -1037,7 +1049,7 @@ void column_height_distribute(
 }
 
 void column_position(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
     dui_node_layout_state** children_states
@@ -1077,15 +1089,25 @@ const dui_type dui_box_type = box_behavior_type;
 const dui_type dui_text_type = (dui_type){0};   // No functions
 
 // ===========================
+// Cursor handle type
+// This type is specially handled in pass implementation
+const dui_type dui_cursor_handle_type = box_behavior_type;
+
+// ===========================
+// Cursor input type
+// This type is specially handled in pass implementation
+const dui_type dui_cursor_input_type = box_behavior_type;
+
+// ===========================
 // Node fields reads
 
-static inline const void* get_node_data(const dui_node* node, const char* instance) {
+static inline void* get_node_data(const dui_node* node, const char* instance) {
     if (node->flags & dui_flag_instanced_data) return (void*)(instance + node->data_offset);
     return node->data;
 }
 
 static inline const dui_node* get_node_child(const dui_node* node, const char* instance) {
-    if (node->flags & dui_flag_instanced_child) return (const dui_node*)(instance + node->child_offset);
+    if (node->flags & dui_flag_instanced_child) return *(const dui_node**)(instance + node->child_offset);
     return node->child;
 }
 
@@ -1176,6 +1198,7 @@ dui_cache* dui_create_cache() {
 }
 
 static void free_cached_text_requests(dui_cache* cache);
+static void text_cache_hashmap_garbage_collect(dui_cache* cache);
 void dui_free_cache(dui_cache* cache) {
     if (!cache) return;
 
@@ -1544,7 +1567,7 @@ void PREFIX##_dfs(                                                              
 ) {                                                                                                 \
     cache_slot**    children    = &walk_order->slots[first_child];                                  \
     size_t*         subtrees    = &walk_order->subtree[first_child];                                \
-    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+    void*           data        = get_node_data(current->key.node, current->key.instance);          \
 \
     if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
         size_t child_first_child = first_child + current->value_child_count;                        \
@@ -1573,7 +1596,7 @@ void PREFIX##_dfs(                                                              
 ) {                                                                                                 \
     cache_slot**    children    = &walk_order->slots[first_child];                                  \
     size_t*         subtrees    = &walk_order->subtree[first_child];                                \
-    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+    void*           data        = get_node_data(current->key.node, current->key.instance);          \
 \
     __VA_ARGS__                                                                                     \
 \
@@ -1605,7 +1628,7 @@ void text_gen_dfs(
 ) {
     cache_slot**    children    = &walk_order->slots[first_child];
     size_t*         subtrees    = &walk_order->subtree[first_child];
-    const void*     data        = get_node_data(current->key.node, current->key.instance);
+    void*           data        = get_node_data(current->key.node, current->key.instance);
 
     if (find_shall_recurse(current, data, invalidation_flag_only_text)) {
         size_t child_first_child = first_child + current->value_child_count;
@@ -1684,6 +1707,7 @@ typedef struct render_dfs_subtree_state {
     const void*             instance;
     short                   depth_index;
     int                     clipbox_index;
+    dui_node_cursor_func    cursor_handle;
 } render_dfs_subtree_state;
 
 static void render_dfs(
@@ -1728,7 +1752,7 @@ static void render_dfs(
     node_stable_index index = {node, state->instance};
 
     // get node data
-    const void* data = get_node_data (node, state->instance);
+    void*       data = get_node_data (node, state->instance);
     cache_slot* own  = cache_get_utill(cache, index);
 
     // mark used, to avoid garbage collect
@@ -1804,6 +1828,15 @@ static void render_dfs(
             .box_transform  = transform
         });
     }
+    if (node->type == &dui_cursor_input_type) {
+        cursor_input_box_cache_push(cache, (cursor_input_box){
+            .owner          = index,
+            .handle         = state->cursor_handle,
+            .depth_index    = state->depth_index,
+            .clip_index     = state->clipbox_index,
+            .box_transform  = transform
+        });
+    }
 
     // New state for subtree
     render_dfs_subtree_state new_state = *state;
@@ -1817,6 +1850,10 @@ static void render_dfs(
     else if (node->type == &dui_depth_type) {
         const dui_depth_data* ddata = data;
         new_state.depth_index += ddata->depth_change;
+    }
+    // Update cursor handle for subtree
+    else if (node->type == &dui_cursor_handle_type) {
+        new_state.cursor_handle = (dui_node_cursor_func)data;
     }
 
     // Clipbox flag
