@@ -228,6 +228,7 @@ typedef enum dui_flag {
     dui_flag_ignore_max_width   = 1 << 4,
     dui_flag_ignore_max_height  = 1 << 5,
     dui_flag_clipbox            = 1 << 6,
+    dui_flag_pink_box           = 1 << 7
 } dui_flag;
 
 typedef struct dui_node {
@@ -1873,13 +1874,28 @@ static void render_dfs(
     transform = mat2x3_offset(transform, off_x, off_y);
     transform = mat2x3_scale (transform, scale_x, scale_y);
 
-    // do transform if method provided
+    // Do transform if method provided
     if (node->type->transform) node->type->transform(
         data, &transform, 
         cache->resolution_x, 
         cache->resolution_y,
         aux->state_ptr
     );
+
+    // Push pinkbox request
+    if (node->flags & dui_flag_pink_box) {
+        draw_request_cache_push(cache, (draw_request){
+            .transform          = transform,
+            .clip_index         = state->clipbox_index,
+            .depth_index        = state->depth_index,
+            .is_box_not_text    = 1,
+            .box_data           = (dui_box_data){
+                .image  = NULL,
+                .shader = 0,
+                .tint   = DUI_HEX("#df04ba")
+            }
+        });
+    }
 
     // Render Nodes
     // Request box draw
