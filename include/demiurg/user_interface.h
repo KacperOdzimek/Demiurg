@@ -1445,7 +1445,7 @@ DEFINE_HASHMAP_FUNCS(
 
 #define HASHMAP_SLOT_INITIALIZER {.key = key}
 #define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) \
-    {dpr_partitioner_free_partition(slot_ptr->glyphs_partitioner, slot_ptr->glyphs_partition); slot_ptr->glyphs_partition = NULL; }
+    {if (slot_ptr->glyphs_partitioner) dpr_partitioner_free_partition(slot_ptr->glyphs_partitioner, slot_ptr->glyphs_partition); slot_ptr->glyphs_partition = NULL; }
 DEFINE_HASHMAP_FUNCS(
     text_cache, text_cache_slot, text_cache_slots, text_cache_capacity, text_cache_fill
 );
