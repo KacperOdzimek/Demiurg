@@ -26,3 +26,9 @@ Framework areas of **interest** are:
 | Linear Algebra.h | Linear algebra library |
 | Segmenter.h | Library for segmenting uploads over bandwidth-constrained connections |
 | Serialization.h | Safe cross-platform serialization |
+
+# Repository Structure
+
+- *include* - This is where the libraries live.
+- *shaders* - GPU shaders required by the libraries.
+- *utility* - Utility scripts, file format converters, and other development tools. This directory contains development-only code and is not intended for shipping.
