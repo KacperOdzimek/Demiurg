@@ -432,6 +432,7 @@ typedef struct dui_button_data {
 // Scrollbox
 
 extern const dui_node dui_vertical_scrollbox_structure[];
+extern const dui_node dui_horizontal_scrollbox_structure[];
 typedef struct dui_scrollbox_data {
     // Config
     dui_box_data    default_style;
@@ -3033,6 +3034,227 @@ const dui_node dui_vertical_scrollbox_structure[] = {
     {   // Handle
         .type  = &dui_indirect_type,
         .child = vertical_scrollbox_handle,
+    },
+    DUI_ARRAY_END
+};
+
+// Horizontal Scrollbox
+
+// Horizontal Scrollbox
+
+static const float scroll_speed_horizontal = 3500;
+
+static void horizontal_scrollbox_scroll_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_scrollbox_data* data = node_data;
+    if (node_input->hovered) {
+        float pixel_change = node_input->mutable_state->scroll_delta * node_input->delta_time * scroll_speed_horizontal;
+        data->position += pixel_change;
+    }
+}
+
+static void horizontal_scrollbox_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+    dui_scrollbox_data* data = node_data;
+
+    // Calculate offset
+    int offset_to_align = -data->content_height / 2;  // start offseting from align - hardcoded left
+    int total_offset    = offset_to_align + data->position;
+
+    // No scrolling needed
+    if (data->content_height <= data->display_height) {
+        total_offset  = 0;
+        data->position = 0;
+    } 
+    // Clamp
+    else {
+        int max_offset = (data->content_height - data->display_height) / 2;
+        if (total_offset >  max_offset) {
+            total_offset = max_offset;
+            data->position = max_offset - offset_to_align;
+        }
+        if (total_offset < -max_offset) {
+            total_offset = -max_offset;
+            data->position = -max_offset - offset_to_align;
+        }
+    }
+
+    // Offset transform
+    transform->m[2][0] += 2 * (float)total_offset / resolution_x;
+    data->last_content_offset = total_offset;
+
+    // Calculate handle size
+    float diplayed_portion = data->content_height ? (float)data->display_height / data->content_height : 0.0f;
+    float handle_width     = data->display_height * diplayed_portion;
+    if (handle_width > data->display_height) handle_width = data->display_height;
+}
+
+void horizontal_scrollbox_position(void* node_data, dui_node_layout_state* node_state, size_t children_count, dui_node_layout_state** children_states) {
+    // Do not position child, as it's transform is dynamic not static
+    // Ensure static offset is 0
+    dui_overlay_position_func(node_data, node_state, children_count, children_states);
+
+    // Probe width
+    dui_scrollbox_data* data = node_data;
+    data->display_height = node_state->given_width;
+    data->content_height = node_state->measured_width.max;
+}
+
+// Special type to offset content and probe width given and measured
+static const dui_type horizontal_scrollbox_scroller_type = {
+    DUI_TYPE_OVERLAY_INIT,
+    .position   = horizontal_scrollbox_position,
+    .transform  = horizontal_scrollbox_transform_func
+};
+
+static void horizontal_scrollbox_handle_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+    dui_scrollbox_data* data = node_data;
+
+    if (!data->content_height) {
+        *transform = (dla_mat2x3){0}; return;
+    }
+
+    // Find handle width as a fraction of displayed width
+    float visible_fraction = (float)data->display_height / data->content_height;
+    if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
+
+    // Find handle width
+    int width = data->display_height * visible_fraction;
+    if (width > data->content_height) width = data->content_height;
+
+    // Position handle
+    int handle_offset = 0;
+    if (visible_fraction >= 1.0f) {
+        handle_offset = 0;
+    }
+    else {
+        // Find current lerp alpha of content between ends
+        float begin = (data->content_height - data->display_height) / 2;
+        float end   = -begin;
+        float alpha = (data->last_content_offset - begin) / (end -  begin);
+
+        // Apply alpha to handle movement
+        begin = -(data->display_height / 2) + (width / 2);
+        end   = -begin;
+        handle_offset = begin + (end - begin) * alpha;
+    }
+
+    // Find horizontal scale
+    float sx = (float)width / data->display_height;
+
+    // Apply to transform
+    transform->m[2][0] += 2 * (float)handle_offset / resolution_x;
+    transform->m[0][0] *= sx;
+    transform->m[1][0] *= sx;
+}
+
+static void horizontal_scrollbox_handle_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_scrollbox_data* data = node_data;
+
+    // Reset style
+    data->current_handle_style = data->default_style;
+
+    // Set style to hovered if hovered
+    if (node_input->hovered) data->current_handle_style = data->hovered_style;
+
+    // Scroll by draging handle
+    int left_pressed = node_input->mutable_state->left_down;
+    if (left_pressed) {
+        int cursor_x = node_input->mutable_state->position_x;
+        if (data->handle_drag != -1) {                         // Was dragged
+            int pixels_change = data->handle_drag - cursor_x;  // Calculate pixel movement within handle
+            pixels_change *= (data->content_height / data->display_height); // Calculate pixel movement within content
+
+            data->position += pixels_change;
+            data->current_handle_style = data->pressed_style;
+
+            data->handle_drag = cursor_x;
+            node_input->mutable_state->left_down = 0;   // Consume left click
+        }
+        else if (node_input->hovered) {
+            int c_left_pressed = node_input->mutable_state->left_down;
+            int p_left_pressed = node_input->prev_raw_state->left_down;
+            if (!(c_left_pressed && !p_left_pressed)) return; // Avoid accidental drag, require new click inside handle    
+            data->handle_drag = cursor_x;
+            node_input->mutable_state->left_down = 0;   // Consume left click
+        }
+    }
+    else data->handle_drag = -1;
+}
+
+// Special type to apply handle transform and receive cursor events
+static const dui_type horizontal_scrollbox_handle_type = {
+    DUI_TYPE_OVERLAY_INIT,
+    .transform  = horizontal_scrollbox_handle_transform_func,
+    .cursor     = horizontal_scrollbox_handle_cursor_func
+};
+
+const dui_node horizontal_scrollbox_main_body[] = {
+    {   // Scroller Node
+        .type  = &horizontal_scrollbox_scroller_type,
+        .flags = dui_flag_instanced_data | dui_flag_ignore_min_width,
+        .child = &horizontal_scrollbox_main_body[1],
+        .data_offset = 0, // Scrollbox data itself 
+    },
+    {   // Child
+        .type  = &dui_indirect_type,
+        .flags = dui_flag_instanced_child,
+        .child_offset = offsetof(dui_scrollbox_data, child)
+    }
+};
+
+const dui_node horizontal_scrollbox_handle[] = {
+    {   // Require handle height
+        .type  = &dui_sizebox_type,
+        .child = &horizontal_scrollbox_handle[1],
+        .data  = &(dui_sizebox_data){
+            .flag   = dui_sizebox_overwrite_all_height,
+            .height = (dui_length){16, 16, 1}
+        },
+    },
+    {   // Handle Node
+        .type  = &horizontal_scrollbox_handle_type,
+        .child = &horizontal_scrollbox_handle[2],
+        .flags = dui_flag_instanced_data,
+        .data_offset = 0 // Scrollbox data itself
+    },
+    {   // Handle visual
+        .type  = &dui_box_type,
+        .flags = dui_flag_instanced_data | dui_flag_ignore_max_width | dui_flag_ignore_max_height,
+        .data_offset = offsetof(dui_scrollbox_data, current_handle_style)
+    }
+};
+
+const dui_node dui_horizontal_scrollbox_structure[] = {
+    {   // Clipbox
+        .type  = &dui_indirect_type,
+        .flags = dui_flag_clipbox | dui_flag_ignore_min_width,
+        .child = &dui_horizontal_scrollbox_structure[1],
+    },
+    {   // Handle for scroll input
+        .type  = &dui_cursor_handle_type,
+        .data  = horizontal_scrollbox_scroll_cursor_func,
+        .child = &dui_horizontal_scrollbox_structure[2]
+    },
+    {   // Scroll Input
+        .type  = &dui_cursor_call_type,
+        .flags = dui_flag_instanced_data,
+        .child = &dui_horizontal_scrollbox_structure[3],
+        .data_offset = 0 // Scrollbox data itself
+    },
+    {   // Column content-handle
+        .type  = &dui_column_type,
+        .child = &dui_horizontal_scrollbox_structure[4],
+        .data  = &(dui_column_data){
+            .spacing          = (dui_length){0, 16, 1},
+            .horizontal_align = 0.5
+        }
+    },
+    {   // Content
+        .type  = &dui_indirect_type,
+        .child = horizontal_scrollbox_main_body,
+    },
+    {   // Handle
+        .type  = &dui_indirect_type,
+        .child = horizontal_scrollbox_handle,
     },
     DUI_ARRAY_END
 };
