@@ -1,4 +1,5 @@
 #version 430
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout(location = 0) in      vec2  in_pos;
 layout(location = 1) in      vec2  in_uv;
@@ -14,12 +15,19 @@ struct lla_mat2x3 {
     float tx,  ty;
 };
 
-layout(std430, set = 0, binding = 4) readonly buffer Clips {
-    lla_mat2x3 clips[];
-};
+layout(push_constant) uniform PushConstants {
+    layout(offset = 20) uint resolution_width;
+    layout(offset = 24) uint resolution_height;
+    layout(offset = 28) uint clips_buffer_index;
+    layout(offset = 32) uint sampler_index;
+} pc;
 
-layout(set = 0, binding = 5) uniform sampler Sampler;
-layout(set = 0, binding = 6) uniform texture2D Textures[1024];
+layout(std430, set = 0, binding = 1) readonly buffer ClipboxesBuffer {
+    lla_mat2x3 clipboxes[];
+} clipboxes_buffers[];
+
+layout(set = 0, binding = 2) uniform texture2D textures[];
+layout(set = 0, binding = 4) uniform sampler   samplers[];
 
 bool point_in_clip(lla_mat2x3 t, vec2 p) {
     float det = t.m00 * t.m11 - t.m01 * t.m10;
@@ -51,15 +59,18 @@ vec3 srgb_to_linear(vec3 c) {
 }
 
 void main() {
-    if (in_clipbox_index >= 0 && (!point_in_clip(clips[in_clipbox_index], in_pos))) discard; // Clipping
-    vec4 tint = vec4(srgb_to_linear(in_color.rgb), in_color.a);                              // Tint
+    if (in_clipbox_index >= 0) { // Clipping
+        lla_mat2x3 clip = clipboxes_buffers[nonuniformEXT(pc.clips_buffer_index)].clipboxes[in_clipbox_index];
+        if (!point_in_clip(clip, in_pos)) discard;
+    }
+    vec4 tint = vec4(srgb_to_linear(in_color.rgb), in_color.a); // Tint
 
     // Texture selection
     bool has_texture = in_texture_index != 0;
     bool is_font     = in_texture_index < 0;
 
     int  tex_index     = has_texture ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1) : 0;
-    vec4 texture_color = has_texture ? texture(sampler2D(Textures[tex_index], Sampler), in_uv) : vec4(1.0);
+    vec4 texture_color = has_texture ? texture(sampler2D(textures[tex_index], samplers[pc.sampler_index]), in_uv) : vec4(1.0);
 
     // Font alpha handling
     if (is_font) {

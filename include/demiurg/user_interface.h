@@ -11,6 +11,7 @@ Code info:
 - linear_algebra.h dependent
 - graphics.h dependent
 - font.h dependent
+- segmenter.h dependent
 
 ----------------------------------------------------------------
 Usage: See dedicated documentation
@@ -89,10 +90,10 @@ typedef struct dui_color {
 // runtime hex to dui_color conversion
 // letters case does not matter, '#' prefix is required
 // if hex[7] is not '\0', then alpha channel is read, else it is set to FF
-// LUI_HEX <- compile time alternative
+// DUI_HEX <- compile time alternative
 static inline dui_color dui_hex(const char* hex);
 
-// LUI_HEX <- compile time LUI_HEX alternative (definied later in the file)
+// DUI_HEX <- compile time DUI_HEX alternative (definied later in the file)
 
 // ===========================
 // Cursor
@@ -103,15 +104,14 @@ typedef struct dui_cursor_state {
     float   scroll_delta;
 } dui_cursor_state;
 
-typedef void(dui_cursor_handle_func_signature)(
-    const void*             node_data,      // node data
-    void*                   auxilary,       // node auxilary buffer if requested by type
-    dui_cursor_state*       state,          // state with fields possibly consumed by previous handles  
-    const dui_cursor_state* raw_state,      // untouched state
-    int                     hovered,        // whether cursor is inside node and no upper node was
-    int                     raw_hovered     // whether cursor is inside node
-);
-typedef dui_cursor_handle_func_signature* dui_cursor_handle_func;
+typedef struct dui_node_cursor_input {
+    dui_cursor_state*       mutable_state;      // State with fields possibly consumed by previous handles  
+    const dui_cursor_state* raw_state;          // Untouched state
+    const dui_cursor_state* prev_raw_state;     // Previous frame raw state
+    int                     hovered;            // Whether cursor is inside node and no upper node was
+    int                     raw_hovered;        // Whether cursor is inside node
+    float                   delta_time;         // Time in seconds since last frame
+} dui_node_cursor_input;
 
 // ===========================
 // Node Typedefs
@@ -125,52 +125,34 @@ typedef struct dui_node_layout_state {
     int                     vert_offset;        // node center vertical offset from parent center
 } dui_node_layout_state;
 
-typedef void (dui_node_auxilary_destructor_func_signature)(
-    void*                   auxilary            // node auxilary buffer - do not free it
-);
-typedef dui_node_auxilary_destructor_func_signature* dui_node_auxilary_destructor_func;
-
 typedef void(dui_node_layout_func_signature)(
-    const void*             node_data,          // node data
+    void*                   node_data,          // node data
     dui_node_layout_state*  node_state,         // node own state
     size_t                  children_count,     // node children count
-    dui_node_layout_state** children_states,    // node children states
-    void*                   auxilary            // node auxilary buffer if requested by type
+    dui_node_layout_state** children_states     // node children states
 );
 typedef dui_node_layout_func_signature* dui_node_layout_func;
 
 typedef void(dui_node_render_func_signature)(
-    const void*             node_data,          // node data
+    void*                   node_data,          // node data
     dla_mat2x3*             transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
-    int                     resolution_y,       // screen resolution y
-    void*                   auxilary            // node auxilary buffer if requested by type
+    int                     resolution_y        // screen resolution y
 );
 typedef dui_node_render_func_signature* dui_node_render_func;
+
+typedef void(dui_node_cursor_func_signature)(
+    void*                   node_data,          // node data
+    dui_node_cursor_input*  node_input          // cursor input
+);
+typedef dui_node_cursor_func_signature* dui_node_cursor_func;
 
 typedef struct dui_type {
     // Structure
 
     // Whether child pointer in node means single node
-    // Or and array terminated with LUI_ARRAY_END
-    int     array_child;
-
-    // This field can be used to request a cache-owned state per node, sized exactly auxilary_bytes bytes.
-    // This state will be shared across all node passes, and given to user in callback functions. 
-    // If state_bytes == 0, the pointer will be NULL.
-    size_t  auxilary_bytes;
-
-    // This function will be called when auxilary storage is freed
-    // You can use it to free some auxilary-owned memory
-    dui_node_auxilary_destructor_func auxilary_destructor;
-
-    // Auxilary Stage
-
-    // Auxilary stage
-    // Allow for node own data changes (eg. caching some preprocessed state)
-    // Unless it is convenient, this pass shall not be used, to preserve data-oriented-design,
-    // and composability. Used to generate text format for GPU in implementation.
-    dui_node_layout_func    auxilary;
+    // Or and array terminated with DUI_ARRAY_END
+    int array_child;
 
     // Layout Stages
 
@@ -211,15 +193,23 @@ typedef struct dui_type {
     // IN:  [complete layout states, parent render transform]
     // OUT: [own and children render transform]
     dui_node_render_func    transform;
+
+    // Cursor Input
+
+    // Funtion solving cursor input
+    // Called every frame after render
+    dui_node_cursor_func    cursor;
 } dui_type;
 
 typedef enum dui_flag {
-    dui_flag_instanced_data     = 1 << 0,
-    dui_flag_instanced_child    = 1 << 1,
-    dui_flag_ignore_min_width   = 1 << 2,
-    dui_flag_ignore_min_height  = 1 << 3,
-    dui_flag_ignore_max_width   = 1 << 4,
-    dui_flag_ignore_max_height  = 1 << 5,
+    dui_flag_instanced_data     = 1 << 0,   // This node data  = instance + data_offset
+    dui_flag_instanced_child    = 1 << 1,   // This node child = instance + child_offset
+    dui_flag_ignore_min_width   = 1 << 2,   // Min width  of this node is set to 0
+    dui_flag_ignore_min_height  = 1 << 3,   // Min height of this node is set to 0
+    dui_flag_ignore_max_width   = 1 << 4,   // Max width  of this node is set to inf
+    dui_flag_ignore_max_height  = 1 << 5,   // Max height of this node is set to inf
+    dui_flag_clipbox            = 1 << 6,   // Children of this node on render are clipped to this node boundary
+    dui_flag_pink_box           = 1 << 7,   // Render pink box in node boundary - for debugging
 } dui_flag;
 
 typedef struct dui_node {
@@ -232,13 +222,13 @@ typedef struct dui_node {
     };
 
     union {
-        const void*     data;
-        size_t          data_offset;
+        void*   data;
+        size_t  data_offset;
     };
 } dui_node;
 
 // Sentinel value to mark array end
-#define LUI_ARRAY_END (dui_node){.type = NULL, .child = NULL, .data = NULL}
+#define DUI_ARRAY_END (dui_node){.type = NULL, .child = NULL, .data = NULL}
 
 // ===========================
 // Predefinied Functions
@@ -259,6 +249,13 @@ dui_node_layout_func_signature dui_overlay_height_distribute_func;
 // centers children inside parent
 dui_node_layout_func_signature dui_overlay_position_func;
 
+// Initializes type with dui_overlay functions
+#define DUI_TYPE_OVERLAY_INIT \
+    .width_measure      = dui_overlay_width_measure_func,       \
+    .width_distribute   = dui_overlay_width_distribute_func,    \
+    .height_measure     = dui_overlay_height_measure_func,      \
+    .height_distribute  = dui_overlay_height_distribute_func
+
 // ===========================
 // Architectural Node Types
 
@@ -271,7 +268,7 @@ extern const dui_type dui_instance_type;
 // No data, single child
 extern const dui_type dui_invalidation_type;
 typedef enum dui_invalidation_flag {
-    dui_invalidation_flag_auxilary          = 63,
+    dui_invalidation_flag_text              = 63,
     dui_invalidation_flag_width_measure     = 62,
     dui_invalidation_flag_width_distribute  = 60,
     dui_invalidation_flag_height_measure    = 56,
@@ -342,10 +339,6 @@ typedef struct dui_column_data {
 // ===========================
 // Rendering Node Types
 
-// Constrains rendering to own dimensions
-// No data, single child
-extern const dui_type dui_clipbox_type;
-
 // Adds node depth offset
 // Decreasing depth means going 'into' the screen
 // Data is dui_depth_data, ingle childed
@@ -358,35 +351,103 @@ typedef struct dui_depth_data {
 // Data is dui_box_data, single child
 extern const dui_type dui_box_type;
 typedef struct dui_box_data {
-    dui_color       tint;               // box color
-    const char*     image;              // image name/path, may be NULL
-    uint32_t        shader;             // shader effect index
+    dui_color       tint;       // box color
+    const char*     image;      // image name/path, may be NULL
+    uint32_t        shader;     // shader effect index
 } dui_box_data;
 
 // Text render primitive
 // Data is dui_text_data, single child
 extern const dui_type dui_text_type;
 typedef struct dui_text_data {
-    unsigned int    size;               // font size
-    const char*     font;               // font name/path
-    const char*     text;               // text pointer
-    dui_color       tint;               // text color modyficator
-    uint32_t        shader;             // shader effect index
+    unsigned int    size;       // font size
+    const char*     font;       // font name/path
+    const char*     text;       // text pointer
+    dui_color       tint;       // text color modyficator
+    uint32_t        shader;     // shader effect index
 } dui_text_data;
 
 // ===========================
-// Cursor Input Node Types
+// Cursor Node Types
+// Those can be used to add input, without writing a new node type
 
-// This node sets cursor handle function for subtree to own data
-// Data is dui_cursor_handle_func, single child
-extern const dui_type dui_cursor_input_handle_type;
+// Cursor handle type
+// Sets callback for children cursor input nodes to own data (shall be dui_node_cursor_func)
+extern const dui_type dui_cursor_handle_type;
 
-// This node pushes cursor input box
-// If handle was provided higher in the tree
-// during cache update, callback will be called for this box
-// Data of this node will be passed to callback
-// Data arbitrary, single child
-extern const dui_type dui_cursor_input_box_type;
+// Cursor input type
+// Creates an input box, which will call dui_node_cursor_func provided by parent handle type
+extern const dui_type dui_cursor_call_type;
+
+// ===========================
+// Transform Node Types
+// Those can be used to add transforms, without writing a new node type
+
+// Transform handle type
+// Sets callback for children transform input nodes to own data (shall be dui_node_render_func)
+extern const dui_type dui_transform_handle_type;
+
+// Cursor input type
+// Creates an transform box, which will call dui_node_render_func provided by parent handle type
+extern const dui_type dui_transform_call_type;
+
+// ===========================
+// Miscellaneous Node Types
+
+// Indirect type
+// This type does not change any state nor render anything
+// Simply jumps to it's single child, usefull with arrays
+extern const dui_type dui_indirect_type;
+
+// ===========================
+// Predefinied UI structures
+
+// Button
+
+typedef void(dui_button_func_signature)(
+    void* payload
+);
+typedef dui_button_func_signature* dui_button_func;
+
+// Instance this with dui_button_data for button structure
+// This button tries to fill entire given space (flex = 1, max = inf)
+// On events calls callbacks from data if provided
+extern const dui_node dui_button_structure[];
+typedef struct dui_button_data {
+    // Config
+    void*           payload;
+    dui_button_func on_clicked;
+    dui_button_func on_released;
+    dui_button_func on_held;
+    dui_box_data    default_style;
+    dui_box_data    hovered_style;
+    dui_box_data    pressed_style;
+    const dui_node* child;
+
+    // State
+    dui_box_data    current_style;
+    unsigned char   pressed;
+} dui_button_data;
+
+// Scrollbox
+
+extern const dui_node dui_vertical_scrollbox_structure[];
+extern const dui_node dui_horizontal_scrollbox_structure[];
+typedef struct dui_scrollbox_data {
+    // Config
+    dui_box_data    default_style;
+    dui_box_data    hovered_style;
+    dui_box_data    pressed_style;
+    const dui_node* child;
+
+    // State
+    int             position;
+    dui_box_data    current_handle_style;
+    int             handle_drag;
+    int             display_height;
+    int             content_height;
+    int             last_content_offset;
+} dui_scrollbox_data;
 
 // ===========================
 // Cache
@@ -395,22 +456,21 @@ dui_cache* dui_create_cache();
 void dui_free_cache(dui_cache*);
 
 void dui_update_cache(
-    dui_cache*              cache,
-    const dui_node*         root,
-    int                     resolution_x,
-    int                     resolution_y,
-    dui_cursor_state        cursor_state
+    dui_cache*          cache,
+    const dui_node*     root,
+    int                 resolution_x,
+    int                 resolution_y,
+    dui_cursor_state    cursor_state,
+    float               delta_time
 );
 
 // ===========================
 // Rendering API
 
 typedef struct dui_shared_create_info {
-    dgx_render_target_layout*   pipeline_render_target_layout;
-    uint32_t                    additional_pipeline_descriptors_layouts_count;
-    dgx_descriptor_layout**     additional_pipeline_descriptors_layouts;
-    dgx_shader*                 pipeline_vertex_shader;
-    dgx_shader*                 pipeline_pixel_shader;
+    dgx_pipeline_attachment_state   attachment_state;
+    dgx_shader_create_info          vertex_shader_info;
+    dgx_shader_create_info          pixel_shader_info;
 } dui_shared_create_info;
 
 dui_shared* dui_create_shared(dgx_hardware*, const dui_shared_create_info*);
@@ -418,28 +478,28 @@ void dui_free_shared(dui_shared*);
 
 typedef struct dui_frames_create_info {
     dui_shared* shared;
-    uint32_t    frames_in_flight_count;
+    uint32_t    count;
 } dui_frames_create_info;
 
 dui_frames* dui_create_frames(dgx_hardware*, const dui_frames_create_info*);
 void dui_free_frames(dui_frames*);
 
-void dui_upload_cache(
+// Returns non-zero at success
+int dui_upload_cache(
     dui_cache*          cache,
     dui_shared*         shared,
     dui_frames*         frames,
     uint32_t            frame_idx,
-    dgx_command_list*   command_list,
-    dgx_hardware_queue* queue_for_uploads,
+    uint8_t             transfer_work_group_index,
+    uint8_t             command_list_allocator_index,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    dgx_cpu_signal*     upload_finished_cpu,
-    dgx_gpu_signal*     upload_finished_gpu
+    dgx_timeline*       signal_timeline,
+    uint64_t            signal_value
 );
 
 void dui_gcmd_render(
-    dgx_command_list*   target,
     dui_frames*         frames,
     uint32_t            frame
 );
@@ -448,21 +508,21 @@ void dui_gcmd_render(
 // Hex to Ui Color Implementations
 
 // convert single hex char to value at compile time
-#define LUI_HEX_VAL(c) ( ((c) >= '0' && (c) <= '9') ? ((c)-'0') :    \
+#define DUI_HEX_VAL(c) ( ((c) >= '0' && (c) <= '9') ? ((c)-'0') :    \
                         ((c) >= 'a' && (c) <= 'f') ? ((c)-'a'+10) : \
                         ((c) >= 'A' && (c) <= 'F') ? ((c)-'A'+10) : 0 )
 
 // convert two hex chars to byte at compile time
-#define LUI_HEX_BYTE(c1, c2) ((LUI_HEX_VAL(c1) << 4) | LUI_HEX_VAL(c2))
+#define DUI_HEX_BYTE(c1, c2) ((DUI_HEX_VAL(c1) << 4) | DUI_HEX_VAL(c2))
 
 static inline dui_color dui_hex(const char* hex) {
     dui_color result;
-    result.r = LUI_HEX_BYTE(hex[1], hex[2]);
-    result.g = LUI_HEX_BYTE(hex[3], hex[4]);
-    result.b = LUI_HEX_BYTE(hex[5], hex[6]);
+    result.r = DUI_HEX_BYTE(hex[1], hex[2]);
+    result.g = DUI_HEX_BYTE(hex[3], hex[4]);
+    result.b = DUI_HEX_BYTE(hex[5], hex[6]);
 
     // if 8 digits after #, read alpha
-    if (hex[7] != '\0' && hex[8] != '\0') result.a = LUI_HEX_BYTE(hex[7], hex[8]);
+    if (hex[7] != '\0' && hex[8] != '\0') result.a = DUI_HEX_BYTE(hex[7], hex[8]);
     else result.a = 0xFF;
 
     return result;
@@ -472,16 +532,19 @@ static inline dui_color dui_hex(const char* hex) {
 // allows both lower and upper case letters
 // may include alpha (8 hex digits) or not (6 hex digits)
 // '#' prefix required
-#define LUI_HEX(s) (dui_color){ \
-    LUI_HEX_BYTE(s[1], s[2]), \
-    LUI_HEX_BYTE(s[3], s[4]), \
-    LUI_HEX_BYTE(s[5], s[6]), \
-    (sizeof(s) > 8 ? LUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
+#define DUI_HEX(s) (dui_color){ \
+    DUI_HEX_BYTE(s[1], s[2]), \
+    DUI_HEX_BYTE(s[3], s[4]), \
+    DUI_HEX_BYTE(s[5], s[6]), \
+    (sizeof(s) > 8 ? DUI_HEX_BYTE(s[7], s[8]) : 0xFF) \
 }
 
 #endif // DEMIURG_USER_INTERFACE_H
 
 #ifdef DEMIURG_USER_INTERFACE_IMPL
+
+#include <stdlib.h>
+#include "segmenter.h"
 
 // Implementation Notes:
 // 1 - last_frame_used_in_render values reference
@@ -497,8 +560,6 @@ static inline dui_color dui_hex(const char* hex) {
 #define LAST_FRAME_USED_IN_RENDER_IMPOSIBLE  1
 #define LAST_FRAME_USED_IN_RENDER_TOMBSTONE  2
 #define LAST_FRAME_USED_IN_RENDER_FIRST      3
-
-#include <stdlib.h>
 
 // ===========================
 // Math helpers
@@ -562,8 +623,6 @@ int is_point_in_transformed_box(dla_mat2x3 t, float px, float py) {
 
 #define box_behavior_type (dui_type){                           \
     .array_child        = 0,                                    \
-    .auxilary_bytes     = 0,                                    \
-    .auxilary           = NULL,                                 \
     .width_measure      = dui_overlay_width_measure_func,       \
     .width_distribute   = dui_overlay_width_distribute_func,    \
     .height_measure     = dui_overlay_height_measure_func,      \
@@ -586,13 +645,12 @@ const dui_type dui_invalidation_type = box_behavior_type;
 // Overlay Type
 
 void dui_overlay_width_measure_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary; dui_length own = {0, 0, 0.0f};
+    (void)node_data; dui_length own = {0, 0, 0.0f};
 
     for (size_t i = 0; i < children_count; ++i) {
         dui_length child = children_states[i]->measured_width;
@@ -605,13 +663,12 @@ void dui_overlay_width_measure_func(
 }
 
 void dui_overlay_width_distribute_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary;
+    (void)node_data;
 
     for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_width = limit_length(node_state->given_width, children_states[i]->measured_width);
@@ -619,14 +676,12 @@ void dui_overlay_width_distribute_func(
 }
 
 void dui_overlay_height_measure_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary; dui_length own = {0, 0, 0.0f};
-
+    (void)node_data; dui_length own = {0, 0, 0.0f}; 
     for (size_t i = 0; i < children_count; ++i) {
         dui_length child = children_states[i]->measured_height;
         own.min  = max_int(own.min, child.min);
@@ -638,29 +693,23 @@ void dui_overlay_height_measure_func(
 }
 
 void dui_overlay_height_distribute_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary;
-
-    for (size_t i = 0; i < children_count; ++i) {
+    (void)node_data; for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->given_height = limit_length(node_state->given_height, children_states[i]->measured_height);
     }
 }
 
 void dui_overlay_position_func(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)node_data; (void)auxilary;
-
-    for (size_t i = 0; i < children_count; ++i) {
+    (void)node_data; for (size_t i = 0; i < children_count; ++i) {
         children_states[i]->hori_offset = 0;
         children_states[i]->vert_offset = 0;
     }
@@ -668,8 +717,6 @@ void dui_overlay_position_func(
 
 const dui_type dui_overlay_type = {
     .array_child        = 1,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = dui_overlay_width_measure_func,
     .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = dui_overlay_height_measure_func,
@@ -682,28 +729,26 @@ const dui_type dui_overlay_type = {
 // Sizebox Type
 
 void sizebox_width_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
     const dui_sizebox_data* data = node_data;
-    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states);
     if (data->flag & dui_sizebox_overwrite_width_min)   node_state->measured_width.min   = data->width.min;
     if (data->flag & dui_sizebox_overwrite_width_max)   node_state->measured_width.max   = data->width.max;
     if (data->flag & dui_sizebox_overwrite_width_flex)  node_state->measured_width.flex  = data->width.flex;
 }
 
 void sizebox_height_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
     const dui_sizebox_data* data = node_data;
-    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
+    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states);
     if (data->flag & dui_sizebox_overwrite_height_min)  node_state->measured_height.min  = data->height.min;
     if (data->flag & dui_sizebox_overwrite_height_max)  node_state->measured_height.max  = data->height.max;
     if (data->flag & dui_sizebox_overwrite_height_flex) node_state->measured_height.flex = data->height.flex;
@@ -711,8 +756,6 @@ void sizebox_height_measure(
 
 const dui_type dui_sizebox_type = {
     .array_child        = 0,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = sizebox_width_measure,
     .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = sizebox_height_measure,
@@ -749,13 +792,11 @@ static inline int padding_distribute_length(
 }
 
 void padding_width_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary;
     const dui_padding_data* data = node_data;
     dui_length own = {0, 0, 0.0f};
     
@@ -776,13 +817,12 @@ void padding_width_measure(
 }
 
 void padding_width_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; if (children_count == 0) return;
+    if (children_count == 0) return;
     const dui_padding_data* data = node_data;
     dui_node_layout_state* child = children_states[0];
 
@@ -805,14 +845,12 @@ void padding_width_distribute(
 }
 
 void padding_height_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_padding_data* data = node_data;
-
+    const dui_padding_data* data = node_data;
     int child_min = 0, child_max = 0;
     if (children_count > 0) {
         child_min = children_states[0]->measured_height.min;
@@ -830,13 +868,12 @@ void padding_height_measure(
 }
 
 void padding_height_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; if (children_count == 0) return;
+    if (children_count == 0) return;
     const dui_padding_data* data = node_data;
     dui_node_layout_state* child = children_states[0];
 
@@ -860,8 +897,6 @@ void padding_height_distribute(
 
 const dui_type dui_padding_type = {
     .array_child        = 0,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = padding_width_measure,
     .width_distribute   = padding_width_distribute,
     .height_measure     = padding_height_measure,
@@ -874,13 +909,11 @@ const dui_type dui_padding_type = {
 // Row Type
 
 void row_width_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; 
     const dui_row_data* data = (const dui_row_data*)node_data;
     dui_length          own  = {0, 0, 0.0f};
 
@@ -900,13 +933,12 @@ void row_width_measure(
 }
 
 void row_width_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_row_data* data = (const dui_row_data*)node_data;
+    const dui_row_data* data = (const dui_row_data*)node_data;
 
     // Find spaces count
     size_t spaces_count = children_count ? children_count - 1 : 0;
@@ -975,13 +1007,12 @@ void row_width_distribute(
 }
 
 void row_position(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_row_data* data = (const dui_row_data*)node_data;
+    const dui_row_data* data = (const dui_row_data*)node_data;
 
     // Position children in vertial axis
     for (size_t i = 0; i < children_count; ++i) {
@@ -992,8 +1023,6 @@ void row_position(
 
 const dui_type dui_row_type = {
     .array_child        = 1,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = row_width_measure,
     .width_distribute   = row_width_distribute,
     .height_measure     = dui_overlay_height_measure_func,
@@ -1006,13 +1035,11 @@ const dui_type dui_row_type = {
 // Column Type
 
 void column_height_measure(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary;
     const dui_column_data* data = (const dui_column_data*)node_data;
     dui_length             own  = {0, 0, 0.0f};
 
@@ -1032,13 +1059,11 @@ void column_height_measure(
 }
 
 void column_height_distribute(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary;
     const dui_column_data* data = (const dui_column_data*)node_data;
 
     // Find spaces count
@@ -1108,13 +1133,12 @@ void column_height_distribute(
 }
 
 void column_position(
-    const void*             node_data,
+    void*                   node_data,
     dui_node_layout_state*  node_state,
     size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
+    dui_node_layout_state** children_states
 ) {
-    (void)auxilary; const dui_column_data* data = (const dui_column_data*)node_data;
+    const dui_column_data* data = (const dui_column_data*)node_data;
 
     // Position children in horizontal axis
     for (size_t i = 0; i < children_count; ++i) {
@@ -1125,8 +1149,6 @@ void column_position(
 
 const dui_type dui_column_type = {
     .array_child        = 1,
-    .auxilary_bytes     = 0,
-    .auxilary           = NULL,
     .width_measure      = dui_overlay_width_measure_func,
     .width_distribute   = dui_overlay_width_distribute_func,
     .height_measure     = column_height_measure,
@@ -1134,11 +1156,6 @@ const dui_type dui_column_type = {
     .position           = column_position,
     .transform          = NULL
 };
-
-// ===========================
-// Clipbox Type
-// This type is specially handled in pass implementation
-const dui_type dui_clipbox_type = box_behavior_type;
 
 // ===========================
 // Depth Type
@@ -1153,81 +1170,42 @@ const dui_type dui_box_type = box_behavior_type;
 // ===========================
 // Text type
 // This type is specially handled in pass implementation
-
-typedef struct text_type_auxilary_state {
-    dpr_partitioner*    partitioner;
-    dpr_partition*      owned_glyph_buffer_partition;
-    float               text_width;
-    float               text_height;
-} text_type_auxilary_state;
-
-void text_auxilary_destructor(void* auxilary) {
-    text_type_auxilary_state* aux = auxilary;
-    if (aux->owned_glyph_buffer_partition) dpr_partitioner_free_partition(aux->partitioner, aux->owned_glyph_buffer_partition);
-    aux->owned_glyph_buffer_partition = NULL;
-}
-
-void text_width_measure(
-    const void*             node_data,
-    dui_node_layout_state*  node_state,
-    size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
-) {
-    dui_overlay_width_measure_func(node_data, node_state, children_count, children_states, auxilary);
-    text_type_auxilary_state* aux = auxilary;
-    node_state->measured_width.min = max_int(node_state->measured_width.min, (int)aux->text_width);
-    node_state->measured_width.max = max_int(node_state->measured_width.max, (int)aux->text_width);
-    if (node_state->measured_width.min != node_state->measured_width.max) node_state->measured_width.flex = 1.0f;
-}
-
-void text_height_measure(
-    const void*             node_data,
-    dui_node_layout_state*  node_state,
-    size_t                  children_count,
-    dui_node_layout_state** children_states,
-    void*                   auxilary
-) {
-    dui_overlay_height_measure_func(node_data, node_state, children_count, children_states, auxilary);
-    text_type_auxilary_state* aux = auxilary;
-    node_state->measured_height.min = max_int(node_state->measured_height.min, (int)aux->text_height);
-    node_state->measured_height.max = max_int(node_state->measured_height.max, (int)aux->text_height);
-    if (node_state->measured_height.min != node_state->measured_height.max) node_state->measured_height.flex = 1.0f;
-}
-
-const dui_type dui_text_type = {
-    .array_child            = 0,
-    .auxilary_bytes         = sizeof(text_type_auxilary_state),
-    .auxilary               = NULL,
-    .auxilary_destructor    = text_auxilary_destructor,
-    .width_measure          = text_width_measure,
-    .width_distribute       = dui_overlay_width_distribute_func,
-    .height_measure         = text_height_measure,
-    .height_distribute      = dui_overlay_height_distribute_func,
-    .position               = dui_overlay_position_func,
-    .transform              = NULL
-};
+const dui_type dui_text_type = (dui_type){0};   // No functions
 
 // ===========================
-// Cursor Input Handle Type
+// Cursor handle type
 // This type is specially handled in pass implementation
-const dui_type dui_cursor_input_handle_type = box_behavior_type;
+const dui_type dui_cursor_handle_type = box_behavior_type;
 
 // ===========================
-// Cursor Input Handle Type
+// Cursor input type
 // This type is specially handled in pass implementation
-const dui_type dui_cursor_input_box_type = box_behavior_type;
+const dui_type dui_cursor_call_type = box_behavior_type;
+
+// ===========================
+// Transform handle type
+// This type is specially handled in pass implementation
+const dui_type dui_transform_handle_type = box_behavior_type;
+
+// ===========================
+// Cursor input type
+// This type is specially handled in pass implementation
+const dui_type dui_transform_call_type = box_behavior_type;
+
+// ===========================
+// Indirect Type
+const dui_type dui_indirect_type = box_behavior_type;
 
 // ===========================
 // Node fields reads
 
-static inline const void* get_node_data(const dui_node* node, const char* instance) {
+static inline void* get_node_data(const dui_node* node, const char* instance) {
     if (node->flags & dui_flag_instanced_data) return (void*)(instance + node->data_offset);
     return node->data;
 }
 
 static inline const dui_node* get_node_child(const dui_node* node, const char* instance) {
-    if (node->flags & dui_flag_instanced_child) return (const dui_node*)(instance + node->child_offset);
+    if (node->flags & dui_flag_instanced_child) return *(const dui_node**)(instance + node->child_offset);
     return node->child;
 }
 
@@ -1269,7 +1247,7 @@ void stable_sort(void* base, size_t nmemb, size_t size, int (*compar)(const void
 // Cache Object
 
 typedef struct cache_slot cache_slot;
-typedef struct auxilary_slot auxilary_slot;
+typedef struct text_cache_slot text_cache_slot;
 typedef struct draw_request draw_request;
 typedef struct text_request text_request;
 typedef struct clipbox_request clipbox_request;
@@ -1286,10 +1264,10 @@ struct dui_cache {
     size_t              cache_fill;
     cache_slot*         cache_slots;
 
-    // Nodes auxilary state hashmap
-    size_t              auxilary_capacity;
-    size_t              auxilary_fill;
-    auxilary_slot*      auxilary_slots;
+    // Text cache hashmap
+    size_t              text_cache_capacity;
+    size_t              text_cache_fill;
+    text_cache_slot*    text_cache_slots;
     
     // Draw requests dynamic array
     size_t              draw_requests_capacity;
@@ -1310,6 +1288,9 @@ struct dui_cache {
     size_t              cursor_input_boxes_capacity;
     size_t              cursor_input_boxes_count;
     cursor_input_box*   cursor_input_boxes;
+
+    // Previous frame cursor state
+    dui_cursor_state    previous_frame_cursor_state;
 };
 
 dui_cache* dui_create_cache() {
@@ -1317,23 +1298,24 @@ dui_cache* dui_create_cache() {
     return cache;
 }
 
-static void auxilary_hashmap_garbage_collect(dui_cache* cache);
 static void free_cached_text_requests(dui_cache* cache);
+static void text_cache_hashmap_garbage_collect(dui_cache* cache);
 void dui_free_cache(dui_cache* cache) {
     if (!cache) return;
 
-    // Free all auxilary slots by using impossible value
+    // Free all cached texts by using impossible value
     cache->frame_index = LAST_FRAME_USED_IN_RENDER_IMPOSIBLE;
-    auxilary_hashmap_garbage_collect(cache);
+    text_cache_hashmap_garbage_collect(cache);
 
     // Free all cached textes
     free_cached_text_requests(cache);
 
     free(cache->cache_slots);
-    free(cache->auxilary_slots);
+    free(cache->text_cache_slots);
     free(cache->draw_requests);
     free(cache->text_requests);
     free(cache->clipbox_requests);
+    free(cache->cursor_input_boxes);
     free(cache);
 }
 
@@ -1349,15 +1331,17 @@ typedef struct cache_slot {
     node_stable_index       key;
     size_t                  value_child_count;
     dui_node_layout_state   value_state;
-    unsigned char           last_frame_used_in_render;  
+    unsigned char           last_frame_used_in_render;
 } cache_slot;
 
-typedef struct auxilary_slot {
+typedef struct text_cache_slot {
     node_stable_index       key;
-    const dui_type*         state_type;
-    void*                   state_ptr;
-    unsigned char           last_frame_used_in_render;  
-} auxilary_slot;
+    dpr_partitioner*        glyphs_partitioner;
+    dpr_partition*          glyphs_partition;
+    int                     text_width;
+    int                     text_height;
+    unsigned char           last_frame_used_in_render;
+} text_cache_slot;
 
 static uint64_t hash_ptr(const void* p) {
     uint64_t x = (uint64_t)(uintptr_t)p;
@@ -1460,16 +1444,11 @@ DEFINE_HASHMAP_FUNCS(
 #undef HASHMAP_SLOT_INITIALIZER
 #undef HASHMAP_SLOT_DESTRUCTOR
 
-static inline void auxilary_hashmap_slot_destructor(auxilary_slot* slot) {
-    if (slot->key.node->type->auxilary_destructor) {
-        slot->key.node->type->auxilary_destructor(slot->state_ptr); 
-    } free(slot->state_ptr); slot->state_ptr = NULL;
-}
-
-#define HASHMAP_SLOT_INITIALIZER {.key = key, .state_type = NULL, .state_ptr = NULL}
-#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) auxilary_hashmap_slot_destructor(slot_ptr)
+#define HASHMAP_SLOT_INITIALIZER {.key = key}
+#define HASHMAP_SLOT_DESTRUCTOR(slot_ptr) \
+    {if (slot_ptr->glyphs_partitioner) dpr_partitioner_free_partition(slot_ptr->glyphs_partitioner, slot_ptr->glyphs_partition); slot_ptr->glyphs_partition = NULL; }
 DEFINE_HASHMAP_FUNCS(
-    auxilary, auxilary_slot, auxilary_slots, auxilary_capacity, auxilary_fill
+    text_cache, text_cache_slot, text_cache_slots, text_cache_capacity, text_cache_fill
 );
 
 // Gets slot, always inserts, as cache must always exist for node
@@ -1477,24 +1456,9 @@ static inline cache_slot* cache_get_utill(dui_cache* cache, node_stable_index in
     return cache_hashmap_get(cache, index, 1);
 }
 
-// Gets slot, inserts if type size != 0, only then slot must exist, allocs memory if needed
-static inline auxilary_slot* auxilary_get_utill(dui_cache* cache, node_stable_index index) {
-    if (!index.node->type->auxilary_bytes) return NULL; // none desired
-    auxilary_slot* slot = auxilary_hashmap_get(cache, index, 1);
-
-    // handle case where node type has changed
-    if (slot->state_type && slot->state_type != index.node->type) {
-        if (index.node->type->auxilary_destructor) index.node->type->auxilary_destructor(slot->state_ptr);
-        free(slot->state_ptr); slot->state_ptr = NULL;
-    }
-    
-    // allocate state
-    if (!slot->state_ptr) {
-        slot->state_ptr  = calloc(1, index.node->type->auxilary_bytes);
-        slot->state_type = index.node->type;
-    }
-
-    return slot;
+// Gets slot, always inserts, as cache must always exist for node
+static inline text_cache_slot* text_cache_get_utill(dui_cache* cache, node_stable_index index) {
+    return text_cache_hashmap_get(cache, index, 1);
 }
 
 // ===========================
@@ -1523,7 +1487,7 @@ struct clipbox_request {
 
 struct cursor_input_box {
     node_stable_index       owner;
-    dui_cursor_handle_func  handle;
+    dui_node_cursor_func    handle;
     int                     clip_index;
     short                   depth_index;
     dla_mat2x3              box_transform;
@@ -1575,7 +1539,7 @@ static inline void free_cached_text_requests(dui_cache* cache) {
 // Invalidation Node Gate
 
 typedef enum invalidation_flag_only {
-    invalidation_flag_only_auxilary          = 1,
+    invalidation_flag_only_text              = 1,
     invalidation_flag_only_width_measure     = 2,
     invalidation_flag_only_width_distribute  = 4,
     invalidation_flag_only_height_measure    = 8,
@@ -1600,7 +1564,7 @@ static inline int find_shall_recurse(cache_slot* node_slot, const void* data, in
 // Cache Walk Pass
 // Called on remeasure
 // Computes: 
-// - walk order (the order layout and auxilary caches are visited, to avoid hashmaping multiple times)
+// - walk order (the order layout caches are visited, to avoid hashmaping multiple times)
 // - nodes children count (simplify implementations)
 // - nodes subtree size (including self, to easily skip on invalidation nodes)
 
@@ -1611,7 +1575,6 @@ typedef struct caches_walk_order {
     size_t                  position;   // in cache_slot pointers
     cache_slot**            slots;      // sized capacity, node cache slots in enter order
     dui_node_layout_state** states;     // sized capacity, node layout states in children oreder
-    auxilary_slot**         auxilary;   // sized capacity, node auxilary slots in enter order
     size_t*                 subtree;    // sized capacity, node subtree size, including self
 } caches_walk_order;
 
@@ -1620,23 +1583,21 @@ typedef struct caches_walk_order {
 void free_caches_walk_order(caches_walk_order* order) {
     free(order->slots);     order->slots    = NULL;
     free(order->states);    order->states   = NULL;
-    free(order->auxilary);  order->auxilary = NULL;
     free(order->subtree);   order->subtree  = NULL;
     order->capacity = 0;    order->position = 0;
 }
 
 // Returns non-zero at success
-static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot, void* auxilary) {
+static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_slot* slot) {
     if (walk_order->position + 1 > walk_order->capacity) {
         size_t new_cap = walk_order->capacity ? walk_order->capacity * 2 : 64;
     
         cache_slot**            new_slt = realloc(walk_order->slots,    new_cap * sizeof(cache_slot*));
         dui_node_layout_state** new_sts = realloc(walk_order->states,   new_cap * sizeof(dui_node_layout_state*));
-        auxilary_slot**         new_aux = realloc(walk_order->auxilary, new_cap * sizeof(auxilary_slot*));
         size_t*                 new_sub = realloc(walk_order->subtree,  new_cap * sizeof(size_t));
 
-        if (!new_slt || !new_sts || !new_aux || !new_sub) {
-            free(new_slt); free(new_sts); free(new_aux); free(new_sub);
+        if (!new_slt || !new_sts || !new_sub) {
+            free(new_slt); free(new_sts); free(new_sub);
             free_caches_walk_order(walk_order);
             return 0; // failed to realloc -> failed to push -> entire layout fails
         }
@@ -1644,13 +1605,11 @@ static inline int caches_walk_order_push(caches_walk_order* walk_order, cache_sl
         walk_order->capacity = new_cap;
         walk_order->slots    = new_slt;
         walk_order->states   = new_sts;
-        walk_order->auxilary = new_aux;
         walk_order->subtree  = new_sub;
     }
 
     walk_order->slots   [walk_order->position]  = slot;
     walk_order->states  [walk_order->position]  = &slot->value_state;
-    walk_order->auxilary[walk_order->position]  = auxilary;
     walk_order->subtree [walk_order->position]  = 1; // included node itself
     walk_order->position++;
 
@@ -1678,13 +1637,11 @@ int caches_walk_dfs(
 
     if (!node->type->array_child && child) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){child, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){child, instance});
-        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+        scc &= caches_walk_order_push(walk_order, child_slot); count++;
     }
     else if (child) for (const dui_node* cc = child; cc->type != NULL; cc++) {
         cache_slot*     child_slot = cache_get_utill(walk_order->cache, (node_stable_index){cc, instance});
-        auxilary_slot*  auxlr_slot = auxilary_get_utill(walk_order->cache, (node_stable_index){cc, instance});
-        scc &= caches_walk_order_push(walk_order, child_slot, auxlr_slot); count++;
+        scc &= caches_walk_order_push(walk_order, child_slot); count++;
     }
 
     // recurse
@@ -1701,64 +1658,58 @@ int caches_walk_dfs(
 // Generic layout dfs generation macros
 
 // Definies function:
-// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, size_t first_child)
 // Exec order: recurse -> own function -> additional code
 #define BOTTOM_UP_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                              \
 void PREFIX##_dfs(                                                                                  \
     caches_walk_order*  walk_order,                                                                 \
     cache_slot*         current,                                                                    \
-    auxilary_slot*      auxilary,                                                                   \
     size_t              first_child                                                                 \
 ) {                                                                                                 \
     cache_slot**    children    = &walk_order->slots[first_child];                                  \
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
     size_t*         subtrees    = &walk_order->subtree[first_child];                                \
-    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+    void*           data        = get_node_data(current->key.node, current->key.instance);          \
 \
     if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
         size_t child_first_child = first_child + current->value_child_count;                        \
         for (size_t i = 0; i < current->value_child_count; i++) {                                   \
-            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            PREFIX##_dfs(walk_order, children[i], child_first_child);                               \
             child_first_child += subtrees[i] - 1;                                                   \
         }                                                                                           \
     }                                                                                               \
 \
     dui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
     if (func != NULL) func(                                                                         \
-        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
-        auxilary ? auxilary->state_ptr : NULL                                                       \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child]   \
     );                                                                                              \
 \
     __VA_ARGS__                                                                                     \
 }
 
 // Definies function:
-// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, auxilary_slot* auxilary, size_t first_child)
+// void PREFIX##_dfs(caches_walk_order* walk_order, cache_slot* current, size_t first_child)
 // Exec order: additional code -> own function -> recurse
 #define TOP_DOWN_DFS(PREFIX, TYPE_FUNC_NAME, INV_PASS_ONLY_FLAG, ...)                               \
 void PREFIX##_dfs(                                                                                  \
     caches_walk_order*  walk_order,                                                                 \
     cache_slot*         current,                                                                    \
-    auxilary_slot*      auxilary,                                                                   \
     size_t              first_child                                                                 \
 ) {                                                                                                 \
     cache_slot**    children    = &walk_order->slots[first_child];                                  \
-    auxilary_slot** auxilaries  = &walk_order->auxilary[first_child];                               \
     size_t*         subtrees    = &walk_order->subtree[first_child];                                \
-    const void*     data        = get_node_data(current->key.node, current->key.instance);          \
+    void*           data        = get_node_data(current->key.node, current->key.instance);          \
 \
     __VA_ARGS__                                                                                     \
 \
     dui_node_layout_func func = current->key.node->type->TYPE_FUNC_NAME;                            \
     if (func != NULL) func(                                                                         \
-        data, &current->value_state, current->value_child_count, &walk_order->states[first_child],  \
-        auxilary ? auxilary->state_ptr : NULL                                                       \
+        data, &current->value_state, current->value_child_count, &walk_order->states[first_child]   \
     );                                                                                              \
 \
     if (find_shall_recurse(current, data, INV_PASS_ONLY_FLAG)) {                                    \
         size_t child_first_child = first_child + current->value_child_count;                        \
         for (size_t i = 0; i < current->value_child_count; i++) {                                   \
-            PREFIX##_dfs(walk_order, children[i], auxilaries[i], child_first_child);                \
+            PREFIX##_dfs(walk_order, children[i], child_first_child);                               \
             child_first_child += subtrees[i] - 1;                                                   \
         }                                                                                           \
     }                                                                                               \
@@ -1768,17 +1719,35 @@ void PREFIX##_dfs(                                                              
 // Travels tree, call functions as specified in type comments
 // to calcualate what specfied in type comments
 
-void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux);
+void create_text_request(dui_cache* cache, text_cache_slot* slot);
 
-// auxilary pass, additionaly update text buffer
-TOP_DOWN_DFS(
-    auxilary, auxilary, invalidation_flag_only_auxilary,
-    if (current->key.node->type == &dui_text_type) {
-        create_text_request(walk_order->cache, current, (text_type_auxilary_state*)auxilary->state_ptr);
+// Text generate pass
+void text_gen_dfs(
+    caches_walk_order*  walk_order,
+    cache_slot*         current,
+    size_t              first_child
+) {
+    cache_slot**    children    = &walk_order->slots[first_child];
+    size_t*         subtrees    = &walk_order->subtree[first_child];
+    void*           data        = get_node_data(current->key.node, current->key.instance);
+
+    if (find_shall_recurse(current, data, invalidation_flag_only_text)) {
+        size_t child_first_child = first_child + current->value_child_count;
+        for (size_t i = 0; i < current->value_child_count; i++) {
+            text_gen_dfs(walk_order, children[i], child_first_child);
+            child_first_child += subtrees[i] - 1;
+        }
     }
-);
 
-// width measure pass, additionaly handle ignore flags
+    if (current->key.node->type == &dui_text_type) {
+        text_cache_slot* text_cache = text_cache_get_utill(walk_order->cache, current->key);
+        create_text_request(walk_order->cache, text_cache);
+        current->value_state.measured_width  = (dui_length){text_cache->text_width,  text_cache->text_width, 1};
+        current->value_state.measured_height = (dui_length){text_cache->text_height, text_cache->text_height, 1};
+    }
+}
+
+// Width measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     width_measure, width_measure, invalidation_flag_only_width_measure,
     if (current->key.node->flags & dui_flag_ignore_min_width) {
@@ -1791,7 +1760,7 @@ BOTTOM_UP_DFS(
     }
 );
 
-// width distribute pass, additionaly ensure received width
+// Width distribute pass, additionaly ensure received width
 // is within node measured limits
 TOP_DOWN_DFS(
     width_distribute, width_distribute, invalidation_flag_only_width_distribute,
@@ -1801,7 +1770,7 @@ TOP_DOWN_DFS(
     );
 );
 
-// height measure pass, additionaly handle ignore flags
+// Height measure pass, additionaly handle ignore flags
 BOTTOM_UP_DFS(
     height_measure, height_measure, invalidation_flag_only_height_measure,
     if (current->key.node->flags & dui_flag_ignore_min_height) {
@@ -1814,7 +1783,7 @@ BOTTOM_UP_DFS(
     }
 );
 
-// height distribute pass, additionaly ensure received height 
+// Height distribute pass, additionaly ensure received height 
 // is within node measured limits
 TOP_DOWN_DFS(
     height_distribute, height_distribute, invalidation_flag_only_height_distribute,
@@ -1824,7 +1793,7 @@ TOP_DOWN_DFS(
     );
 );
 
-// position pass, no additional code
+// Position pass, no additional code
 TOP_DOWN_DFS(
     position, position, invalidation_flag_only_position
 );
@@ -1839,7 +1808,8 @@ typedef struct render_dfs_subtree_state {
     const void*             instance;
     short                   depth_index;
     int                     clipbox_index;
-    dui_cursor_handle_func  cursor_handle;
+    dui_node_cursor_func    cursor_handle;
+    dui_node_render_func    transform_handle;
 } render_dfs_subtree_state;
 
 static void render_dfs(
@@ -1884,13 +1854,11 @@ static void render_dfs(
     node_stable_index index = {node, state->instance};
 
     // get node data
-    const void*     data  = get_node_data (node, state->instance);
-    cache_slot*     own   = cache_get_utill(cache, index);
-    auxilary_slot*  aux   = auxilary_get_utill(cache, index);
+    void*       data = get_node_data (node, state->instance);
+    cache_slot* own  = cache_get_utill(cache, index);
 
     // mark used, to avoid garbage collect
     own->last_frame_used_in_render = cache->frame_index;
-    if (aux) aux->last_frame_used_in_render = cache->frame_index;
 
     // change transform based on node's position and scale
     float off_x   = ((float)own->value_state.hori_offset * 2)   / cache->resolution_x;
@@ -1900,24 +1868,34 @@ static void render_dfs(
     transform = mat2x3_offset(transform, off_x, off_y);
     transform = mat2x3_scale (transform, scale_x, scale_y);
 
-    // do transform if method provided
+    // Do transform if method provided
     if (node->type->transform) node->type->transform(
-        data, &transform, 
-        cache->resolution_x, 
-        cache->resolution_y,
-        aux
+        data, &transform, cache->resolution_x, cache->resolution_y
     );
-    
-    // special nodes
-     // update instance for subtree
-    if (node->type == &dui_instance_type) {
-        render_dfs_subtree_state new_state = *state;
-        new_state.instance = data;
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
+
+    // Transform
+    if (node->type == &dui_transform_call_type && state->transform_handle) {
+        state->transform_handle(data, &transform, cache->resolution_x, cache->resolution_y);
     }
-    // request box draw
-    else if (node->type == &dui_box_type){
+
+    // Push pinkbox request
+    if (node->flags & dui_flag_pink_box) {
+        draw_request_cache_push(cache, (draw_request){
+            .transform          = transform,
+            .clip_index         = state->clipbox_index,
+            .depth_index        = state->depth_index,
+            .is_box_not_text    = 1,
+            .box_data           = (dui_box_data){
+                .image  = NULL,
+                .shader = 0,
+                .tint   = DUI_HEX("#df04ba")
+            }
+        });
+    }
+
+    // Render Nodes
+    // Request box draw
+    if (node->type == &dui_box_type){
         const dui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
@@ -1927,10 +1905,13 @@ static void render_dfs(
             .box_data           = *bdata
         });
     }
-    // request text draw
+    // Request text draw
     else if (node->type == &dui_text_type) {
-        const dui_text_data*            tdata = data;
-        const text_type_auxilary_state* taux  = aux->state_ptr;
+        const dui_text_data* tdata = data;
+
+        // Prevent text garbage collection
+        text_cache_slot* text_cache = text_cache_get_utill(cache, index);
+        if (text_cache) text_cache->last_frame_used_in_render = cache->frame_index;
 
         draw_request_cache_push(cache, (draw_request){
             .transform          = transform,
@@ -1940,23 +1921,19 @@ static void render_dfs(
             .text_node          = index
         });
     }
-    // update depth for subtree
-    else if (node->type == &dui_depth_type) {
-        const dui_depth_data* ddata = data;
-        render_dfs_subtree_state new_state = *state;
-        new_state.depth_index += ddata->depth_change;
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
+
+    // Cursor
+    // Request cursor input box
+    if (node->type->cursor) {
+        cursor_input_box_cache_push(cache, (cursor_input_box){
+            .owner          = index,
+            .handle         = node->type->cursor,
+            .depth_index    = state->depth_index,
+            .clip_index     = state->clipbox_index,
+            .box_transform  = transform
+        });
     }
-    // request clipbox, update clipbox for subtree
-    else if (node->type == &dui_clipbox_type) {
-        render_dfs_subtree_state new_state = *state;
-        new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = transform});
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
-    }
-    // request cursor input box
-    else if (node->type == &dui_cursor_input_box_type) {
+    if (node->type == &dui_cursor_call_type && state->cursor_handle) {
         cursor_input_box_cache_push(cache, (cursor_input_box){
             .owner          = index,
             .handle         = state->cursor_handle,
@@ -1965,17 +1942,36 @@ static void render_dfs(
             .box_transform  = transform
         });
     }
-    // update cursor input handle for subtree
-    else if (node->type == &dui_cursor_input_handle_type) { 
-        dui_cursor_handle_func cursor_handle = (dui_cursor_handle_func)data;
-        render_dfs_subtree_state new_state = *state;
-        new_state.cursor_handle = cursor_handle;   
-        render_dfs_recurse(cache, own, transform, &new_state); 
-        return; // recursed
+
+    // New state for subtree
+    render_dfs_subtree_state new_state = *state;
+
+    // Special nodes
+    // Update instance for subtree
+    if (node->type == &dui_instance_type) {
+        new_state.instance = data;
+    }
+    // Update depth for subtree
+    else if (node->type == &dui_depth_type) {
+        const dui_depth_data* ddata = data;
+        new_state.depth_index += ddata->depth_change;
+    }
+    // Update cursor handle for subtree
+    else if (node->type == &dui_cursor_handle_type) {
+        new_state.cursor_handle = (dui_node_cursor_func)data;
+    }
+    // Update trnasform handle for subtree
+    else if (node->type == &dui_transform_handle_type) {
+        new_state.transform_handle = (dui_node_render_func)data;
     }
 
-    // default recursion without state changes
-    render_dfs_recurse(cache, own, transform, state);
+    // Clipbox flag
+    if (node->flags & dui_flag_clipbox) {
+        new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = transform});
+    }
+
+    // Default recursion without state changes
+    render_dfs_recurse(cache, own, transform, &new_state);
 }
 
 // Helper for draw requests depth sorting : deepest first
@@ -1997,11 +1993,12 @@ static inline int helper_cursor_input_boxes_greater_depth(const void* av, const 
 // Main update function
 // Calls passes
 void dui_update_cache(
-    dui_cache*              cache,
-    const dui_node*         root,
-    int                     resolution_x,
-    int                     resolution_y,
-    dui_cursor_state        cursor_state
+    dui_cache*          cache,
+    const dui_node*     root,
+    int                 resolution_x,
+    int                 resolution_y,
+    dui_cursor_state    cursor_state,
+    float               delta_time
 ) {
     // Init state
     cache->resolution_x             = resolution_x;
@@ -2018,8 +2015,7 @@ void dui_update_cache(
     render_dfs_subtree_state default_subtree_state = {
         .instance       = NULL,
         .depth_index    = 0,
-        .clipbox_index  = -1,
-        .cursor_handle  = NULL
+        .clipbox_index  = -1
     };
     render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), &default_subtree_state);
 
@@ -2033,8 +2029,15 @@ void dui_update_cache(
 
     // Do cursor input callbacks, walking from topmost to deepest
     dui_cursor_state changable_state = cursor_state;
-    int              ever_was_inside = 0;
-    for (size_t i = cache->cursor_input_boxes_count - 1;; i--) {
+    dui_node_cursor_input input_data = {
+        .mutable_state  = &changable_state,
+        .raw_state      = &cursor_state,
+        .prev_raw_state = &cache->previous_frame_cursor_state,
+        .delta_time     = delta_time
+    };
+    
+    int ever_was_inside = 0;
+    if (cache->cursor_input_boxes_count) for (size_t i = cache->cursor_input_boxes_count - 1; ; i--) {
         cursor_input_box* ibox = &cache->cursor_input_boxes[i];
         if (!ibox->handle) continue; // nothing to call
 
@@ -2043,25 +2046,23 @@ void dui_update_cache(
             cursor_inside &= is_point_in_transformed_box(cache->clipbox_requests[ibox->clip_index].transform, norm_cursor_x, norm_cursor_y);
         }
 
+        input_data.hovered     = cursor_inside && !ever_was_inside;
+        input_data.raw_hovered = cursor_inside;
+        ibox->handle(get_node_data(ibox->owner.node, ibox->owner.instance), &input_data);
+
         ever_was_inside |= cursor_inside;
-
-        ibox->handle(
-            get_node_data(ibox->owner.node, ibox->owner.instance),
-            auxilary_get_utill(cache, ibox->owner),
-            &changable_state, &cursor_state,
-            cursor_inside && ever_was_inside, cursor_inside
-        );
-
         if (i == 0) break; // break loop at last element
     }
+
+    // Current state in now previous cursor state
+    cache->previous_frame_cursor_state = cursor_state;
 
     // Always relayout
     // Do it after render - then we can trust all nodes have their inserted cache and auxilary slots
     // This is important so hashmap pointers does not get invalidated during passes
     // This means we are one frame behind with layout, but it is not a big deal actually.
     if (1) {
-        cache_slot*    root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
-        auxilary_slot* root_auxlr = auxilary_get_utill(cache, (node_stable_index){root, NULL});
+        cache_slot* root_cache = cache_get_utill(cache, (node_stable_index){root, NULL});
 
         // Give root entire screen
         // Will auto bound to desired at distribute
@@ -2077,12 +2078,12 @@ void dui_update_cache(
         }
         
         // Perform all passes
-        auxilary_dfs(&walk_order, root_cache, root_auxlr, 0);
-        width_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
-        width_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-        height_measure_dfs(&walk_order, root_cache, root_auxlr, 0);
-        height_distribute_dfs(&walk_order, root_cache, root_auxlr, 0);
-        position_dfs(&walk_order, root_cache, root_auxlr, 0);
+        text_gen_dfs(&walk_order, root_cache, 0);
+        width_measure_dfs(&walk_order, root_cache, 0);
+        width_distribute_dfs(&walk_order, root_cache, 0);
+        height_measure_dfs(&walk_order, root_cache, 0);
+        height_distribute_dfs(&walk_order, root_cache, 0);
+        position_dfs(&walk_order, root_cache, 0);
 
         free_caches_walk_order(&walk_order);
     }
@@ -2092,29 +2093,18 @@ void dui_update_cache(
     // Do every 16 frames not to spend to much time on it
     if (cache->frame_index % 16 == 0) {
         cache_hashmap_garbage_collect(cache);
-        auxilary_hashmap_garbage_collect(cache);
+        text_cache_hashmap_garbage_collect(cache);
     }
 }
 
 // ===========================
 // Rendering Common
 
-#define INTERNAL_TEXTURES_LIMIT                 1024
-
-#define INITIAL_INSTANCES_BUFFER_SIZE           (1024 * sizeof(gpu_instance))
-#define INITIAL_DRAW_ITEM_BUFFER_SIZE           (1024 * sizeof(gpu_draw_item))
-#define INITIAL_CLIPBOXES_BUFFER_SIZE           (16 * sizeof(gpu_clipbox))
-#define INITIAL_GLYPH_BUFFER_SIZE               (2024 * sizeof(gpu_glyph))
-
-#define GLYPH_STRUCTURE_ALIGN                   4
-
-#define PARAMETERS_BUFFER_DESCRIPTOR_BINDING    0
-#define INSTANCES_BUFFER_DESCRIPTOR_BINDING     1
-#define DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING     2
-#define GLYPH_BUFFER_DESCRIPTOR_BINDING         3
-#define CLIPBOXES_BUFFER_DESCRIPTOR_BINDING     4
-#define SAMPLER_DESCRIPTOR_BINDING              5
-#define TEXTURES_ARRAY_DESCRIPTOR_BINDING       6
+#define INITIAL_INSTANCES_BUFFER_SIZE   (1024 * sizeof(gpu_instance))
+#define INITIAL_DRAW_ITEM_BUFFER_SIZE   (1024 * sizeof(gpu_draw_item))
+#define INITIAL_CLIPBOXES_BUFFER_SIZE   (16 * sizeof(gpu_clipbox))
+#define INITIAL_GLYPH_BUFFER_SIZE       (2024 * sizeof(gpu_glyph))
+#define GLYPH_STRUCTURE_ALIGN           4
 
 typedef struct gpu_instance {
     int item;
@@ -2126,12 +2116,12 @@ typedef struct gpu_draw_item {
     dgx_uv_2d   atlas_position;
     int         texture_index;
     int         clipbox_index;
+    uint32_t    shader_index;
     float       r, g, b, a;
-    int         shader;
 } gpu_draw_item;
 
 typedef struct gpu_clipbox {
-    dla_mat2x3 transform;
+    dla_mat2x3  transform;
 } gpu_clipbox;
 
 typedef struct gpu_glyph {
@@ -2140,234 +2130,119 @@ typedef struct gpu_glyph {
     float       size_x, size_y;
 } gpu_glyph;
 
-typedef struct gpu_parameters {
-    int         resolution_x;
-    int         resolution_y;
-} gpu_parameters;
+typedef struct gpu_vertex_constants {
+    uint32_t    resolution_width;
+    uint32_t    resolution_height;
+    uint32_t    instances_buffer_index;
+    uint32_t    draw_items_buffer_index;
+    uint32_t    glyphs_buffer_index;
+} gpu_vertex_constants;
 
-static inline dgx_buffer* create_ubo(dgx_hardware* hardware, uint64_t bytes) {
-    return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
-        .size_bytes         = bytes,
-        .usage              = dgx_buffer_usage_uniform,
-        .memory_strategy    = dgx_memory_allocation_strategy_dedicated,
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
-    });
-}
+typedef struct gpu_pixel_constants {
+    uint32_t    resolution_width;
+    uint32_t    resolution_height;
+    uint32_t    clips_buffer_index;
+    uint32_t    sampler_index;
+} gpu_pixel_constants;
+
+// ===========================
+// Helper Methods
 
 static inline dgx_buffer* create_ssbo(dgx_hardware* hardware, uint64_t bytes) {
     return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
-        .size_bytes         = bytes,
-        .usage              = dgx_buffer_usage_storage,
-        .memory_strategy    = dgx_memory_allocation_strategy_dedicated,
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write
+        .bytes  = bytes,
+        .access = dgx_memory_access_staging_write,
+        .usage  = dgx_buffer_usage_storage
     });
 }
 
-// vec2 position, vec2 uv
-static const float quad_vertices_array[] = {
-    -1.0f, -1.0f, 0.0f, 0.0f,
-     1.0f, -1.0f, 1.0f, 0.0f,
-    -1.0f,  1.0f, 0.0f, 1.0f,
-     1.0f,  1.0f, 1.0f, 1.0f,
-};
-
-static dgx_vertex_input_attribute_info vertex_attributes[] = {
-    {   // position : per vertex
-        .binding    = 0,
-        .location   = 0,
-        .offset     = 0,
-        .type       = dgx_data_type_vec2f32
-    },
-    {   // uv : per vertex
-        .binding    = 0,
-        .location   = 1,
-        .offset     = 2 * 4,
-        .type       = dgx_data_type_vec2f32
-    }
-};
-
-static dgx_vertex_input_binding_info vertex_bindings[] = {
-    {
-        .binding    = 0,
-        .input_rate = dgx_vertex_attribute_input_rate_per_vertex,
-        .stride     = 4 * 4
-    }
-};
-
-static dgx_descriptor_binding descriptor_bindings[] = {
-    {   // the parameters buffer
-        .binding = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_uniform_buffer
-    },
-    {   // the instances buffer
-        .binding = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the draw items buffer
-        .binding = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the glyphs buffer
-        .binding = GLYPH_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_vertex,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the clips buffer
-        .binding = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-    {   // the sampler
-        .binding = SAMPLER_DESCRIPTOR_BINDING,
-        .count   = 1,
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_sampler,
-    },
-    {   // the textures
-        .binding = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
-        .count   = -1, // Needs to be set per hardware!
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_sampled_texture
-    }
-};
+static inline dgx_buffer* create_glyph_ssbo(dgx_hardware* hardware, uint64_t bytes) {
+    return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
+        .bytes  = bytes,
+        .access = dgx_memory_access_staging_read_and_write,
+        .usage  = dgx_buffer_usage_storage
+    });
+}
 
 // ===========================
 // Shared Object
 
 struct dui_shared {
-    dgx_hardware*                       owning_hardware;
-
-    dgx_buffer*                         vertex_buffer;
-    dgx_sampler*                        sampler;
-
-    uint32_t                            descriptor_textures_array_length;
-    dgx_descriptor_layout*              descriptor_layout;
-    dgx_pipeline_descriptors_layout*    pipeline_descriptor_layout;
-    dgx_pipeline*                       pipeline;
-
-    dpr_partitioner*                    glyph_buffer_partitioner;
-    dgx_buffer*                         glyph_buffer;
+    dgx_hardware*       owning_hardware;
+    dgx_sampler*        sampler;
+    dgx_pipeline*       pipeline;
+    dpr_partitioner*    glyph_buffer_partitioner;
+    dgx_buffer*         glyph_buffer;
 };
 
 dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_info* info) {
     dui_shared* shared = calloc(1, sizeof(dui_shared)); if (!shared) return NULL;
     shared->owning_hardware = hardware;
 
-    // Vertex Buffer
-    shared->vertex_buffer = dgx_create_buffer(hardware, &(dgx_buffer_create_info){
-        .usage              = dgx_buffer_usage_vertex,
-        .size_bytes         = sizeof(quad_vertices_array),
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-        .memory_strategy    = dgx_memory_allocation_strategy_dedicated
-    });
-    if (!shared->vertex_buffer) goto _fail;
-    dgx_buffer_sync_upload(shared->vertex_buffer, 0, quad_vertices_array, sizeof(quad_vertices_array));
-
-    // Query textures limit
-    uint32_t max_textures = dgx_hardware_query_limit(hardware, dgx_hardware_limit_max_descriptor_sampled_images);
-    shared->descriptor_textures_array_length = max_textures > INTERNAL_TEXTURES_LIMIT ? INTERNAL_TEXTURES_LIMIT : max_textures;
-
-    // Copy descriptor bindings info
-    uint32_t bindings_count = sizeof(descriptor_bindings) / sizeof(dgx_descriptor_binding);
-    dgx_descriptor_binding* bindings = malloc(bindings_count * sizeof(dgx_descriptor_binding)); 
-    if (!bindings) goto _fail; memcpy(bindings, descriptor_bindings, sizeof(descriptor_bindings));
-
-    // Overwrite textures limit
-    bindings[TEXTURES_ARRAY_DESCRIPTOR_BINDING].count = shared->descriptor_textures_array_length;
-
-    // Descriptor Layout
-    
-    shared->descriptor_layout = dgx_create_descriptor_layout(hardware, &(dgx_descriptor_layout_create_info){
-        .bindings_count = bindings_count,
-        .bindings       = bindings
-    }); free(bindings); if (!shared->descriptor_layout) goto _fail;
-
-    // Pipeline Descriptor Layout
-    uint32_t layouts_count = 1 + info->additional_pipeline_descriptors_layouts_count;
-    dgx_descriptor_layout** layouts = calloc(layouts_count, sizeof(dgx_descriptor_layout*));
-
-    layouts[0] = shared->descriptor_layout;
-    for (uint32_t i = 0; i < info->additional_pipeline_descriptors_layouts_count; i++) {
-        layouts[i + 1] = info->additional_pipeline_descriptors_layouts[i];
-    }
-
-    shared->pipeline_descriptor_layout = dgx_create_pipeline_descriptors_layout(hardware, &(dgx_pipeline_descriptors_layout_create_info){
-        .layouts_count  = layouts_count,
-        .layouts        = layouts
-    }); free(layouts); if (!shared->pipeline_descriptor_layout) goto _fail;
-
     // Sampler
     shared->sampler = dgx_create_sampler(hardware, &(dgx_sampler_create_info){
         .mag_filter                 = dgx_sampler_filter_linear,
         .min_filter                 = dgx_sampler_filter_linear,
         .mipmap_filter              = dgx_sampler_filter_linear,
-
         .x_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .y_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .z_coord_wrapping           = dgx_sampler_wrapping_repeat,
         .unnormalized_coordinates   = 0,
-
         .min_lod                    = 0,
         .max_lod                    = 1,
         .mip_lod_bias               = 0,
     }); if (!shared->sampler) goto _fail;
 
     // Glyphs buffer
-    shared->glyph_buffer = create_ssbo(hardware, INITIAL_GLYPH_BUFFER_SIZE);
+    shared->glyph_buffer = create_glyph_ssbo(hardware, INITIAL_GLYPH_BUFFER_SIZE);
     if (!shared->glyph_buffer) goto _fail;
 
     // Glyph buffer partitioner
     shared->glyph_buffer_partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
-        .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE,
-        .align_bytes  = GLYPH_STRUCTURE_ALIGN
+        .memory_bytes = INITIAL_GLYPH_BUFFER_SIZE
     }); if (!shared->glyph_buffer_partitioner) goto _fail;
 
     // Pipeline Shaders
-    if (!info->pipeline_vertex_shader || !info->pipeline_pixel_shader) goto _fail;
+    dgx_shader* vertex_shader = dgx_create_shader(shared->owning_hardware, &info->vertex_shader_info);
+    dgx_shader* pixel_shader  = dgx_create_shader(shared->owning_hardware, &info->pixel_shader_info);
+
+    if (!vertex_shader || !pixel_shader) {
+        dgx_free_shader(vertex_shader);
+        dgx_free_shader(pixel_shader);
+        goto _fail;
+    }
 
     // Pipeline
     shared->pipeline = dgx_create_pipeline(shared->owning_hardware, &(dgx_pipeline_create_info){
-        .render_target_layout       = info->pipeline_render_target_layout,
-        .descriptor_layout          = shared->pipeline_descriptor_layout,
-        .vertex_layout = {
-            .attributes_count       = sizeof(vertex_attributes) / sizeof(dgx_vertex_input_attribute_info),
-            .attributes             = vertex_attributes,
-            .bindings_count         = sizeof(vertex_bindings) / sizeof(dgx_vertex_input_binding_info),
-            .bindings               = vertex_bindings,
-        },
+        .attachment_state = info->attachment_state,
         .shader_stages = {
-            .vertex                 = info->pipeline_vertex_shader,
-            .pixel                  = info->pipeline_pixel_shader
+            .shaders[dgx_shader_stage_vertex]   = vertex_shader,
+            .constants[dgx_shader_stage_vertex] = sizeof(gpu_vertex_constants),
+            .shaders[dgx_shader_stage_pixel]    = pixel_shader,
+            .constants[dgx_shader_stage_pixel]  = sizeof(gpu_pixel_constants)
         },
-        .input_assembly = {
-            .topology               = dgx_primitive_topology_triangle_strip
+        .input_assembler_state = {
+            .topology = dgx_primitive_topology_triangle_strip
         },
-        .rasterizer = {
-            .scissor_enable         = 0,
-            .depth_clamp_enable     = 0,
-            .fill_mode              = dgx_fill_mode_solid,
-            .cull_mode              = dgx_cull_mode_none
+        .rasterizer_state = {
+            .scissor_enable     = 0,
+            .depth_clamp_enable = 0,
+            .fill_mode          = dgx_fill_mode_solid,
+            .cull_mode          = dgx_cull_mode_none
         },
-        .blend = {
-            .blend_enable           = 1,
-            .blend_op               = dgx_blend_op_add,
-            .src_factor             = dgx_blend_factor_src_alpha,
-            .dst_factor             = dgx_blend_factor_one_minus_src_alpha,
+        .blend_state = {
+            .blend_enable   = 1,
+            .blend_op       = dgx_blend_op_add,
+            .src_factor     = dgx_blend_factor_src_alpha,
+            .dst_factor     = dgx_blend_factor_one_minus_src_alpha,
         },
-        .depth_stencil = {
+        .depth_stencil_state = {
             .depth_test_enable      = 0,
             .depth_write_enable     = 0,
             .stencil_test_enable    = 0
         }
-    }); if (!shared->pipeline) goto _fail;
+    });  dgx_free_shader(vertex_shader); dgx_free_shader(pixel_shader);
+    if (!shared->pipeline) goto _fail;
 
     return shared;
 
@@ -2378,11 +2253,8 @@ _fail:
 
 void dui_free_shared(dui_shared* shared) {
     if (!shared) return;
-    dgx_free_buffer(shared->vertex_buffer);
     dgx_free_sampler(shared->sampler);
     dgx_free_pipeline(shared->pipeline);
-    dgx_free_pipeline_descriptors_layout(shared->pipeline_descriptor_layout);
-    dgx_free_descriptor_layout(shared->descriptor_layout);
     dgx_free_buffer(shared->glyph_buffer);
     dpr_free_partitioner(shared->glyph_buffer_partitioner);
     free(shared);
@@ -2392,155 +2264,42 @@ void dui_free_shared(dui_shared* shared) {
 // Frames
 
 typedef struct single_frame {
-    uint32_t                    instances_to_render;
-    dgx_buffer*                 parameters_buffer;
-    dgx_buffer*                 instances_buffer;
-    dgx_buffer*                 draw_items_buffer;
-    dgx_buffer*                 clipboxes_buffer;
-    dgx_descriptor*             descriptor;
-    int                         bound_1_recent;
-    dgx_texture**               descriptor_bound_textures_1;
-    dgx_texture**               descriptor_bound_textures_2;
+    uint32_t                instances_to_render;
+    dgx_buffer*             instances_buffer;
+    dgx_buffer*             draw_items_buffer;
+    dgx_buffer*             clipboxes_buffer;
+    gpu_vertex_constants    vertex_constants;
+    gpu_pixel_constants     pixel_constants;
+    dgx_command_list*       upload_list;
 } single_frame;
 
 struct dui_frames {
-    dui_shared*                 owning_shared;
-    dgx_descriptor_allocator*   descriptor_allocator;
-    uint32_t                    frames_count;
-    single_frame*               frames;
+    dui_shared*     owning_shared;
+    uint32_t        count;
+    single_frame*   frames;
 };
-
-void frame_descriptor_bind_buffers_and_sampler(dgx_hardware* hardware, dui_shared* shared, single_frame* frame) {
-    dgx_descriptor_write_info           writes[6];
-    dgx_descriptor_buffer_write_info    binfos[5];
-    dgx_descriptor_sampler_write_info   sinfos[1];
-
-    binfos[0] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->parameters_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->parameters_buffer)
-    };
-
-    binfos[1] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->instances_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->instances_buffer)
-    };
-
-    binfos[2] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->draw_items_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->draw_items_buffer)
-    };
-
-    binfos[3] = (dgx_descriptor_buffer_write_info){
-        .buffer = shared->glyph_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(shared->glyph_buffer)
-    };
-
-    binfos[4] = (dgx_descriptor_buffer_write_info){
-        .buffer = frame->clipboxes_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->clipboxes_buffer)
-    };
-
-    sinfos[0] = (dgx_descriptor_sampler_write_info){
-        .sampler = shared->sampler
-    };
-
-    writes[0] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_uniform_buffer,
-        .binding_index          = PARAMETERS_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[0]
-    };
-
-    writes[1] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = INSTANCES_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[1]
-    };
-
-    writes[2] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = DRAW_ITEM_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[2]
-    };
-
-    writes[3] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = GLYPH_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[3]
-    };
-    
-    writes[4] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = CLIPBOXES_BUFFER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfos[4]
-    };
-
-    writes[5] = (dgx_descriptor_write_info){
-        .descriptor             = frame->descriptor,
-        .binding_type           = dgx_descriptor_binding_type_sampler,
-        .binding_index          = SAMPLER_DESCRIPTOR_BINDING,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_samplers     = &sinfos[0]
-    };
-    
-    dgx_descriptors_write(hardware, 6, writes);
-}
 
 dui_frames* dui_create_frames(dgx_hardware* hardware, const dui_frames_create_info* info) {
     dui_shared* shared = info->shared;
 
-    dui_frames* frames = calloc(1, sizeof(dui_frames)); 
-    if (!frames) return NULL;
-    
+    dui_frames* frames = calloc(1, sizeof(dui_frames));  if (!frames) return NULL;
     frames->owning_shared = shared;
     
-    // create descriptor allocator
-    frames->descriptor_allocator = dgx_create_descriptor_allocator(hardware, &(dgx_descriptor_allocator_create_info){
-        .descriptor_layout          = shared->descriptor_layout,
-        .max_descriptors_allocated  = info->frames_in_flight_count
-    }); if (!frames->descriptor_allocator) goto _fail;
-
     // create frames
-    frames->frames_count = info->frames_in_flight_count;
-    frames->frames = calloc(info->frames_in_flight_count, sizeof(single_frame));
+    frames->count  = info->count;
+    frames->frames = calloc(info->count, sizeof(single_frame));
     if (!frames->frames) goto _fail;
 
     // populate frames
-    for (uint32_t i = 0; i < info->frames_in_flight_count; i++) {
+    for (uint32_t i = 0; i < info->count; i++) {
         single_frame* frame = &frames->frames[i];
         *frame = (single_frame){
-            .descriptor                  = dgx_descriptor_allocator_alloc_descriptor(frames->descriptor_allocator),
-            .parameters_buffer           = create_ubo (hardware, sizeof(gpu_parameters)),
-            .instances_buffer            = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
-            .draw_items_buffer           = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
-            .clipboxes_buffer            = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE),
-            .descriptor_bound_textures_1 = calloc(shared->descriptor_textures_array_length, sizeof(dgx_texture*)),
-            .descriptor_bound_textures_2 = calloc(shared->descriptor_textures_array_length, sizeof(dgx_texture*))
+            .instances_buffer   = create_ssbo(hardware, INITIAL_INSTANCES_BUFFER_SIZE),
+            .draw_items_buffer  = create_ssbo(hardware, INITIAL_DRAW_ITEM_BUFFER_SIZE),
+            .clipboxes_buffer   = create_ssbo(hardware, INITIAL_CLIPBOXES_BUFFER_SIZE)
         };
 
-        if (!frame->descriptor || !frame->parameters_buffer || !frame->instances_buffer || !frame->draw_items_buffer || 
-            !frame->clipboxes_buffer || !frame->descriptor_bound_textures_1 || !frame->descriptor_bound_textures_2) goto _fail;
-        frame_descriptor_bind_buffers_and_sampler(hardware, shared, frame);
+        if (!frame->instances_buffer || !frame->draw_items_buffer || !frame->clipboxes_buffer) goto _fail;
     }
 
     return frames;
@@ -2552,198 +2311,156 @@ _fail:
 
 void dui_free_frames(dui_frames* frames) {
     if (!frames) return;
-
-    for (uint32_t i = 0; i < frames->frames_count; i++) {
+    for (uint32_t i = 0; i < frames->count; i++) {
         single_frame* frame = &frames->frames[i];
-        dgx_free_buffer(frame->parameters_buffer);
         dgx_free_buffer(frame->instances_buffer);
         dgx_free_buffer(frame->draw_items_buffer);
         dgx_free_buffer(frame->clipboxes_buffer);
-        free(frame->descriptor_bound_textures_1);
-        free(frame->descriptor_bound_textures_2);
+        dgx_free_command_list(frame->upload_list);
     }
-
-    // all per-frame descriptors freed with allocator
-    dgx_free_descriptor_allocator(frames->descriptor_allocator);
     free(frames->frames);
-
     free(frames);
 }
 
 // ===========================
 // Rendering Functions
 
-typedef struct texture_writes_dynamic_array {
-    dgx_descriptor*                             descriptor;
-    size_t                                      capacity;
-    size_t                                      position;
-    dgx_descriptor_write_info*                  writes;
-    dgx_descriptor_sampled_texture_write_info*  infos;
-} texture_writes_dynamic_array;
+typedef struct ui_upload_params {
+    uint64_t            count;
+    dgs_upload_request* requests;
+    dgx_staging_memory* staging;
+    uint64_t            offset;
+} ui_upload_params;
 
-static void free_texture_writes_dynamic_array(texture_writes_dynamic_array writes) {
-    free(writes.writes); free(writes.infos);
-}
-
-static void push_texture_writes_dynamic_array(texture_writes_dynamic_array* writes, dgx_texture* texture, uint32_t slot) {
-    if (writes->position + 1 > writes->capacity) {
-        size_t new_capacity = writes->capacity ? writes->capacity * 2 : 16;
-
-        dgx_descriptor_write_info* new_writes 
-            = realloc(writes->writes, new_capacity * sizeof(dgx_descriptor_write_info));
-
-        dgx_descriptor_sampled_texture_write_info* new_infos 
-            = realloc(writes->infos,  new_capacity * sizeof(dgx_descriptor_sampled_texture_write_info));
-
-        if (!new_writes || !new_infos) {
-            free(new_writes); free(new_infos);
-            return; // do not store write, no storage
-        }
-
-        writes->capacity = new_capacity;
-        writes->writes   = new_writes;
-        writes->infos    = new_infos;
+static void ui_upload_record(void* raw_params) {
+    ui_upload_params* params = raw_params;
+    uint64_t offset = 0;
+    for (uint64_t i = 0; i < params->count; i++) {
+        dgs_upload_request req = params->requests[i];
+        dgx_tcmd_copy_staging_memory_to_buffer(
+            params->staging, (dgx_buffer*)req.target,
+            params->offset + offset, req.offset, req.bytes
+        );
+        offset += req.bytes;
     }
-
-    writes->writes[writes->position] = (dgx_descriptor_write_info){
-        .descriptor                 = writes->descriptor,
-        .binding_type               = dgx_descriptor_binding_type_sampled_texture,
-        .binding_index              = TEXTURES_ARRAY_DESCRIPTOR_BINDING,
-        .array_element_index        = slot,
-        .array_elements_count       = 1,
-        // cannot link info now, since infos can be reallocated
-    };
-
-    writes->infos[writes->position] = (dgx_descriptor_sampled_texture_write_info){
-        .sampled_texture = texture
-    };
-
-    writes->position++;
 }
 
-static int clear_write
-(uint32_t texture_slots_count, single_frame* frame) {
-    dgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
-    for (uint32_t i = 0; i < texture_slots_count; i++) write[i] = NULL;
+typedef struct glyphs_rewrite_params {
+    dgx_buffer* old_buffer;
+    dgx_buffer* new_buffer;
+} glyphs_rewrite_params;
+
+static void glyphs_rewrite_record(void* raw_params) {
+    glyphs_rewrite_params* params = raw_params;
+    dgx_tcmd_copy_buffer_to_buffer(
+        params->old_buffer, params->new_buffer, 0, 0, 
+        dgx_buffer_query_bytes(params->old_buffer)
+    );
 }
 
-static int push_texture
-(texture_writes_dynamic_array* writes, uint32_t texture_slots_count, single_frame* frame, dgx_texture* texture, int is_font) {
-    if (texture == NULL) return 0;
-
-    dgx_texture** recent = frame->bound_1_recent ? frame->descriptor_bound_textures_1 : frame->descriptor_bound_textures_2;
-    dgx_texture** write  = frame->bound_1_recent ? frame->descriptor_bound_textures_2 : frame->descriptor_bound_textures_1;
-
-    // start search at module of texture pointer,
-    // bit shift because pointers may be aligned, will often lead to same slot
-    uint64_t hash = ((size_t)texture >> 4) * 11400714819323198485llu;
-    uint64_t begin = hash % texture_slots_count;
-
-    // search for free slot
-    int itr = begin;
-    do {
-        // same texture already assigned in previous frame generation,
-        // or write alredy requested -> return
-        if (recent[itr] == texture || write[itr] == texture) {
-            write[itr] = texture; // ensure space reserved
-            if (is_font) return -itr - 1;
-            return itr + 1;
-        }
-        // free slot, assing
-        if (write[itr] == NULL) {
-            write[itr] = texture;
-            push_texture_writes_dynamic_array(writes, texture, (uint32_t)itr);
-            if (is_font) return -itr - 1;
-            return itr + 1;
-        }
-        // else continue search
-        itr = (itr + 1) % texture_slots_count;
-    } while(itr != begin);
-
-    // no empty slots left
-    return 0;
-}
-
-void dui_upload_cache(
+int dui_upload_cache(
     dui_cache*          cache,
     dui_shared*         shared,
     dui_frames*         frames,
     uint32_t            frame_idx,
-    dgx_command_list*   command_list,
-    dgx_hardware_queue* queue_for_uploads,
+    uint8_t             transfer_work_group_index,
+    uint8_t             command_list_allocator_index,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    dgx_cpu_signal*     upload_finished_cpu,
-    dgx_gpu_signal*     upload_finished_gpu
+    dgx_timeline*       signal_timeline,
+    uint64_t            signal_value
 ) {
     dgx_hardware* hardware = shared->owning_hardware;
     single_frame* frame    = &frames->frames[frame_idx];
 
-    // Prepare render parameters uniform
+    // Function-wide success flag
+    int success = 1;
 
-    gpu_parameters parameters = {
-        .resolution_x = cache->resolution_x,
-        .resolution_y = cache->resolution_y
-    };
-
-    // Prepare texture descriptor update structure
-
-    texture_writes_dynamic_array texture_writes_array = (texture_writes_dynamic_array){
-        .descriptor = frame->descriptor
-    };
-    clear_write(shared->descriptor_textures_array_length, frame);
-
-    // Allocate upload regions descriptors array
-
-    size_t upload_regions_count    = cache->text_requests_count + 4;
-    size_t upload_regions_position = 0;
-    dgx_buffer_multi_upload_region* upload_regions = malloc(upload_regions_count * sizeof(dgx_buffer_multi_upload_region));
-    if (!upload_regions) goto _cleanup;
+    // Create segmenter
+    dgs_segmenter* segmenter = dgs_create_segmenter(&(dgs_segmenter_create_info){
+        .bandwidth = staging_memory_region_size
+    }); if (!segmenter) goto _cleanup;
 
     // Prepare partitions for text draws
-
     for (size_t i = 0; i < cache->text_requests_count; i++) {
-        text_request              req  = cache->text_requests[i];
-        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
+    _try_partition:
+        text_request     req  = cache->text_requests[i];
+        text_cache_slot* slot = text_cache_get_utill(cache, req.owning_node);
 
-        aux->partitioner = shared->glyph_buffer_partitioner;
+        // Store partitioner to return partition to
+        slot->glyphs_partitioner = shared->glyph_buffer_partitioner;
 
-        // always free owned partition to reduce fragmentation
-        if (aux->owned_glyph_buffer_partition) {
-            dpr_partitioner_free_partition(shared->glyph_buffer_partitioner, aux->owned_glyph_buffer_partition);
-            aux->owned_glyph_buffer_partition = NULL;
+        // Always free owned partition
+        if (slot->glyphs_partition) {
+            dpr_partitioner_free_partition(shared->glyph_buffer_partitioner, slot->glyphs_partition);
+            slot->glyphs_partition = NULL;
         }
 
-        // new text is empty - creation of 0 bytes partition is forbidden
+        // New text is empty - creation of 0 bytes partition is forbidden
         if (!req.glyphs_count) continue;
 
-        // request new partition
-        aux->owned_glyph_buffer_partition = dpr_partitioner_alloc_partition(
+        // Request new partition
+        slot->glyphs_partition = dpr_partitioner_alloc_partition(
             shared->glyph_buffer_partitioner,
-            req.glyphs_count * sizeof(gpu_glyph)
+            req.glyphs_count * sizeof(gpu_glyph), 
+            GLYPH_STRUCTURE_ALIGN
         );
 
-        // failed to create partition - create bigger text buffer
-        if (!aux->owned_glyph_buffer_partition) {
-            // todo
+        // Failed to create partition - create bigger text buffer
+        if (!slot->glyphs_partition) {
+            dgx_hardware_wait_idle(hardware);
+
+            // Alloc new buffer with double size
+            uint64_t old_bytes = dgx_buffer_query_bytes(shared->glyph_buffer);
+            dgx_buffer* new_buffer = create_glyph_ssbo(hardware, old_bytes * 2);
+
+            // Failed to alloc new buffer
+            if (!new_buffer) continue;
+
+            // Rewrite contents
+            dgx_command_list* rewrite_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+                .domain = dgx_command_domain_transfer,
+                .aindex = transfer_work_group_index,
+                .record = glyphs_rewrite_record,
+                .params = &(glyphs_rewrite_params){
+                    .old_buffer = shared->glyph_buffer,
+                    .new_buffer = new_buffer
+                }
+            });
+
+            // Submit
+            dgx_command_list_submit(1, &rewrite_list, &(dgx_submit_info){.domain_work_group = 0});
+            dgx_hardware_wait_idle(hardware); dgx_free_command_list(rewrite_list);
+
+            // Since rewrited, pick new buffer
+            dgx_free_buffer(shared->glyph_buffer);
+            shared->glyph_buffer = new_buffer;
+
+            // Resize partitioner
+            shared->glyph_buffer_partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
+                .memory_bytes    = old_bytes * 2,
+                .old_partitioner = shared->glyph_buffer_partitioner
+            });
+
+            // Try again
+            goto _try_partition;
         }
     }
 
     // Generate draw regions for texts
-
     for (size_t i = 0; i < cache->text_requests_count; i++) {
-        text_request              req  = cache->text_requests[i];
-        text_type_auxilary_state* aux = auxilary_get_utill(cache, req.owning_node)->state_ptr;
-        dpr_partition*            prt = aux->owned_glyph_buffer_partition;
-        if (!prt) continue; // text empty, nothing to upload
+        text_request     req  = cache->text_requests[i];
+        text_cache_slot* slot = text_cache_get_utill(cache, req.owning_node);
+        dpr_partition*   prt  = slot->glyphs_partition;
+        if (!prt) continue; // Text empty, nothing to upload
 
-        upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-            .buffer         = shared->glyph_buffer,
-            .buffer_offset  = dpr_partition_query_offset(prt),
-            .source_data    = req.glyphs,
-            .source_bytes   = req.glyphs_count * sizeof(gpu_draw_item)
-        };
+        dgs_segmenter_upload(segmenter, (dgs_upload_request){
+            .target = (uint64_t)shared->glyph_buffer,
+            .offset = dpr_partition_query_offset(prt),
+            .source = req.glyphs,
+            .bytes  = req.glyphs_count * sizeof(gpu_glyph)
+        });
     }
 
     // Prepare draw items, draw instances, draw clipboxes
@@ -2768,54 +2485,52 @@ void dui_upload_cache(
         draw_request req = cache->draw_requests[i];
 
         if (req.is_box_not_text) {
-            int texture_index = 0; dgx_uv_2d uv;
-            if (req.box_data.image) {
-                dgx_texture* texture; if (dui_injection_query_image(req.box_data.image, &texture, &uv)) {
-                    texture_index = push_texture(
-                        &texture_writes_array, shared->descriptor_textures_array_length, 
-                        frame, texture, 0
-                    );
-                }
+            int texture_index = 0; dgx_texture* texture; dgx_uv_2d uv;
+            if (req.box_data.image && dui_injection_query_image(req.box_data.image, &texture, &uv)) {
+                texture_index = dgx_shader_resource_bind(
+                    hardware, dgx_resource_type_sampled_texture, texture, &success
+                );
+                texture_index++; // offset so idx 0 is no texture in shader
             }
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
-                .clipbox_index  = req.clip_index,
-                .texture_index  = texture_index,
                 .atlas_position = uv,
+                .texture_index  = texture_index,
+                .clipbox_index  = req.clip_index,
+                .shader_index   = req.box_data.shader,
                 .r              = (float)req.box_data.tint.r / 255.0f,
                 .g              = (float)req.box_data.tint.g / 255.0f,
                 .b              = (float)req.box_data.tint.b / 255.0f,
-                .a              = (float)req.box_data.tint.a / 255.0f,
-                .shader         = req.box_data.shader
+                .a              = (float)req.box_data.tint.a / 255.0f
             };
 
             instances_count += 1;  // single box
         }
         else {
-            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
-            text_type_auxilary_state* aux  = slot->state_ptr;
-            dpr_partition*            part = aux->owned_glyph_buffer_partition;
+            text_cache_slot* slot = text_cache_get_utill(cache, req.text_node);
+            dpr_partition*   part = slot->glyphs_partition;
             if (!part) continue;
 
             dui_text_data text_data = *(const dui_text_data*)get_node_data(slot->key.node, slot->key.instance);
             dfont_font* font; if (!dui_injection_query_font(text_data.font, &font)) continue;
 
-            int texture_index = push_texture(
-                &texture_writes_array, shared->descriptor_textures_array_length, 
-                frame, dfont_get_texture(font), 1
+            uint32_t texture_index = dgx_shader_resource_bind(
+                hardware, dgx_resource_type_sampled_texture, dfont_get_texture(font), &success
             );
+            int signed_texture_index = -(int)texture_index; // is font
+            signed_texture_index--; // offset so idx 0 is no texture in shader
 
             items[i] = (gpu_draw_item){
                 .transform      = req.transform,
-                .clipbox_index  = req.clip_index,
-                .texture_index  = texture_index,
                 .atlas_position = (dgx_uv_2d){0, 0, 1, 1},
+                .texture_index  = signed_texture_index,
+                .clipbox_index  = req.clip_index,
+                .shader_index   = text_data.shader,
                 .r              = (float)text_data.tint.r / 255.0f,
                 .g              = (float)text_data.tint.g / 255.0f,
                 .b              = (float)text_data.tint.b / 255.0f,
                 .a              = (float)text_data.tint.a / 255.0f,
-                .shader         = text_data.shader
             };
 
             instances_count += dpr_partition_query_size(part) / sizeof(gpu_glyph);
@@ -2835,9 +2550,8 @@ void dui_upload_cache(
             };
         }
         else {
-            auxilary_slot*            slot = auxilary_get_utill(cache, req.text_node);
-            text_type_auxilary_state* aux  = slot->state_ptr;
-            dpr_partition*            part = aux->owned_glyph_buffer_partition;
+            text_cache_slot* slot = text_cache_get_utill(cache, req.text_node);
+            dpr_partition*   part = slot->glyphs_partition;
             if (!part) continue;
             
             size_t first  = dpr_partition_query_offset(part) / sizeof(gpu_glyph);
@@ -2853,7 +2567,7 @@ void dui_upload_cache(
 
     // Generate GPU Clipboxes
     clipboxes_count = cache->clipbox_requests_count;
-    clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_draw_item);
+    clipboxes_bytes = cache->clipbox_requests_count * sizeof(gpu_clipbox);
     clipboxes       = malloc(clipboxes_bytes); if (!clipboxes) goto _cleanup;
     for (uint32_t i = 0; i < clipboxes_count; i++) {
         clipbox_request req = cache->clipbox_requests[i];
@@ -2862,125 +2576,155 @@ void dui_upload_cache(
         };
     }
 
-    // Ensure Buffer Sizes
-    int rebind = 0;
-
     // Items buffer
-    if (dgx_buffer_get_size_bytes(frame->draw_items_buffer) < items_bytes) {
+    if (dgx_buffer_query_bytes(frame->draw_items_buffer) < items_bytes) {
+        dgx_buffer* new_buffer = create_ssbo(hardware, items_bytes);
+        if (!new_buffer) {success = 0; goto _cleanup;}
         dgx_free_buffer(frame->draw_items_buffer);
-        frame->draw_items_buffer = create_ssbo(hardware, items_bytes);
-        rebind = 1;
+        frame->draw_items_buffer = new_buffer;
     }
 
     // Instanced buffer
-    if (dgx_buffer_get_size_bytes(frame->instances_buffer) < instances_bytes) {
+    if (dgx_buffer_query_bytes(frame->instances_buffer) < instances_bytes) {
+        dgx_buffer* new_buffer = create_ssbo(hardware, instances_bytes);
+        if (!new_buffer) {success = 0; goto _cleanup;}
         dgx_free_buffer(frame->instances_buffer);
-        frame->instances_buffer = create_ssbo(hardware, instances_bytes);
-        rebind = 1;
+        frame->instances_buffer = new_buffer;
     }
 
     // Clipboxes buffer
-    if (dgx_buffer_get_size_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+    if (dgx_buffer_query_bytes(frame->clipboxes_buffer) < clipboxes_bytes) {
+        dgx_buffer* new_buffer = create_ssbo(hardware, clipboxes_bytes);
+        if (!new_buffer) {success = 0; goto _cleanup;}
         dgx_free_buffer(frame->clipboxes_buffer);
-        frame->clipboxes_buffer = create_ssbo(hardware, clipboxes_bytes);
-        rebind = 1;
+        frame->clipboxes_buffer = new_buffer;
     }
 
-    // If resize failed return
-    if (!frame->draw_items_buffer || !frame->instances_buffer) return;
-    if (rebind) frame_descriptor_bind_buffers_and_sampler(hardware, frames->owning_shared, frame);
+    // Uploads requests
+    dgs_segmenter_upload(segmenter, (dgs_upload_request){
+        .target = (uint64_t)frame->draw_items_buffer,
+        .offset = 0,
+        .source = items,
+        .bytes  = items_count * sizeof(gpu_draw_item)
+    });
 
-    // Upload
+    dgs_segmenter_upload(segmenter, (dgs_upload_request){
+        .target = (uint64_t)frame->clipboxes_buffer,
+        .offset = 0,
+        .source = clipboxes,
+        .bytes  = clipboxes_count * sizeof(gpu_clipbox)
+    });
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->parameters_buffer,
-        .buffer_offset  = 0,
-        .source_data    = &parameters,
-        .source_bytes   = sizeof(gpu_parameters)
+    dgs_segmenter_upload(segmenter, (dgs_upload_request){
+        .target = (uint64_t)frame->instances_buffer,
+        .offset = 0,
+        .source = instances,
+        .bytes  = instances_count * sizeof(gpu_instance)
+    });
+
+    // Set render parameters since buffer are ready
+    frame->vertex_constants = (gpu_vertex_constants){
+        .resolution_width        = cache->resolution_x,
+        .resolution_height       = cache->resolution_y,
+        .instances_buffer_index  = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->instances_buffer, &success),
+        .draw_items_buffer_index = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->draw_items_buffer, &success),
+        .glyphs_buffer_index     = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, shared->glyph_buffer, &success),
+    };
+    frame->pixel_constants = (gpu_pixel_constants){
+        .resolution_width   = cache->resolution_x,
+        .resolution_height  = cache->resolution_y,
+        .clips_buffer_index = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, frame->clipboxes_buffer, &success),
+        .sampler_index      = dgx_shader_resource_bind(hardware, dgx_resource_type_sampler, shared->sampler, &success),
     };
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->draw_items_buffer,
-        .buffer_offset  = 0,
-        .source_data    = items,
-        .source_bytes   = items_count * sizeof(gpu_draw_item)
-    };
+    // Perform uploads
+    dgx_timeline* internal = NULL;
+    uint64_t internal_itr = 0;
+    
+    while (!dgx_segmenter_query_empty(segmenter)) {
+        if (internal) dgx_timeline_wait(internal, internal_itr);
+        
+        uint64_t count; dgs_upload_request* requests;
+        dgs_segmenter_continue(segmenter, &count, &requests);
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->clipboxes_buffer,
-        .buffer_offset  = 0,
-        .source_data    = clipboxes,
-        .source_bytes   = clipboxes_count * sizeof(gpu_clipbox)
-    };
+        int last_upload = dgx_segmenter_query_empty(segmenter);
+        if (!last_upload && !internal) {
+            internal = dgx_create_timeline(hardware, &(dgx_timeline_create_info){
+                .initial_value = 0
+            });
+        }
 
-    upload_regions[upload_regions_position++] = (dgx_buffer_multi_upload_region){
-        .buffer         = frame->instances_buffer,
-        .buffer_offset  = 0,
-        .source_data    = instances,
-        .source_bytes   = instances_count * sizeof(gpu_instance)
-    };
+        // copy to staging memory
+        char* mapped = dgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
+        uint64_t offset = 0;
+        for (uint64_t i = 0; i < count; i++) {
+            dgs_upload_request req = requests[i];
+            memcpy(mapped + offset, req.source, req.bytes);
+            offset += req.bytes;
+        }
+        dgx_staging_memory_unmap(staging_memory);
 
-    // Write all buffers
-    dgx_buffer_multi_upload(
-        upload_regions,
-        upload_regions_position,
-        command_list, 
-        queue_for_uploads,
-        staging_memory,
-        staging_memory_region_offset,
-        staging_memory_region_size,
-        upload_finished_cpu,
-        upload_finished_gpu
-    );
+        // record rewrite list
+        frame->upload_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+            .domain = dgx_command_domain_transfer,
+            .aindex = command_list_allocator_index,
+            .parent = frame->upload_list,
+            .record = ui_upload_record,
+            .params = &(ui_upload_params){
+                .count    = count,
+                .requests = requests,
+                .staging  = staging_memory,
+                .offset   = staging_memory_region_offset
+            }
+        });
 
-    // Walk and link texture descriptor writes
-    // Do it here, since earlier those could have been reallocated
-    for (size_t i = 0; i < texture_writes_array.position; i++) {
-        texture_writes_array.writes[i].infos.for_sampled_textures = &texture_writes_array.infos[i];
+        // Submit gpu work
+        dgx_timeline* timeline = last_upload ? signal_timeline : internal;
+        dgx_command_list_submit(1, &frame->upload_list, &(dgx_submit_info){
+            .domain_work_group  = transfer_work_group_index,
+            .signal_count       = timeline ? 1 : 0,
+            .signal_timelines   = &timeline,
+            .signal_values      = last_upload ? &signal_value    : (uint64_t[]){++internal_itr}
+        });
     }
 
-    // Update textures descriptor    
-    dgx_descriptors_write(
-        hardware, texture_writes_array.position, texture_writes_array.writes
-    );
+    if (internal) dgx_free_timeline(internal);
 
     // Mark to render
     frame->instances_to_render = instances_count;
 
-_cleanup:
-    // Free text requests
-    free_cached_text_requests(cache);
+_cleanup: 
+    dgs_free_segmenter(segmenter);                  // Free segmenter
+    free_cached_text_requests(cache);               // Free text requests
+    free(items); free(clipboxes); free(instances);  // Free allocated memory
 
-    // Free allocated memory
-    free(items); free(clipboxes); free(instances); free(upload_regions);
-    free_texture_writes_dynamic_array(texture_writes_array);
-
-    // Toggle recent bound in frame
-    frame->bound_1_recent = !frame->bound_1_recent;
+    return success;
 }
 
 void dui_gcmd_render(
-    dgx_command_list*   target,
-    dui_frames*         frames,
-    uint32_t            frame_idx
+    dui_frames* frames,
+    uint32_t    frame_idx
 ) {
-    single_frame* frame = &frames->frames[frame_idx % frames->frames_count];
+    single_frame* frame = &frames->frames[frame_idx % frames->count];
     if (frame->instances_to_render) {
-        dgx_gcmd_bind_graphics_pipeline(target, frames->owning_shared->pipeline);
-        dgx_gcmd_bind_graphics_pipeline_descriptors(
-            target, 
-            frames->owning_shared->pipeline_descriptor_layout, 
-            0, 1, &frame->descriptor
+        dgx_gcmd_bind_graphics_pipeline(frames->owning_shared->pipeline);
+
+        dgx_gcmd_write_constants(
+            frames->owning_shared->pipeline, dgx_shader_stage_vertex, 0, sizeof(gpu_vertex_constants), &frame->vertex_constants
         );
-        dgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frames->owning_shared->vertex_buffer, 0, 0);
-        dgx_gcmd_draw_vertices(target, 4, 0, frame->instances_to_render, 0);
+
+        dgx_gcmd_write_constants(
+            frames->owning_shared->pipeline, dgx_shader_stage_pixel, 0, sizeof(gpu_pixel_constants), &frame->pixel_constants
+        );
+
+        dgx_gcmd_draw(0, 4, 0, frame->instances_to_render);
     }
 }
 
 // ===========================
 // Text layout generation
 
-void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_state* aux) {
+void create_text_request(dui_cache* cache, text_cache_slot* slot) {
     const dui_text_data* tdata = get_node_data(slot->key.node, slot->key.instance);
     dfont_font* font; if (!dui_injection_query_font(tdata->font, &font)) return;
     const char* text = tdata->text;
@@ -3065,8 +2809,8 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     float text_height = -pen_y + ascent;
 
     // Store text dimensions
-    aux->text_width  = text_width;
-    aux->text_height = text_height;
+    slot->text_width  = text_width;
+    slot->text_height = text_height;
 
     // Request text upload
     text_request req = {
@@ -3076,5 +2820,500 @@ void create_text_request(dui_cache* cache, cache_slot* slot, text_type_auxilary_
     };
     text_request_cache_push(cache, req);
 }
+
+// ===========================
+// Predefinied UI structures
+
+// Button
+
+static void button_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_button_data* data = node_data;
+
+    dui_cursor_state crr = *node_input->mutable_state;
+    dui_cursor_state prv = *node_input->prev_raw_state;
+
+    char just_pressed  = crr.left_down  && !prv.left_down;
+    char just_released = !crr.left_down && prv.left_down;
+
+    if (just_pressed && node_input->hovered) {  // press started
+        data->pressed = 1;
+        data->current_style = data->pressed_style;
+        if (data->on_clicked) data->on_clicked(data->payload);
+        crr.left_down = 0;
+    }
+    else if (crr.left_down && data->pressed) {    // held
+        data->current_style = data->pressed_style;
+        if (data->on_held) data->on_held(data->payload);
+        crr.left_down = 0;
+    }
+    else if (just_released && data->pressed) {   // released
+        data->pressed = 0;
+        if (node_input->hovered) data->current_style = data->hovered_style;
+        else data->current_style = data->default_style;
+        if (data->on_released)  data->on_released(data->payload);
+    }
+    else if (node_input->hovered) data->current_style = data->hovered_style;    // hover
+    else data->current_style = data->default_style;  // idle
+}
+
+const dui_node dui_button_structure[] = {
+    {   // Set handle to button func
+        .type   = &dui_cursor_handle_type,
+        .data   = button_cursor_func,
+        .child  = &dui_button_structure[1]
+    },
+    {   // Do logic
+        .type   = &dui_cursor_call_type,
+        .flags  = dui_flag_instanced_data,
+        .child  = &dui_button_structure[2],
+        .data_offset = 0,   // Instance itself
+    },
+    {   // Box, style = hitbox auxilary current style
+        .type   = &dui_box_type,
+        .flags  = dui_flag_instanced_data | dui_flag_instanced_child | dui_flag_ignore_max_width | dui_flag_ignore_max_height,
+        .data_offset  = offsetof(dui_button_data, current_style),
+        .child_offset = offsetof(dui_button_data, child)
+    }
+};
+
+// Vertical Scrollbox
+
+static const float scroll_speed_vertical = 2500;
+
+static void vertical_scrollbox_scroll_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_scrollbox_data* data = node_data;
+    if (node_input->hovered) {
+        float pixel_change = node_input->mutable_state->scroll_delta * node_input->delta_time * scroll_speed_vertical;
+        data->position -= pixel_change;
+    }
+}
+
+static void vertical_scrollbox_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+    dui_scrollbox_data* data = node_data;
+
+    // Calculate offset
+    int offset_to_align = -data->content_height / 2;  // start offseting from align - hardcoded top
+    int total_offset    = offset_to_align + data->position;
+
+    // No scrolling needed
+    if (data->content_height <= data->display_height) {
+        total_offset  = 0;
+        data->position = 0;
+    } 
+    // Clamp
+    else {
+        int max_offset = (data->content_height - data->display_height) / 2;
+        if (total_offset >  max_offset) {
+            total_offset = max_offset;
+            data->position = max_offset - offset_to_align;
+        }
+        if (total_offset < -max_offset) {
+            total_offset = -max_offset;
+            data->position = -max_offset - offset_to_align;
+        }
+    }
+
+    // Offset transform
+    transform->m[2][1] += 2 * (float)total_offset / resolution_y;
+    data->last_content_offset = total_offset;
+
+    // Calculate handle size
+    float diplayed_portion = data->content_height ? (float)data->display_height / data->content_height : 0.0f;
+    float handle_height    = data->display_height * diplayed_portion;
+    if (handle_height > data->display_height) handle_height = data->display_height;
+}
+
+void vertical_scrollbox_position(void* node_data, dui_node_layout_state* node_state, size_t children_count, dui_node_layout_state** children_states) {
+    // Do not position child, as it's transform is dynamic not static
+    // Ensure static offset is 0
+    dui_overlay_position_func(node_data, node_state, children_count, children_states);
+
+    // Probe height
+    dui_scrollbox_data* data = node_data;
+    data->display_height = node_state->given_height;
+    data->content_height = node_state->measured_height.max;
+}
+
+// Special type to offset content and probe height given and measured
+static const dui_type vertical_scrollbox_scroller_type = {
+    DUI_TYPE_OVERLAY_INIT,
+    .position   = vertical_scrollbox_position,
+    .transform  = vertical_scrollbox_transform_func
+};
+
+static void vertical_scrollbox_handle_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+    dui_scrollbox_data* data = node_data;
+
+    if (!data->content_height) {
+        *transform = (dla_mat2x3){0}; return;
+    }
+
+    // Find handle height as a fraction of displayed height
+    float visible_fraction = (float)data->display_height / data->content_height;
+    if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
+
+    // Find handle height
+    int height = data->display_height * visible_fraction;
+    if (height > data->content_height) height = data->content_height;
+
+    // Position handle
+    int handle_offset = 0;
+    if (visible_fraction >= 1.0f) {
+        handle_offset = 0;
+    }
+    else {
+        // Find current lerp alpha of content between ends
+        float begin = (data->content_height - data->display_height) / 2;
+        float end   = -begin;
+        float alpha = (data->last_content_offset - begin) / (end -  begin);
+
+        // Apply alpha to handle movement
+        begin = -(data->display_height / 2) + (height / 2);
+        end   = -begin;
+        handle_offset = begin + (end - begin) * alpha;
+    }
+
+    // Find vertical scale
+    float sy = (float)height / data->display_height;
+
+    // Apply to transform
+    transform->m[2][1] += 2 * (float)handle_offset / resolution_y;
+    transform->m[0][1] *= sy;
+    transform->m[1][1] *= sy;
+}
+
+static void vertical_scrollbox_handle_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_scrollbox_data* data = node_data;
+
+    // Reset style
+    data->current_handle_style = data->default_style;
+
+    // Set style to hovered if hovered
+    if (node_input->hovered) data->current_handle_style = data->hovered_style;
+
+    // Scroll by draging handle
+    int left_pressed = node_input->mutable_state->left_down;
+    if (left_pressed) {
+        int cursor_y = node_input->mutable_state->position_y;
+        if (data->handle_drag != -1) {                         // Was dragged
+            int pixels_change = data->handle_drag - cursor_y;  // Calculate pixel movement within handle
+            pixels_change *= (data->content_height / data->display_height); // Calculate pixel movement within content
+
+            data->position -= pixels_change;
+            data->current_handle_style = data->pressed_style;
+
+            data->handle_drag = cursor_y;
+            node_input->mutable_state->left_down = 0;   // Consume left click
+        }
+        else if (node_input->hovered) {
+            int c_left_pressed = node_input->mutable_state->left_down;
+            int p_left_pressed = node_input->prev_raw_state->left_down;
+            if (!(c_left_pressed && !p_left_pressed)) return; // Avoid accidental drag, require new click inside handle    
+            data->handle_drag = cursor_y;
+            node_input->mutable_state->left_down = 0;   // Consume left click
+        }
+    }
+    else data->handle_drag = -1;
+}
+
+// Special type to apply handle transform and receive cursor events
+static const dui_type vertical_scrollbox_handle_type = {
+    DUI_TYPE_OVERLAY_INIT,
+    .transform  = vertical_scrollbox_handle_transform_func,
+    .cursor     = vertical_scrollbox_handle_cursor_func
+};
+
+const dui_node vertical_scrollbox_main_body[] = {
+    {   // Scroller Node
+        .type  = &vertical_scrollbox_scroller_type,
+        .flags = dui_flag_instanced_data | dui_flag_ignore_min_height,
+        .child = &vertical_scrollbox_main_body[1],
+        .data_offset = 0, // Scrollbox data itself 
+    },
+    {   // Child
+        .type  = &dui_indirect_type,
+        .flags = dui_flag_instanced_child,
+        .child_offset = offsetof(dui_scrollbox_data, child)
+    }
+};
+
+const dui_node vertical_scrollbox_handle[] = {
+    {   // Require handle width
+        .type  = &dui_sizebox_type,
+        .child = &vertical_scrollbox_handle[1],
+        .data  = &(dui_sizebox_data){
+            .flag  = dui_sizebox_overwrite_all_width,
+            .width = (dui_length){16, 16, 1}
+        },
+    },
+    {   // Handle Node
+        .type  = &vertical_scrollbox_handle_type,
+        .child = &vertical_scrollbox_handle[2],
+        .flags = dui_flag_instanced_data,
+        .data_offset = 0 // Scrollbox data itself
+    },
+    {   // Handle visual
+        .type  = &dui_box_type,
+        .flags = dui_flag_instanced_data | dui_flag_ignore_max_width | dui_flag_ignore_max_height,
+        .data_offset = offsetof(dui_scrollbox_data, current_handle_style)
+    }
+};
+
+const dui_node dui_vertical_scrollbox_structure[] = {
+    {   // Clipbox
+        .type  = &dui_indirect_type,
+        .flags = dui_flag_clipbox | dui_flag_ignore_min_height,
+        .child = &dui_vertical_scrollbox_structure[1],
+    },
+    {   // Handle for scroll input
+        .type  = &dui_cursor_handle_type,
+        .data  = vertical_scrollbox_scroll_cursor_func,
+        .child = &dui_vertical_scrollbox_structure[2]
+    },
+    {   // Scroll Input
+        .type  = &dui_cursor_call_type,
+        .flags = dui_flag_instanced_data,
+        .child = &dui_vertical_scrollbox_structure[3],
+        .data_offset = 0 // Scrollbox data itself
+    },
+    {   // Row content-handle
+        .type  = &dui_row_type,
+        .child = &dui_vertical_scrollbox_structure[4],
+        .data  = &(dui_row_data){
+            .spacing        = (dui_length){0, 16, 1},
+            .vertical_align = 0.5
+        }
+    },
+    {   // Content
+        .type  = &dui_indirect_type,
+        .child = vertical_scrollbox_main_body,
+    },
+    {   // Handle
+        .type  = &dui_indirect_type,
+        .child = vertical_scrollbox_handle,
+    },
+    DUI_ARRAY_END
+};
+
+// Horizontal Scrollbox
+
+// Horizontal Scrollbox
+
+static const float scroll_speed_horizontal = 3500;
+
+static void horizontal_scrollbox_scroll_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_scrollbox_data* data = node_data;
+    if (node_input->hovered) {
+        float pixel_change = node_input->mutable_state->scroll_delta * node_input->delta_time * scroll_speed_horizontal;
+        data->position += pixel_change;
+    }
+}
+
+static void horizontal_scrollbox_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+    dui_scrollbox_data* data = node_data;
+
+    // Calculate offset
+    int offset_to_align = -data->content_height / 2;  // start offseting from align - hardcoded left
+    int total_offset    = offset_to_align + data->position;
+
+    // No scrolling needed
+    if (data->content_height <= data->display_height) {
+        total_offset  = 0;
+        data->position = 0;
+    } 
+    // Clamp
+    else {
+        int max_offset = (data->content_height - data->display_height) / 2;
+        if (total_offset >  max_offset) {
+            total_offset = max_offset;
+            data->position = max_offset - offset_to_align;
+        }
+        if (total_offset < -max_offset) {
+            total_offset = -max_offset;
+            data->position = -max_offset - offset_to_align;
+        }
+    }
+
+    // Offset transform
+    transform->m[2][0] += 2 * (float)total_offset / resolution_x;
+    data->last_content_offset = total_offset;
+
+    // Calculate handle size
+    float diplayed_portion = data->content_height ? (float)data->display_height / data->content_height : 0.0f;
+    float handle_width     = data->display_height * diplayed_portion;
+    if (handle_width > data->display_height) handle_width = data->display_height;
+}
+
+void horizontal_scrollbox_position(void* node_data, dui_node_layout_state* node_state, size_t children_count, dui_node_layout_state** children_states) {
+    // Do not position child, as it's transform is dynamic not static
+    // Ensure static offset is 0
+    dui_overlay_position_func(node_data, node_state, children_count, children_states);
+
+    // Probe width
+    dui_scrollbox_data* data = node_data;
+    data->display_height = node_state->given_width;
+    data->content_height = node_state->measured_width.max;
+}
+
+// Special type to offset content and probe width given and measured
+static const dui_type horizontal_scrollbox_scroller_type = {
+    DUI_TYPE_OVERLAY_INIT,
+    .position   = horizontal_scrollbox_position,
+    .transform  = horizontal_scrollbox_transform_func
+};
+
+static void horizontal_scrollbox_handle_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+    dui_scrollbox_data* data = node_data;
+
+    if (!data->content_height) {
+        *transform = (dla_mat2x3){0}; return;
+    }
+
+    // Find handle width as a fraction of displayed width
+    float visible_fraction = (float)data->display_height / data->content_height;
+    if (visible_fraction > 1.0f) visible_fraction = 1.0f; // clamp
+
+    // Find handle width
+    int width = data->display_height * visible_fraction;
+    if (width > data->content_height) width = data->content_height;
+
+    // Position handle
+    int handle_offset = 0;
+    if (visible_fraction >= 1.0f) {
+        handle_offset = 0;
+    }
+    else {
+        // Find current lerp alpha of content between ends
+        float begin = (data->content_height - data->display_height) / 2;
+        float end   = -begin;
+        float alpha = (data->last_content_offset - begin) / (end -  begin);
+
+        // Apply alpha to handle movement
+        begin = -(data->display_height / 2) + (width / 2);
+        end   = -begin;
+        handle_offset = begin + (end - begin) * alpha;
+    }
+
+    // Find horizontal scale
+    float sx = (float)width / data->display_height;
+
+    // Apply to transform
+    transform->m[2][0] += 2 * (float)handle_offset / resolution_x;
+    transform->m[0][0] *= sx;
+    transform->m[1][0] *= sx;
+}
+
+static void horizontal_scrollbox_handle_cursor_func(void* node_data, dui_node_cursor_input* node_input) {
+    dui_scrollbox_data* data = node_data;
+
+    // Reset style
+    data->current_handle_style = data->default_style;
+
+    // Set style to hovered if hovered
+    if (node_input->hovered) data->current_handle_style = data->hovered_style;
+
+    // Scroll by draging handle
+    int left_pressed = node_input->mutable_state->left_down;
+    if (left_pressed) {
+        int cursor_x = node_input->mutable_state->position_x;
+        if (data->handle_drag != -1) {                         // Was dragged
+            int pixels_change = data->handle_drag - cursor_x;  // Calculate pixel movement within handle
+            pixels_change *= (data->content_height / data->display_height); // Calculate pixel movement within content
+
+            data->position += pixels_change;
+            data->current_handle_style = data->pressed_style;
+
+            data->handle_drag = cursor_x;
+            node_input->mutable_state->left_down = 0;   // Consume left click
+        }
+        else if (node_input->hovered) {
+            int c_left_pressed = node_input->mutable_state->left_down;
+            int p_left_pressed = node_input->prev_raw_state->left_down;
+            if (!(c_left_pressed && !p_left_pressed)) return; // Avoid accidental drag, require new click inside handle    
+            data->handle_drag = cursor_x;
+            node_input->mutable_state->left_down = 0;   // Consume left click
+        }
+    }
+    else data->handle_drag = -1;
+}
+
+// Special type to apply handle transform and receive cursor events
+static const dui_type horizontal_scrollbox_handle_type = {
+    DUI_TYPE_OVERLAY_INIT,
+    .transform  = horizontal_scrollbox_handle_transform_func,
+    .cursor     = horizontal_scrollbox_handle_cursor_func
+};
+
+const dui_node horizontal_scrollbox_main_body[] = {
+    {   // Scroller Node
+        .type  = &horizontal_scrollbox_scroller_type,
+        .flags = dui_flag_instanced_data | dui_flag_ignore_min_width,
+        .child = &horizontal_scrollbox_main_body[1],
+        .data_offset = 0, // Scrollbox data itself 
+    },
+    {   // Child
+        .type  = &dui_indirect_type,
+        .flags = dui_flag_instanced_child,
+        .child_offset = offsetof(dui_scrollbox_data, child)
+    }
+};
+
+const dui_node horizontal_scrollbox_handle[] = {
+    {   // Require handle height
+        .type  = &dui_sizebox_type,
+        .child = &horizontal_scrollbox_handle[1],
+        .data  = &(dui_sizebox_data){
+            .flag   = dui_sizebox_overwrite_all_height,
+            .height = (dui_length){16, 16, 1}
+        },
+    },
+    {   // Handle Node
+        .type  = &horizontal_scrollbox_handle_type,
+        .child = &horizontal_scrollbox_handle[2],
+        .flags = dui_flag_instanced_data,
+        .data_offset = 0 // Scrollbox data itself
+    },
+    {   // Handle visual
+        .type  = &dui_box_type,
+        .flags = dui_flag_instanced_data | dui_flag_ignore_max_width | dui_flag_ignore_max_height,
+        .data_offset = offsetof(dui_scrollbox_data, current_handle_style)
+    }
+};
+
+const dui_node dui_horizontal_scrollbox_structure[] = {
+    {   // Clipbox
+        .type  = &dui_indirect_type,
+        .flags = dui_flag_clipbox | dui_flag_ignore_min_width,
+        .child = &dui_horizontal_scrollbox_structure[1],
+    },
+    {   // Handle for scroll input
+        .type  = &dui_cursor_handle_type,
+        .data  = horizontal_scrollbox_scroll_cursor_func,
+        .child = &dui_horizontal_scrollbox_structure[2]
+    },
+    {   // Scroll Input
+        .type  = &dui_cursor_call_type,
+        .flags = dui_flag_instanced_data,
+        .child = &dui_horizontal_scrollbox_structure[3],
+        .data_offset = 0 // Scrollbox data itself
+    },
+    {   // Column content-handle
+        .type  = &dui_column_type,
+        .child = &dui_horizontal_scrollbox_structure[4],
+        .data  = &(dui_column_data){
+            .spacing          = (dui_length){0, 16, 1},
+            .horizontal_align = 0.5
+        }
+    },
+    {   // Content
+        .type  = &dui_indirect_type,
+        .child = horizontal_scrollbox_main_body,
+    },
+    {   // Handle
+        .type  = &dui_indirect_type,
+        .child = horizontal_scrollbox_handle,
+    },
+    DUI_ARRAY_END
+};
 
 #endif // DEMIURG_USER_INTERFACE_IMPL

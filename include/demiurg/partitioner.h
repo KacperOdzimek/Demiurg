@@ -1,7 +1,7 @@
 /*
 ----------------------------------------------------------------
 Contents
-This file provides partitioner object, allowing performant memory partitioning, with TLSF algorithm.
+This file provides partitioner object, allowing memory partitioning, with TLSF algorithm and linear search fallback.
 
 ----------------------------------------------------------------
 Code info:
@@ -11,11 +11,16 @@ Code info:
 ----------------------------------------------------------------
 Usage
 - Create partitioner object per partitioned memory.
-    Partitioner does only need to know memory size and desired partitions alignment,
-    so it can be used to partition even GPU memory like graphics.h buffers.
+    Partitioner does not make any memory moves, so it can even manage unaccessible memory, like gpu vram.
 - Create partitions with dpr_partitioner_alloc_partition
 - Free partitions with dpr_partitioner_free_partition
 - Partitions are partitioner owned - erasing partitioner frees all partitions.
+- Partitioner can be reallocated without recreating partitions
+    by recreating, with old_partitioner field set in create info
+
+----------------------------------------------------------------
+Notes
+- Partitioner managed memory must be maximally aligned for partitioner to work
 */
 
 #ifndef DEMIURG_PARTITIONER_H
@@ -25,21 +30,25 @@ Usage
 
 // Partitioner Object
 
-typedef struct dpr_partitioner_create_info {
-    // all allocations will be aligned to this amount of bytes, 
-    // both in size and in offset, will be snaped to nearest bigger power of 2
-    size_t  align_bytes;
-    // managed memory size
-    size_t  memory_bytes;
-} dpr_partitioner_create_info;
-
 typedef struct dpr_partitioner dpr_partitioner;
 typedef struct dpr_partition dpr_partition;
 
-dpr_partitioner* dpr_create_partitioner(dpr_partitioner_create_info* info);
+typedef struct dpr_partitioner_create_info {
+    // Total size of the managed memory region.
+    size_t memory_bytes;
+
+    // Optional source partitioner to migrate.
+    // If not NULL, the new partitioner attempts to claim all partitions from
+    // old_partitioner. On success, old_partitioner is destroyed and all
+    // dpr_partition handles remain valid. On failure, old_partitioner is left
+    // unchanged and dpr_create_partitioner() returns NULL.
+    dpr_partitioner* old_partitioner;
+} dpr_partitioner_create_info;
+
+dpr_partitioner* dpr_create_partitioner(const dpr_partitioner_create_info* info);
 void dpr_free_partitioner(dpr_partitioner* partitioner);
 
-dpr_partition* dpr_partitioner_alloc_partition(dpr_partitioner*, size_t required_size);
+dpr_partition* dpr_partitioner_alloc_partition(dpr_partitioner* partitioner, size_t required_size, size_t required_align);
 void dpr_partitioner_free_partition(dpr_partitioner*, dpr_partition*);
 
 // Partition Queries
@@ -55,43 +64,40 @@ size_t dpr_partition_query_size  (dpr_partition*);
 #include <stdint.h>
 
 // ===========================
-// Config
+// Constants
 
-#define MINOR_BINS_COUNT_LOG2 3
+#define MAJOR_BINS_COUNT_SKIPPED 3
+#define MINOR_BINS_COUNT_LOG2    3
+
+// ===========================
+// Auto Constants
+
+#define MAJOR_BINS_COUNT ((sizeof(size_t) * 8) - MAJOR_BINS_COUNT_SKIPPED)
+#define MINOR_BINS_COUNT ((size_t)1 << MINOR_BINS_COUNT_LOG2)
+#define MINIMAL_ALLOC    ((size_t)1 << MAJOR_BINS_COUNT_SKIPPED)
 
 // ===========================
 // Typedefs
 
-typedef struct dpr_partition {
+// Invariant: Partitions have stable pointers, since are heap alloc
+// Invariant: if next_free != self, then partition is free
+// Invariant: Offset is aligned
+struct dpr_partition {
     size_t          size;
     size_t          offset;
-    size_t          adjustment;
     dpr_partition*  next_free;
     dpr_partition*  prev_free;
     dpr_partition*  next_physical;
     dpr_partition*  prev_physical;
-} dpr_partition;
-
-struct dpr_partitioner {
-    // Config
-    size_t          memory_bytes;               // total partitioned memory size
-    size_t          minor_bins_count_log2;      // log2(minor bins count)
-    size_t          major_bins_count;           // count per partitioner
-    size_t          minor_bins_count;           // count per major bin
-    size_t          skipped_major_bins;         // log2(align bytes)
-    size_t          align_bytes;                // memory align
-
-    // State
-    size_t          major_bins_free_bitmap;     // if 1, major bin have an free minor bin
-    size_t*         minor_bins_free_bitmaps;    // major_bins_count array elements
-    dpr_partition** minor_bins_free_partitions; // major_bins_count * minor_bins_count array elements
-    dpr_partition*  physical_first_partition;   // the first physical partition
 };
 
-typedef struct locant {
-    size_t  major_bin_index;
-    size_t  minor_bin_index;
-} locant;
+struct dpr_partitioner {
+    size_t          memory_bytes;
+    size_t          major_bins_free_bitmap;
+    size_t          minor_bins_free_bitmaps[MAJOR_BINS_COUNT];
+    dpr_partition*  minor_bins_free_partitions[MAJOR_BINS_COUNT][MINOR_BINS_COUNT];
+    dpr_partition*  physical_first_partition;
+};
 
 // ===========================
 // Helpers
@@ -125,22 +131,26 @@ static inline void bitmap_set(size_t* bitmap, size_t idx, char val) {
     *bitmap = (val ? (*bitmap | mask) : (*bitmap & (~mask)));
 }
 
-static inline size_t get_flat_minor_bin_index(const dpr_partitioner* partitioner, locant loc) {
-    return loc.major_bin_index * partitioner->minor_bins_count + loc.minor_bin_index;
-}
+// ===========================
+// Indexing
 
-// rounds down the size class, for inserts
+// Free list locant
+typedef struct locant {
+    size_t  major_bin_index;
+    size_t  minor_bin_index;
+} locant;
+
+// Rounds down the size class, to nearest minor bin, for inserts, size cannot be zero, does not account align!
 static inline locant binmap_down(const dpr_partitioner* partitioner, size_t size) {
-    size_t major_bin_idx = bit_scan_msb(size | partitioner->align_bytes);
-
-    size_t log2_subbin_size = (size_t)(major_bin_idx - partitioner->minor_bins_count_log2);
+    size_t major_bin_idx    = bit_scan_msb(size);
+    size_t log2_subbin_size = (size_t)(major_bin_idx - MINOR_BINS_COUNT_LOG2);
     size_t sub_bin_idx      = size >> log2_subbin_size;
 
-    size_t adjusted_major_bin_idx = (size_t)((
-        major_bin_idx - partitioner->skipped_major_bins) + (sub_bin_idx >> partitioner->minor_bins_count_log2)
+    size_t adjusted_major_bin_idx = (size_t)(
+        (major_bin_idx - MAJOR_BINS_COUNT_SKIPPED) + (sub_bin_idx >> MINOR_BINS_COUNT_LOG2)
     );
     
-    size_t adjusted_minor_bin_idx = sub_bin_idx & (partitioner->minor_bins_count - 1);
+    size_t adjusted_minor_bin_idx = sub_bin_idx & (MINOR_BINS_COUNT - 1);
 
     return (locant){
         .major_bin_index = adjusted_major_bin_idx,
@@ -148,20 +158,19 @@ static inline locant binmap_down(const dpr_partitioner* partitioner, size_t size
     };
 }
 
-// rounds up the size class, for find queries
+// Rounds up the size class, to next minor bin, for find queries, size cannot be zero, does not account align!
 static inline locant binmap_up(const dpr_partitioner* partitioner, size_t size) {
-    size_t major_bin_idx = bit_scan_msb(size | partitioner->align_bytes);
-
-    size_t log2_subbin_size   = (size_t)(major_bin_idx - partitioner->minor_bins_count_log2);
-    size_t next_subbin_offset = (((size_t)1) << log2_subbin_size) - 1;
+    size_t major_bin_idx        = bit_scan_msb(size);
+    size_t log2_subbin_size     = (size_t)(major_bin_idx - MINOR_BINS_COUNT_LOG2);
+    size_t next_subbin_offset   = (((size_t)1) << log2_subbin_size) - 1;
 
     size_t rounded     = size + next_subbin_offset;
     size_t sub_bin_idx = rounded >> log2_subbin_size;
 
     size_t adjusted_major_bin_idx = (size_t)(
-        (major_bin_idx - partitioner->skipped_major_bins) + (sub_bin_idx >> partitioner->minor_bins_count_log2)
+        (major_bin_idx - MAJOR_BINS_COUNT_SKIPPED) + (sub_bin_idx >> MINOR_BINS_COUNT_LOG2)
     );
-    size_t adjusted_minor_bin_idx = sub_bin_idx & (partitioner->minor_bins_count - 1);
+    size_t adjusted_minor_bin_idx = sub_bin_idx & (MINOR_BINS_COUNT - 1);
     size_t rounded_size           = rounded & ~next_subbin_offset;
 
     return (locant){
@@ -170,18 +179,24 @@ static inline locant binmap_up(const dpr_partitioner* partitioner, size_t size) 
     };
 }
 
+size_t align_up(size_t value, size_t alignment) {
+    if (alignment == 0) return value;
+    return ((value + alignment - 1) / alignment) * alignment;
+}
+
 // ===========================
 // Partition Operations
 
 static inline int is_partition_free(dpr_partition* partition) {
-    return partition != partition->prev_free;
+    return partition->prev_free != partition;
 }
 
 static inline void mark_partition_used(dpr_partition* partition) {
     partition->prev_free = partition;
+    partition->next_free = NULL;
 }
 
-static inline void free_used_partition(dpr_partition* partition) {
+static inline void mark_partition_free(dpr_partition* partition) {
     partition->prev_free = NULL;
     partition->next_free = NULL;
 }
@@ -189,275 +204,316 @@ static inline void free_used_partition(dpr_partition* partition) {
 // ===========================
 // Partitioner Operations
 
-// ensures partitioner->physical_first_partition is actually first partition
-// must be called on partition after every offset change
-static inline void physical_update_first_partition(dpr_partitioner* partitioner, dpr_partition* partition) {
-    if (partitioner->physical_first_partition->offset >= partition->offset) partitioner->physical_first_partition = partition;
-}
-
-// partition shall be physicaly linked
-// does free linkage
-static inline void free_list_insert_free_partition(dpr_partitioner* partitioner, dpr_partition* partition) {
+// Push partitions onto free list - cannot fail
+// Partitions must be physically linked!
+static inline void push_to_free_list(dpr_partitioner* partitioner, dpr_partition* partition) {
     locant loc = binmap_down(partitioner, partition->size);
-    size_t idx = get_flat_minor_bin_index(partitioner, loc);
 
-    dpr_partition* current = partitioner->minor_bins_free_partitions[idx];
-
-    // insert partition
+    // Make partition new free list head
+    dpr_partition* head = partitioner->minor_bins_free_partitions[loc.major_bin_index][loc.minor_bin_index];
     partition->prev_free = NULL;
-    partition->next_free = current;
-    if (current) current->prev_free = partition;
-    partitioner->minor_bins_free_partitions[idx] = partition;
+    partition->next_free = head;
+    if (head) head->prev_free = partition;
+    partitioner->minor_bins_free_partitions[loc.major_bin_index][loc.minor_bin_index] = partition;
 
-    // mark bins free
+    // Mark bins free
     bitmap_set(&partitioner->major_bins_free_bitmap, loc.major_bin_index, 1);
     bitmap_set(&partitioner->minor_bins_free_bitmaps[loc.major_bin_index], loc.minor_bin_index, 1);
 }
 
-// removes partition from free list given free list locant
-static inline void free_list_remove_free_partition_given_locant(dpr_partitioner* partitioner, dpr_partition* partition, locant loc) {
-    dpr_partition* next = partition->next_free;
-    dpr_partition* prev = partition->prev_free;
-
-    if (next) next->prev_free = prev;
-    if (prev) prev->next_free = next;
-
-    size_t flat_idx = get_flat_minor_bin_index(partitioner, loc);
-
-    // if first and head
-    if (partitioner->minor_bins_free_partitions[flat_idx] == partition && !next) {
-        // mark minor bin used and not free
-        size_t* minor_bins_free_bitmap = &partitioner->minor_bins_free_bitmaps[loc.major_bin_index];
-        bitmap_set(minor_bins_free_bitmap, loc.minor_bin_index, 0);
-
-        // if no minor bin free mark major bin not free
-        if (*minor_bins_free_bitmap == 0) bitmap_set(&partitioner->major_bins_free_bitmap, loc.major_bin_index, 0);
-    }
-
-    if (prev) prev->next_free = next;
-    else      partitioner->minor_bins_free_partitions[flat_idx] = next;
-}
-
-// removes partition from free list
-static inline void free_list_remove_free_partition(dpr_partitioner* partitioner, dpr_partition* partition) {
-    locant loc = binmap_down(partitioner, partition->size);
-    free_list_remove_free_partition_given_locant(partitioner, partition, loc);
-}
-
-// if split_point != 0, partition can be divided at split_point byte (split_point exclusive)
-static inline int physical_prepare_partition_for_use
-(dpr_partitioner* partitioner, dpr_partition* partition, size_t required_size) {
-    // adjust alignment and size
-    size_t aligned_offset; if (partitioner->align_bytes == 0) aligned_offset = partition->offset;
-    else   aligned_offset = ((partition->offset + partitioner->align_bytes - 1) / partitioner->align_bytes) * partitioner->align_bytes;
-
-    size_t offset_adjustment    = aligned_offset - partition->offset;
-    size_t size_with_adjustment = required_size + offset_adjustment;
-
-    // if can be trimmed, split (+ partitioner->align_bytes since trimmed part cannot be lesser than align)
-    if (partition->size >= size_with_adjustment + partitioner->align_bytes) {
-        dpr_partition* new_partition = calloc(1, sizeof(dpr_partition));
-        if (!new_partition) return 0;
-
-        // by definition later than the partion, never physicaly first
-        // dont update physicaly_first_partition
-        *new_partition = (dpr_partition){
-            .size   = partition->size   - size_with_adjustment,
-            .offset = partition->offset + size_with_adjustment
-        };
-
-        // since we insert new partition, relink next to splited partition
-        // (old) -> (new) -> (other)
-        if (partition->next_physical) {
-            new_partition->next_physical = partition->next_physical;
-            partition->next_physical->prev_physical = new_partition;
+// Removes partition from free at locant cannot fail
+static inline void remove_from_free_list(dpr_partitioner* partitioner, dpr_partition* partition) {
+    // Not head
+    if (partition->prev_free) {
+        partition->prev_free->next_free = partition->next_free;
+        if (partition->next_free) {
+            partition->next_free->prev_free = partition->prev_free;
         }
-
-        partition->next_physical     = new_partition;
-        new_partition->prev_physical = partition;
-
-        // update partition size
-        partition->size = size_with_adjustment;
-
-        free_list_insert_free_partition(partitioner, new_partition);
+        return; // Disappeared from free list
     }
-    else if (partition->size < size_with_adjustment) 
-        return 0;
 
-    // update offset
-    partition->adjustment = offset_adjustment;
-    mark_partition_used(partition);
+    // Was head, now the next one is head
+    locant loc = binmap_down(partitioner, partition->size);
+    partitioner->minor_bins_free_partitions[loc.major_bin_index][loc.minor_bin_index] = partition->next_free;
 
-    return 1;
+    // If there was no next, mark free list owning minor bin empty
+    if (!partition->next_free) {
+        bitmap_set(&partitioner->minor_bins_free_bitmaps[loc.major_bin_index], loc.minor_bin_index, 0);
+        bitmap_set(&partitioner->major_bins_free_bitmap, loc.major_bin_index, partitioner->minor_bins_free_bitmaps[loc.major_bin_index] != 0);
+    }
+    else {  // Else remove next node connection
+        partition->next_free->prev_free = NULL;
+    }
 }
 
-// tries to merge freed partition
-// does not update free list pointer
-// therefore partition must not be in free list
-static inline void merge_free_partitions(dpr_partitioner* partitioner, dpr_partition* partition) {
-    // try merging previous
+// Merges neighbour free partitions into this partition
+// Shall be called before inserting partition to free list
+static inline void merge_neighbour_free(dpr_partitioner* partitioner, dpr_partition* partition) {
+    // Try merging previous
     if (partition->prev_physical && is_partition_free(partition->prev_physical)) {
         dpr_partition* prev = partition->prev_physical;
-        free_list_remove_free_partition(partitioner, prev);
+        remove_from_free_list(partitioner, prev);
+        *partition = (dpr_partition){
+            .offset         = prev->offset,
+            .size           = prev->size + partition->size,
+            .prev_physical  = prev->prev_physical,
+            .next_physical  = partition->next_physical
+        };
+        
+        // Change forward connection to removed partition
+        if (prev->prev_physical) {
+            prev->prev_physical->next_physical = partition;
+        }
 
-        partition->offset        = prev->offset;
-        partition->size         += prev->size;
-        partition->prev_physical = prev->prev_physical;
-
-        // undo forward connection to removed partition
-        if (partition->prev_physical && partition->prev_physical->next_physical == prev) {
-            partition->prev_physical->next_physical = partition;
+        // Fix partitioner first partition, since it might have changed
+        if (partitioner->physical_first_partition == prev) {
+            partitioner->physical_first_partition = partition;
         }
         
-        // ensure physical_first_partition pointer is not invalidated on free
-        if (partitioner->physical_first_partition == prev) partitioner->physical_first_partition = partition;
-
         free(prev);
     }
 
-    // try merging following
+    // Try merging next
     if (partition->next_physical && is_partition_free(partition->next_physical)) {
         dpr_partition* next = partition->next_physical;
-        free_list_remove_free_partition(partitioner, next);
+        remove_from_free_list(partitioner, next);
+        *partition = (dpr_partition){
+            .offset         = partition->offset,
+            .size           = next->size + partition->size,
+            .prev_physical  = partition->prev_physical,
+            .next_physical  = next->next_physical
+        };
 
-        partition->size         += next->size;
-        partition->next_physical = next->next_physical;
-
-        // undo backward connection to removed partition
-        if (partition->next_physical && partition->next_physical->prev_physical == next) {
-            partition->next_physical->prev_physical = partition;
+        // Change backward connection to removed partition
+        if (next->next_physical) {
+            next->next_physical->prev_physical = partition;
         }
 
         free(next);
     }
-
-    // update first partition
-    physical_update_first_partition(partitioner, partition);
 }
 
-// tries to find suitable free partition
-// returns non zero at success
-static inline int find_free_partition_for_size(dpr_partitioner* partitioner, size_t size, locant* loc_out) {
-    locant loc = binmap_up(partitioner, size);
-
+// Tries to find suitable free partition
+// returns not NULL partition at success
+static inline dpr_partition* find_free_partition_for_size(dpr_partitioner* partitioner, size_t size, size_t align) {
+    // Try to find suitable bins O(1)
+    // Since we are looking for size + align, found bin can always be trimmed so offset is aligned
+    locant loc = binmap_up(partitioner, size + align);
     size_t minor_bins_bitmap = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];
     minor_bins_bitmap &= (~((size_t)0) << loc.minor_bin_index); // mask-out all minor bins to small
+    if (minor_bins_bitmap == 0) goto _find_higher_major;        // no free minor bin inside major bin
+    loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
+    return partitioner->minor_bins_free_partitions[loc.major_bin_index][loc.minor_bin_index];
 
-    if (minor_bins_bitmap == 0) {                                                       // no free minor bin inside major bin
-        size_t major_bins_bitmap = partitioner->major_bins_free_bitmap;
-        major_bins_bitmap &= (~((size_t)0) << (loc.major_bin_index + 1));               // mask-out all bitmap smaller than first found
-        if (major_bins_bitmap == 0) return 0;                                           // no free major row either; failure
-        loc.major_bin_index = bit_scan_lsb(major_bins_bitmap);                          // take first greater major bitmap
-        minor_bins_bitmap = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];  // update minor bins bitmap var
+    // Allocation within our major bin bin failed
+    // Try allocation within higher major bin, still O(1),
+    // Keeps searching for size + align
+_find_higher_major: {
+    size_t major_bins_bitmap = partitioner->major_bins_free_bitmap;
+    major_bins_bitmap &= (~((size_t)0) << (loc.major_bin_index + 1));   // Mask-out all bitmap smaller than first found
+    if (major_bins_bitmap == 0) goto _fallback_down_bin;                // No free major row either
+    loc.major_bin_index = bit_scan_lsb(major_bins_bitmap);              // take first greater major bitmap
+    minor_bins_bitmap   = partitioner->minor_bins_free_bitmaps[loc.major_bin_index];
+    loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
+    return partitioner->minor_bins_free_partitions[loc.major_bin_index][loc.minor_bin_index];
+}
+    // There is no partition bigger or equal to size + align
+    // We can still check partitions of size >= than required, if they can be aligned
+    // This is O(free partitions) search
+_fallback_down_bin: {
+    for (size_t major = 0; major <= MAJOR_BINS_COUNT; major++) {
+        if (!bitmap_get(partitioner->major_bins_free_bitmap, major)) continue; // Skip entire empty major bin
+        for (size_t minor = 0; minor < MINOR_BINS_COUNT; minor++) {
+            if (!bitmap_get(partitioner->minor_bins_free_bitmaps[major], minor)) continue;  // Skip empty minor bin
+            dpr_partition* part = partitioner->minor_bins_free_partitions[major][minor];
+            while (part) {
+                size_t aligned_offset = align_up(part->offset, align);
+                size_t padding = aligned_offset - part->offset;
+                if (part->size < padding || (part->size - padding) < size) {part = part->next_free; continue;}
+                return part;
+            }
+        }
     }
 
-    loc.minor_bin_index = bit_scan_lsb(minor_bins_bitmap);
+    return NULL; // Truly, there is no way
+}
+}
 
-    *loc_out = loc;
+// Given partition and it required params, trims both align padding and extra space
+// May only fail if new partitions fail to allocate - then partition is untouched and shall return to free list
+static inline int trim_partition(dpr_partitioner* partitioner, dpr_partition* partition, size_t size, size_t align) {
+    size_t final_offset = align_up(partition->offset, align);
+
+    // Find trim bytes
+    size_t trim_begin = final_offset - partition->offset;
+    size_t trim_end   = (partition->size - trim_begin) - size;
+
+    // Allocate partitions
+    dpr_partition* begin = NULL, *end = NULL;
+    if (trim_begin >= MINIMAL_ALLOC) {
+        begin = malloc(sizeof(dpr_partition));
+        if (!begin) return 0;
+    }
+    if (trim_end >= MINIMAL_ALLOC) {
+        end = malloc(sizeof(dpr_partition));
+        if (!end) {free(begin); return 0;}
+    }
+
+    // Setup and physically link begin partition
+    if (begin) {
+        *begin = (dpr_partition){
+            .size           = trim_begin,
+            .offset         = partition->offset,
+            .next_physical  = partition,
+            .prev_physical  = partition->prev_physical
+        };
+        mark_partition_free(begin);
+        if (partition->prev_physical) partition->prev_physical->next_physical = begin;
+    }
+
+    // Setup and physically link end partition
+    if (end) {
+        *end = (dpr_partition){
+            .size           = trim_end,
+            .offset         = final_offset + size,
+            .next_physical  = partition->next_physical,
+            .prev_physical  = partition
+        };
+        mark_partition_free(end);
+        if (partition->next_physical) partition->next_physical->prev_physical = end;
+    }
+
+    // Update partition
+    *partition = (dpr_partition){
+        .size           = size,
+        .offset         = final_offset,
+        .next_physical  = end   ? end   : partition->next_physical,
+        .prev_physical  = begin ? begin : partition->prev_physical,
+    };
+
+    // Push free partitions
+    if (begin) push_to_free_list(partitioner, begin);
+    if (end)   push_to_free_list(partitioner, end);
+
+    // Since new partition was emited at front, check if it is not first
+    if (begin && partitioner->physical_first_partition->offset >= begin->offset) {
+        partitioner->physical_first_partition = begin;
+    }
+
+    // Success
     return 1;
 }
 
 // ===========================
-// API Implementation
+// Partitioner Creation
 
-dpr_partitioner* dpr_create_partitioner(dpr_partitioner_create_info* info) {
-    if (info->memory_bytes == 0) return NULL;
+dpr_partitioner* create_partitioner_brand_new(const dpr_partitioner_create_info* info) {
+    dpr_partitioner* partitioner = malloc(sizeof(dpr_partitioner));
+    dpr_partition*   partition   = malloc(sizeof(dpr_partition));
 
-    size_t platform_bits = sizeof(size_t) * 8;
-
-    // Swap align to power of two
-    size_t align_power_of_two   = 0;
-    size_t real_align           = 1;
-    while (info->align_bytes > real_align) {
-        real_align *= 2; align_power_of_two++;
-        if (align_power_of_two > platform_bits) return NULL;
-    }
-
-    // Create objects
-    dpr_partitioner* partitioner = calloc(1, sizeof(dpr_partitioner));
-    dpr_partition*   partition   = calloc(1, sizeof(dpr_partition));
     if (!partitioner || !partition) {
-        free(partitioner); free(partition);
-        return NULL;
+        free(partitioner); free(partition); return NULL;
     }
 
-    *partition = (dpr_partition){
-        .size = info->memory_bytes
-    };
+    *partition   = (dpr_partition)  {.offset = 0, .size = info->memory_bytes}; mark_partition_free(partition);
+    *partitioner = (dpr_partitioner){.memory_bytes = info->memory_bytes, .physical_first_partition = partition};
+    push_to_free_list(partitioner, partition);
 
-    *partitioner = (dpr_partitioner){
-        .memory_bytes               = info->memory_bytes,
-        .minor_bins_count_log2      = MINOR_BINS_COUNT_LOG2,
-        .major_bins_count           = (platform_bits - align_power_of_two),
-        .minor_bins_count           = (size_t)1 << MINOR_BINS_COUNT_LOG2,
-        .skipped_major_bins         = align_power_of_two,
-        .align_bytes                = real_align,
-        .major_bins_free_bitmap     = 0,
-        .physical_first_partition   = partition,
-    };
-
-    partitioner->minor_bins_free_bitmaps    = calloc(partitioner->major_bins_count, sizeof(size_t));
-    partitioner->minor_bins_free_partitions = calloc(
-        partitioner->major_bins_count * partitioner->minor_bins_count, sizeof(dpr_partition*)
-    );
-
-    // Check allocations
-    if (!partitioner->minor_bins_free_bitmaps || !partitioner->minor_bins_free_partitions) {
-        free(partitioner->minor_bins_free_bitmaps); free(partitioner->minor_bins_free_partitions);
-        free(partitioner); free(partition);
-        return NULL;
-    }
-
-    // Insert free partition
-    free_list_insert_free_partition(partitioner, partition);
-    
     return partitioner;
+}
+
+dpr_partitioner* create_partitioner_from_old(const dpr_partitioner_create_info* info) {
+    if (info->memory_bytes < info->old_partitioner->memory_bytes)  return NULL;
+    if (info->memory_bytes == info->old_partitioner->memory_bytes) return info->old_partitioner;
+
+    dpr_partition* last_part = info->old_partitioner->physical_first_partition;
+    while (last_part->next_physical) last_part = last_part->next_physical;
+
+    // Add partition with extra space at the end
+    dpr_partition* extra_space = malloc(sizeof(dpr_partition));
+    if (!extra_space) return NULL;
+    *extra_space = (dpr_partition){
+        .size           = info->memory_bytes - info->old_partitioner->memory_bytes,
+        .offset         = last_part->offset + last_part->size,
+        .prev_physical  = last_part,
+        .next_physical  = NULL
+    };
+    last_part->next_physical = extra_space;
+    dpr_partitioner_free_partition(info->old_partitioner, extra_space);
+
+    // Update partitioner info
+    info->old_partitioner->memory_bytes = info->memory_bytes;
+
+    return info->old_partitioner;
+}
+
+// ===========================
+// API
+
+dpr_partitioner* dpr_create_partitioner(const dpr_partitioner_create_info* info) {
+    if (info->memory_bytes < MINIMAL_ALLOC) return NULL;
+    if (info->old_partitioner) return create_partitioner_from_old(info);
+    return create_partitioner_brand_new(info);
 }
 
 void dpr_free_partitioner(dpr_partitioner* partitioner) {
     if (!partitioner) return;
-
     dpr_partition* part = partitioner->physical_first_partition;
     while (part) { 
         dpr_partition* next = part->next_physical; 
         free(part); part = next;
     }
-
-    free(partitioner->minor_bins_free_bitmaps);
-    free(partitioner->minor_bins_free_partitions);
     free(partitioner);
 }
 
-dpr_partition* dpr_partitioner_alloc_partition(dpr_partitioner* partitioner, size_t required_size) {
-    if (required_size == 0 || required_size > partitioner->memory_bytes) return NULL;
+dpr_partition* dpr_partitioner_alloc_partition(dpr_partitioner* partitioner, size_t required_size, size_t required_align) {
+    if (required_size == 0 || required_size > partitioner->memory_bytes) return NULL; dpr_partition* part = NULL;
 
-    locant loc; if (!find_free_partition_for_size(partitioner, required_size, &loc)) return NULL;
-    size_t flat_idx = get_flat_minor_bin_index(partitioner, loc);
+    // Apply minimum allocation size
+    if (required_size < MINIMAL_ALLOC) required_size = MINIMAL_ALLOC;
 
-    dpr_partition* partition = partitioner->minor_bins_free_partitions[flat_idx];
-    free_list_remove_free_partition_given_locant(partitioner, partition, loc);
+    // Check only first
+    if (required_align >= partitioner->memory_bytes) {
+        if (!is_partition_free(partitioner->physical_first_partition))   return NULL;
+        if (partitioner->physical_first_partition->size < required_size) return NULL;
+        part = partitioner->physical_first_partition; goto _claim_partition;
+    }
 
-    // try to prepare partition for use, if failed back to free list
-    if (!physical_prepare_partition_for_use(partitioner, partition, required_size)) {
-        free_list_insert_free_partition(partitioner, partition); return NULL;
-    };
+    // Find partition
+    part = find_free_partition_for_size(partitioner, required_size, required_align);
+    if (!part) return NULL; // No suitable free partition
 
-    // since new node was created, update first partition
-    physical_update_first_partition(partitioner, partition);
-    return partition;
+_claim_partition:
+    // As is no longer free
+    remove_from_free_list(partitioner, part);
+
+    // Trim partition
+    if (!trim_partition(partitioner, part, required_size, required_align)) {
+        push_to_free_list(partitioner, part); return NULL;
+    }
+
+    // Mark used
+    mark_partition_used(part);
+
+    // Return partition
+    return part;
 }
 
 void dpr_partitioner_free_partition(dpr_partitioner* partitioner, dpr_partition* partition) {
-    free_used_partition(partition);
-    merge_free_partitions(partitioner, partition);
-    free_list_insert_free_partition(partitioner, partition);
+    if (!partition) return;
+    mark_partition_free(partition);
+    merge_neighbour_free(partitioner, partition);
+    push_to_free_list(partitioner, partition);
 }
 
+// Partition Queries
+
 size_t dpr_partition_query_offset(dpr_partition* partition) {
-    return partition->offset + partition->adjustment;
+    return partition->offset;
 }
-size_t dpr_partition_query_size(dpr_partition* partition) {
-    return partition->size - partition->adjustment;
+
+size_t dpr_partition_query_size  (dpr_partition* partition) {
+    return partition->size;
 }
 
 #endif

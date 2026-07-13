@@ -48,10 +48,10 @@ typedef struct { float x, y, z;    } dla_vec3;
 typedef struct { float x, y, z, w; } dla_vec4;
  
 // Column-major: m[col][row]
-typedef struct { float m[2][2]; } dla_mat2x2;
-typedef struct { float m[3][2]; } dla_mat2x3;
-typedef struct { float m[3][3]; } dla_mat3x3;
-typedef struct { float m[4][4]; } dla_mat4x4;
+typedef struct { float m[2][2]; }   dla_mat2x2;
+typedef struct { float m[3][2]; }   dla_mat2x3;
+typedef struct { float m[3][3]; }   dla_mat3x3;
+typedef struct { float m[4][4]; }   dla_mat4x4;
  
 // ===========================
 // dla_vec2

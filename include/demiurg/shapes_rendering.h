@@ -15,17 +15,11 @@ Code info:
 Usage
 
 - Create dshp_shared object - it contains shared read-only objects for rendering.
-    Create one per hardware. In create info, link shaders. (compile provided default_shader_source).
-- Create dshp_frames - it contains per frame geometry buffers you record with
-    drawing methods. Create one per hardware.
-- Then you can draw whatever You want it given frame in flight context
+    Create one per hardware. In create info, link shaders (provided in shader directory).
+- Create dshp_frames - it contains per frame geometry buffers you record with drawing methods.
+- Use commands to draw shapes
 - Upload data to gpu with dshp_upload
 - Render with graphics command dshp_gcmd_render
-
-----------------------------------------------------------------
-Notes
-- The implementation has misnamed struct gpu_instance which should be something like
-    struct gpu_triangle_render_info, but I am not going to change that now, it is 3 am.
 */
 
 #ifndef DEMIURG_SHAPES_H
@@ -37,11 +31,9 @@ Notes
 // Shapes Rendering Shared Object
 
 typedef struct dshp_shared_create_info {
-    dgx_render_target_layout*   pipeline_render_target_layout;
-    const char*                 pipeline_vertex_shader_source_code;
-    uint32_t                    pipeline_vertex_shader_source_size;
-    const char*                 pipeline_pixel_shader_source_code;
-    uint32_t                    pipeline_pixel_shader_source_size;
+    dgx_pipeline_attachment_state   attachment_state;
+    dgx_shader_create_info          vertex_shader_info;
+    dgx_shader_create_info          pixel_shader_info;
 } dshp_shared_create_info;
 
 typedef struct dshp_shared dshp_shared;
@@ -52,7 +44,7 @@ void dshp_free_shared(dshp_shared*);
 
 typedef struct dshp_frames_create_info {
     dshp_shared*    shared;
-    uint32_t        frames_in_flight_count;
+    uint32_t        count;
 } dshp_frames_create_info;
 
 typedef struct dshp_frames dshp_frames;
@@ -61,8 +53,8 @@ void dshp_free_frames(dshp_frames*);
 
 // shorthand not to pass frame in flight to every function
 typedef struct dshp_context {
-    dshp_frames*    contextes;
-    uint32_t        frame_in_flight;
+    dshp_frames*    frames;
+    uint32_t        index;
     float           r, g, b, a;
     float           line_thickness;
 } dshp_context;
@@ -71,31 +63,27 @@ typedef struct dshp_context {
 
 // resets draw requests in context
 void dshp_reset(
-    dshp_context* context,
-    int clear_geometry, 
-    int clear_state
+    dshp_context* context
 );
 
-// uploads draw requests to gpu
-void dshp_upload(
-    dgx_command_list*   command_list,
-    dgx_hardware_queue* queue_for_uploads,
-    dshp_context* context,
+// Uploads draw requests to gpu
+// Returns non-zero at success
+int dshp_upload(
+    dshp_context*       context,
+    uint8_t             transfer_work_group_index,
+    uint8_t             command_list_allocator_index,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    dgx_cpu_signal*     upload_finished_cpu,
-    dgx_gpu_signal*     upload_finished_gpu
+    dgx_timeline*       signal_timeline,
+    uint64_t            signal_value
 );
 
 // command to draw from context
 // needs to be re recorded every frame as amount of
 // drawn primitives may change
 // call with render target bound, viewport and scissors set
-void dshp_gcmd_render(
-    dgx_command_list*   target,
-    dshp_context* context
-);
+void dshp_gcmd_render(dshp_context* context);
 
 // Shapes Draw Function
 
@@ -142,79 +130,36 @@ void dshp_circle(
     Config
 */
 
-static dgx_vertex_input_attribute_info vertex_attributes[] = {
-    {   // position : per vertex
-        .binding    = 0,
-        .location   = 0,
-        .offset     = 0,
-        .type       = dgx_data_type_vec2f32
-    },
-};
-static const uint64_t gpu_vertex_sizeof = 2 * 4;
-
-static dgx_vertex_input_binding_info vertex_bindings[] = {
-    {
-        .binding    = 0,
-        .input_rate = dgx_vertex_attribute_input_rate_per_vertex,
-        .stride     = gpu_vertex_sizeof
-    }
-};
-
-static dgx_descriptor_binding descriptor_bindings[] = {
-    {   // the instances buffer
-        .binding = 0,
-        .count   = 1,
-        .stages  = dgx_shader_stage_pixel,
-        .type    = dgx_descriptor_binding_type_storage_buffer
-    },
-};
-
 typedef struct gpu_instance {
-    float r, g, b, a;
-    float center_x, center_y;
-    float radius;
+    float x0, y0;       // First  vertex pos
+    float x1, y1;       // Second vertex pos
+    float x2, y2;       // Third  vertex pos
+    float r, g, b, a;   // RGBA color
+    float cx, cy;       // Bounding circle center
+    float radius;       // Circle radius
+    float pad[3];
 } gpu_instance;
 
-static uint64_t initial_vertices_buffer_cap  = 128 * 3 * gpu_vertex_sizeof;
-static uint64_t initial_instances_buffer_cap = 128 * sizeof(gpu_instance);
+typedef struct gpu_constants {
+    uint32_t buffer_index;
+} gpu_constants;
 
 /*
     Shared
 */
 
 struct dshp_shared {
-    dgx_hardware*                       owning_hardware;
-    dgx_descriptor_layout*              descriptor_layout;
-    dgx_pipeline_descriptors_layout*    pipeline_layout;
-    dgx_pipeline*                       pipeline;
+    dgx_hardware*   owning_hardware;
+    dgx_pipeline*   pipeline;
 };
 
 dshp_shared* dshp_create_shared(dgx_hardware* hardware, const dshp_shared_create_info* info) {
     dshp_shared* shared = calloc(1, sizeof(dshp_shared)); if (!shared) return NULL;
     shared->owning_hardware = hardware;
 
-    // Descriptor Layout
-    shared->descriptor_layout = dgx_create_descriptor_layout(hardware, &(dgx_descriptor_layout_create_info){
-        .bindings_count = sizeof(descriptor_bindings) / sizeof(dgx_descriptor_binding),
-        .bindings = descriptor_bindings
-    }); if (!shared->descriptor_layout) goto _fail;
-
-    // Pipeline Layout
-    shared->pipeline_layout = dgx_create_pipeline_descriptors_layout(hardware, &(dgx_pipeline_descriptors_layout_create_info){
-        .layouts_count = 1, .layouts = &shared->descriptor_layout
-    }); if (!shared->pipeline_layout) goto _fail;
-    
-
     // Pipeline Shaders
-    dgx_shader* vertex_shader = dgx_create_shader(shared->owning_hardware, &(dgx_shader_create_info){
-        .source_size = info->pipeline_vertex_shader_source_size,
-        .source_code = info->pipeline_vertex_shader_source_code
-    });
-
-    dgx_shader* pixel_shader = dgx_create_shader(shared->owning_hardware, &(dgx_shader_create_info){
-        .source_size = info->pipeline_pixel_shader_source_size,
-        .source_code = info->pipeline_pixel_shader_source_code
-    });
+    dgx_shader* vertex_shader = dgx_create_shader(shared->owning_hardware, &info->vertex_shader_info);
+    dgx_shader* pixel_shader  = dgx_create_shader(shared->owning_hardware, &info->pixel_shader_info);
 
     if (!vertex_shader || !pixel_shader) {
         dgx_free_shader(vertex_shader);
@@ -222,47 +167,35 @@ dshp_shared* dshp_create_shared(dgx_hardware* hardware, const dshp_shared_create
         goto _fail;
     }
 
-    dgx_pipeline_create_info pip_create_info = {
-        .render_target_layout   = info->pipeline_render_target_layout,
-        .descriptor_layout      = shared->pipeline_layout,
-
-        .vertex_layout          = {
-            .attributes_count   = sizeof(vertex_attributes) / sizeof(dgx_vertex_input_attribute_info),
-            .attributes         = vertex_attributes,
-            .bindings_count     = sizeof(vertex_bindings) / sizeof(dgx_vertex_input_binding_info),
-            .bindings           = vertex_bindings,
-        },
-
+    shared->pipeline = dgx_create_pipeline(shared->owning_hardware, &(dgx_pipeline_create_info){
+        .attachment_state = info->attachment_state,
         .shader_stages  = {
-            .vertex = vertex_shader,
-            .pixel  = pixel_shader
+            .shaders[dgx_shader_stage_vertex]   = vertex_shader,
+            .constants[dgx_shader_stage_vertex] = sizeof(gpu_constants),
+            .shaders[dgx_shader_stage_pixel]    = pixel_shader,
+            .constants[dgx_shader_stage_pixel]  = sizeof(gpu_constants)
         },
-
-        .input_assembly = {
+        .input_assembler_state = {
             .topology = dgx_primitive_topology_triangle_list
         },
-
-        .rasterizer = {
+        .rasterizer_state = {
             .scissor_enable     = 0,
             .depth_clamp_enable = 0,
             .fill_mode          = dgx_fill_mode_solid,
             .cull_mode          = dgx_cull_mode_none
         },
-
-        .blend = {
+        .blend_state = {
             .blend_enable   = 1,
             .blend_op       = dgx_blend_op_add,
             .src_factor     = dgx_blend_factor_src_alpha,
             .dst_factor     = dgx_blend_factor_one_minus_src_alpha,
         },
-
-        .depth_stencil = {
+        .depth_stencil_state = {
             .depth_test_enable      = 0,
             .depth_write_enable     = 0,
             .stencil_test_enable    = 0
         }
-    };
-    shared->pipeline = dgx_create_pipeline(shared->owning_hardware, &pip_create_info);
+    });
 
     dgx_free_shader(vertex_shader);
     dgx_free_shader(pixel_shader);
@@ -278,50 +211,7 @@ _fail:
 void dshp_free_shared(dshp_shared* shared) {
     if (!shared) return;
     dgx_free_pipeline(shared->pipeline);
-    dgx_free_pipeline_descriptors_layout(shared->pipeline_layout);
-    dgx_free_descriptor_layout(shared->descriptor_layout);
     free(shared);
-}
-
-/*
-    An Arena
-*/
-
-// arena metrics in bytes
-// will be used to hold either only floats or only gpu_instances
-// align okay then
-typedef struct arena {
-    uint64_t    position;
-    uint64_t    capacity;
-    char*       data;
-} arena;
-
-static inline arena alloc_arena(uint64_t cap_bytes) {
-    return (arena){
-        .position   = 0,
-        .capacity   = cap_bytes,
-        .data       = malloc(cap_bytes)
-    };
-}
-
-static inline void free_arena(arena a) {
-    free(a.data);
-}
-
-// 1 at success, 0 at failure
-static inline int ensure_arena_free_space(arena* a, uint64_t req_space) {
-    uint64_t left_space = a->capacity - a->position;
-    if (left_space < req_space) {
-        // try to realloc
-        uint64_t new_cap = a->capacity;
-        while (new_cap - a->position < req_space) new_cap *= 2;
-        char* new_data = realloc(a->data, new_cap);
-        if (!new_data) return 0; // realloc failed
-
-        a->capacity = new_cap;
-        a->data     = new_data;
-    }
-    return 1;
 }
 
 /*
@@ -329,284 +219,202 @@ static inline int ensure_arena_free_space(arena* a, uint64_t req_space) {
 */
 
 typedef struct single_frame {
-    // drawing data
-    arena           vertex_arena;
-    arena           instance_arena;
-    uint32_t        triangles_to_draw;
-
-    // gpu
-    dgx_descriptor* assigned_descriptor;
-    dgx_buffer*     instances_buffer;
-    dgx_buffer*     vertices_buffer;
+    uint64_t            position;       // Arena position in gpu instances
+    uint64_t            capacity;       // Arena capacity in gpu instances
+    gpu_instance*       arena;          // Arena data
+    uint32_t            to_draw;        // GPU instances to draw
+    dgx_buffer*         buffer;         // GPU instances buffer
+    uint32_t            bind;           // Buffer bind point
+    dgx_command_list*   upload_list;    // List used to upload instances
 } single_frame;
 
 struct dshp_frames {
-    dgx_hardware*               owning_hardware;
-    dshp_shared*                owning_shared;
-    dgx_descriptor_allocator*   descriptor_allocator;
-    uint32_t                    in_flight;
-    single_frame*               frames;
+    dgx_hardware*   owning_hardware;
+    dshp_shared*    owning_shared;
+    uint32_t        in_flight;
+    single_frame*   frames;
 };
-
-static dgx_buffer* create_buffer(dgx_hardware* hardware, uint64_t size_bytes, dgx_buffer_usage usage) {
-    dgx_buffer_create_info vb_create_info = {
-        .usage              = usage,
-        .size_bytes         = size_bytes,
-        .memory_access      = dgx_memory_access_allow_staging_memory_and_buffer_copy_commands_for_write,
-        .memory_strategy    = dgx_memory_allocation_strategy_paged
-    };
-    return dgx_create_buffer(hardware, &vb_create_info);
-}
-
-static void link_frame_descriptor_with_instance_buffer(dgx_hardware* hardware, single_frame* frame) {
-    dgx_descriptor_buffer_write_info binfo = {
-        .buffer = frame->instances_buffer,
-        .offset = 0,
-        .length = dgx_buffer_get_size_bytes(frame->instances_buffer)
-    };
-
-    dgx_descriptor_write_info write = {
-        .descriptor             = frame->assigned_descriptor,
-        .binding_type           = dgx_descriptor_binding_type_storage_buffer,
-        .binding_index          = 0,
-        .array_element_index    = 0,
-        .array_elements_count   = 1,
-        .infos.for_buffers      = &binfo
-    };
-
-    dgx_descriptors_write(hardware, 1, &write);
-}
 
 dshp_frames* dshp_create_frames(dgx_hardware* hardware, const dshp_frames_create_info* info) {
     if (!hardware || !info->shared) goto _fail;
 
-    dshp_frames* contextes = calloc(1, sizeof(dshp_frames)); 
-    if (!contextes) goto _fail;
+    dshp_frames* frames = calloc(1, sizeof(dshp_frames)); 
+    if (!frames) goto _fail;
 
-    *contextes = (dshp_frames) {
-        .owning_hardware    = hardware,
-        .owning_shared      = info->shared,
-        .in_flight          = info->frames_in_flight_count
+    *frames = (dshp_frames) {
+        .owning_hardware = hardware,
+        .owning_shared   = info->shared,
+        .in_flight       = info->count
     };
-
-    // Descriptors Allocator
-    contextes->descriptor_allocator = dgx_create_descriptor_allocator(hardware, &(dgx_descriptor_allocator_create_info){
-        .descriptor_layout = info->shared->descriptor_layout,
-        .max_descriptors_allocated = info->frames_in_flight_count
-    }); if (!contextes->descriptor_allocator) goto _fail;
     
     // Frames
-    contextes->frames = calloc(info->frames_in_flight_count, sizeof(single_frame));
-    if (!contextes->frames) goto _fail;
-    for (uint32_t i = 0; i < info->frames_in_flight_count; i++) {
-        single_frame* frame = &contextes->frames[i];
+    frames->frames = calloc(info->count, sizeof(single_frame));
+    if (!frames->frames) goto _fail;
 
-        *frame = (single_frame){
-            .vertex_arena   = alloc_arena(initial_vertices_buffer_cap),
-            .instance_arena = alloc_arena(initial_instances_buffer_cap),
-            
-            .vertices_buffer     = create_buffer(hardware, initial_vertices_buffer_cap,  dgx_buffer_usage_vertex),
-            .instances_buffer    = create_buffer(hardware, initial_instances_buffer_cap, dgx_buffer_usage_storage),
-
-            .assigned_descriptor = dgx_descriptor_allocator_alloc_descriptor(contextes->descriptor_allocator)
-        };
-
-        if (
-            !frame->vertex_arena.data   || 
-            !frame->instance_arena.data ||
-            !frame->vertices_buffer     || 
-            !frame->instances_buffer    || 
-            !frame->assigned_descriptor
-        ) goto _fail;
-        
-        link_frame_descriptor_with_instance_buffer(hardware, frame);
-    }
-
-    return contextes;
+    return frames;
 
 _fail:
-    dshp_free_frames(contextes);
+    dshp_free_frames(frames);
     return NULL;
 }
 
-void dshp_free_frames(dshp_frames* contextes) {
-    if (!contextes) return;
-
-    for (uint32_t i = 0; i < contextes->in_flight; i++) {
-        dgx_free_buffer(contextes->frames[i].vertices_buffer);
-        dgx_free_buffer(contextes->frames[i].instances_buffer);
-        free_arena(contextes->frames[i].vertex_arena);
-        free_arena(contextes->frames[i].instance_arena);
-        // descriptors free with allocator
+void dshp_free_frames(dshp_frames* frames) {
+    if (!frames) return;
+    for (uint32_t i = 0; i < frames->in_flight; i++) {
+        dgx_free_buffer(frames->frames[i].buffer);
+        dgx_free_command_list(frames->frames[i].upload_list);
+        free(frames->frames[i].arena);
     }
-
-    dgx_free_descriptor_allocator(contextes->descriptor_allocator);
-    free(contextes->frames);
-    free(contextes);
+    free(frames->frames);
+    free(frames);
 }
 
-void dshp_reset(dshp_context* context, int clear_geometry, int clear_state) {
-    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
-
-    if (clear_geometry) {
-        frame->vertex_arena.position = 0;
-        frame->instance_arena.position = 0;
-        frame->triangles_to_draw = 0;
-    }
-
-    if (clear_state) {
-        context->r = 1; context->g = 1; context->b = 1; context->a = 1;
-        context->line_thickness = 0.01;
-    }
+void dshp_reset(dshp_context* context) {
+    single_frame* frame = &context->frames->frames[context->index];
+    frame->position = 0;
 }
 
-// returns bytes of data that can be copied
-// buffer at *buffer may be recreated due to call
-static uint32_t ensure_buffer_size_pre_upload
-(dgx_hardware* hardware, dgx_buffer** buffer, arena* a, dgx_buffer_usage buffer_usage, int* was_buffer_recreated) {
-    *was_buffer_recreated = 0;
+typedef struct upload_params {
+    dgx_staging_memory* staging;
+    dgx_buffer*         buffer;
+    uint64_t            uploaded;
+    uint64_t            upload;
+} upload_params;
 
-    if (dgx_buffer_get_size_bytes(*buffer) < a->position) {
-        dgx_buffer* new_buffer = create_buffer(hardware, a->capacity, buffer_usage);
-
-        // stick to old buffer, since creation of new failed
-        if (!new_buffer) return dgx_buffer_get_size_bytes(*buffer);
-        else {
-            *was_buffer_recreated = 1;
-            dgx_free_buffer(*buffer);
-            *buffer = new_buffer;
-        }
-    }
-
-    return a->position;
+static void upload_record(void* raw_params) {
+    upload_params* params = raw_params;
+    dgx_tcmd_copy_staging_memory_to_buffer(
+        params->staging, params->buffer,
+        0, params->uploaded * sizeof(gpu_instance), params->upload * sizeof(gpu_instance)
+    );
 }
 
-void dshp_upload(
-    dgx_command_list*   command_list,
-    dgx_hardware_queue* queue_for_uploads,
-    dshp_context* context,
+static uint64_t min_u64(uint64_t l, uint64_t r) {
+    return l < r ? l : r;
+}
+
+int dshp_upload(
+    dshp_context*       context,
+    uint8_t             transfer_work_group_index,
+    uint8_t             command_list_allocator_index,
     dgx_staging_memory* staging_memory,
     uint64_t            staging_memory_region_offset,
     uint64_t            staging_memory_region_size,
-    dgx_cpu_signal*     upload_finished_cpu,
-    dgx_gpu_signal*     upload_finished_gpu
+    dgx_timeline*       signal_timeline,
+    uint64_t            signal_value
 ) {
-    int provided_cpu_signal = upload_finished_cpu && 1;
+    single_frame* frame    = &context->frames->frames[context->index];
+    dgx_hardware* hardware = context->frames->owning_hardware;
 
-    dgx_hardware*  hardware = context->contextes->owning_hardware;
-    single_frame*  frame = &context->contextes->frames[context->frame_in_flight];
+    // Nothing to upload
+    if (frame->position == 0) {
+        dgx_timeline_signal(signal_timeline, signal_value); return 1;
+    }
 
-    int v_buffer_recreated = 0;
-    uint32_t v_to_copy = ensure_buffer_size_pre_upload(
-        hardware, &frame->vertices_buffer, &frame->vertex_arena, dgx_buffer_usage_vertex, &v_buffer_recreated
-    );
+    // Whether succeeded to bind resources
+    int bind_success = 1;
 
-    int i_buffer_recreated = 0;
-    uint32_t i_to_copy = ensure_buffer_size_pre_upload(
-        hardware, &frame->instances_buffer, &frame->instance_arena, dgx_buffer_usage_storage, &i_buffer_recreated
-    ); if (i_buffer_recreated) link_frame_descriptor_with_instance_buffer(hardware, frame);
+    // Ensure buffer space
+    if (!frame->buffer || dgx_buffer_query_bytes(frame->buffer) < frame->position * sizeof(gpu_instance)) {
+        dgx_buffer* new_buffer = NULL;
+        uint64_t    new_cap[2] = {frame->capacity, frame->position};
+        for (int i = 0; i < 2; i++) {
+            new_buffer = dgx_create_buffer(hardware, &(dgx_buffer_create_info){
+                .bytes  = new_cap[i] * sizeof(gpu_instance),
+                .usage  = dgx_buffer_usage_storage,
+                .access = dgx_memory_access_staging_write
+            });
+            if (new_buffer) break;
+        }
+        if (new_buffer) {
+            dgx_free_buffer(frame->buffer);
+            frame->buffer = new_buffer;
+            frame->bind = dgx_shader_resource_bind(hardware, dgx_resource_type_storage_buffer, new_buffer, &bind_success);
+        }
+    }
 
-    uint32_t v_copy_position = 0;
-    uint32_t i_copy_position = 0;
-    
-    char* v_data = (char*)frame->vertex_arena.data;
-    char* i_data = (char*)frame->instance_arena.data;
+    // Safe return
+    if (!frame->buffer) {
+        dgx_timeline_signal(signal_timeline, signal_value); return 0;
+    }
 
-    while (v_copy_position < v_to_copy || i_copy_position < i_to_copy) {
-        uint32_t v_bytes = 0;
-        uint32_t i_bytes = 0;
+    // Cap written instances to buffer capacity
+    uint64_t instances_to_write = min_u64(dgx_buffer_query_bytes(frame->buffer) / sizeof(gpu_instance), frame->position);
+    uint64_t staging_capacity   = staging_memory_region_size / sizeof(gpu_instance);
+    uint64_t buffer_uploaded    = 0;
 
-        // Copy memory to staging
-        char* mapped = dgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
-            // Copy as much vertex data as possible
-            v_bytes = v_to_copy - v_copy_position;
-            if (v_bytes > staging_memory_region_size) v_bytes = staging_memory_region_size;
-            memcpy(mapped, v_data + v_copy_position, v_bytes);
+    // If wont do in single upload, alloc internal timeline
+    dgx_timeline* internal = instances_to_write > staging_capacity ? dgx_create_timeline(hardware, &(dgx_timeline_create_info){
+        .initial_value = 0
+    }) : NULL; if (!internal) instances_to_write = min_u64(instances_to_write, staging_capacity);
+    uint64_t internal_itr = 0;
 
-            // Copy as much instance data as possible
-            i_bytes = i_to_copy - i_copy_position;
-            if (i_bytes > staging_memory_region_size - v_bytes) i_bytes = staging_memory_region_size - v_bytes;
-            memcpy(mapped + v_bytes, i_data + i_copy_position, i_bytes);
+    // Upload loop
+    while (instances_to_write) {
+        uint64_t upload = min_u64(instances_to_write, staging_capacity);
+
+        char* mem = dgx_staging_memory_map(staging_memory, staging_memory_region_offset, staging_memory_region_size);
+        memcpy(mem, &frame->arena[buffer_uploaded], upload * sizeof(gpu_instance));
         dgx_staging_memory_unmap(staging_memory);
 
-        // Record command list for target buffer rewrite
-        dgx_begin_command_list_recording(command_list);
-            if (v_bytes) dgx_cmd_copy_staging_memory_to_buffer(
-                command_list, 
-                staging_memory, 
-                frame->vertices_buffer, 
-                staging_memory_region_offset + 0, 
-                v_copy_position, 
-                v_bytes
-            );
-            
-            if (i_bytes) dgx_cmd_copy_staging_memory_to_buffer(
-                command_list, 
-                staging_memory, 
-                frame->instances_buffer, 
-                staging_memory_region_offset + v_bytes,
-                i_copy_position, 
-                i_bytes
-            );
-        dgx_finish_command_list_recording(command_list);
+        frame->upload_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+            .domain = dgx_command_domain_transfer,
+            .aindex = command_list_allocator_index,
+            .parent = frame->upload_list,
+            .record = upload_record,
+            .params = &(upload_params){
+                .staging  = staging_memory,
+                .buffer   = frame->buffer,
+                .uploaded = buffer_uploaded,
+                .upload   = upload
+            }
+        });
 
-        // Advance and find out whether is last batch
-        v_copy_position += v_bytes;
-        i_copy_position += i_bytes;
-        int is_final_batch = !(v_copy_position < v_to_copy || i_copy_position < i_to_copy);
+        int last_upload = instances_to_write <= staging_capacity;
 
-        // If not final batch, but multiple have to be sent
-        // Ensure we have cpu signal
-        if (!is_final_batch && upload_finished_cpu == NULL) {
-            upload_finished_cpu = dgx_create_cpu_signal(hardware, &(dgx_cpu_signal_create_info){.initialy_signaled = 0});
-        }
+        dgx_timeline* timeline = last_upload ? signal_timeline : internal;
+        dgx_command_list_submit(1, &frame->upload_list, &(dgx_submit_info){
+            .domain_work_group  = transfer_work_group_index,
+            .signal_count       = timeline ? 1 : 0,
+            .signal_timelines   = &timeline,
+            .signal_values      = last_upload ? &signal_value    : (uint64_t[]){++internal_itr}
+        });
 
-        // Submit
-        dgx_submit_info submit = {
-            .command_lists_count        = 1,
-            .command_lists              = &command_list,
-            .cpu_signal                 = upload_finished_cpu,
-            .signal_gpu_signals_count   = (is_final_batch && upload_finished_gpu != NULL) ? 1 : 0,
-            .signal_gpu_signals         = &upload_finished_gpu
-        };
+        // Wait for upload to end
+        if (!last_upload) dgx_timeline_wait(internal, internal_itr);
 
-        dgx_submit_command_list(queue_for_uploads, &submit);
-
-        if (!is_final_batch) {
-            dgx_cpu_signal_wait(upload_finished_cpu);
-            dgx_cpu_signal_reset(upload_finished_cpu);
-            continue;
-        }
+        instances_to_write -= upload;
+        buffer_uploaded    += upload;
     }
 
-    // Cleanup - free allocated cpu signal if exist
-    if (!provided_cpu_signal && upload_finished_cpu) {
-        dgx_cpu_signal_wait(upload_finished_cpu);
-        dgx_free_cpu_signal(upload_finished_cpu);
-    }
+    // Draw only uploaded
+    frame->to_draw = buffer_uploaded;
 
-    // Set triangles count
-    frame->triangles_to_draw = (v_copy_position / gpu_vertex_sizeof / 3);
+    // Free temporary
+    dgx_free_timeline(internal);
+
+    // Successful if succeeded to bind
+    return bind_success;
 }
 
-void dshp_gcmd_render(
-    dgx_command_list*           target,
-    dshp_context*   context
-) {
-    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
-    if (frame->triangles_to_draw) {
-        dgx_gcmd_bind_graphics_pipeline(target, context->contextes->owning_shared->pipeline);
-        dgx_gcmd_bind_graphics_pipeline_vertex_buffer(target, frame->vertices_buffer, 0, 0);
-        dgx_gcmd_bind_graphics_pipeline_descriptors(
-            target,
-            context->contextes->owning_shared->pipeline_layout,
-            0, 1, &frame->assigned_descriptor
+void dshp_gcmd_render(dshp_context* context) {
+    single_frame* frame = &context->frames->frames[context->index];
+    if (frame->to_draw) {
+        dgx_gcmd_bind_graphics_pipeline(context->frames->owning_shared->pipeline);
+        gpu_constants constants = {.buffer_index = frame->bind};
+        dgx_gcmd_write_constants(
+            context->frames->owning_shared->pipeline, dgx_shader_stage_vertex, 0, (sizeof(gpu_constants)), &constants
         );
-        dgx_gcmd_draw_vertices(target, frame->triangles_to_draw * 3, 0, 1, 0);
+        dgx_gcmd_write_constants(
+            context->frames->owning_shared->pipeline, dgx_shader_stage_pixel, 0, (sizeof(gpu_constants)), &constants
+        );
+        dgx_gcmd_draw(0, 3, 0, frame->to_draw);
     }
 }
 
-// Methods
+/*
+    Methods
+*/
 
 static inline void emit_triangle(
     dshp_context* context, 
@@ -616,52 +424,42 @@ static inline void emit_triangle(
     float rcx,  float rcy, // radius center
     float radius
 ) {
-    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
+    single_frame* frame = &context->frames->frames[context->index];
 
     // Ensure arena space
-    if (!ensure_arena_free_space(&frame->vertex_arena, 3 * gpu_vertex_sizeof))      return;
-    if (!ensure_arena_free_space(&frame->instance_arena, 1 * sizeof(gpu_instance))) return;
-    
-    // Write vertex arena
-    float* varena = (float*)(frame->vertex_arena.data + frame->vertex_arena.position);
-    frame->vertex_arena.position += 3 * gpu_vertex_sizeof;
-    varena[0] = x0; varena[1] = y0;
-    varena[2] = x1; varena[3] = y1;
-    varena[4] = x2; varena[5] = y2;
+    if (frame->position == frame->capacity) {
+        uint64_t      new_cap   = frame->capacity ? frame->capacity * 2 : 128;
+        gpu_instance* new_arena = realloc(frame->arena, new_cap * sizeof(gpu_instance));
+        if (!new_arena) return; // realloc failed
+        frame->capacity = new_cap;
+        frame->arena    = new_arena;
+    }
 
     // Write instance arena
-    gpu_instance* iarena = (gpu_instance*)(frame->instance_arena.data + frame->instance_arena.position);
-    frame->instance_arena.position += 1 * sizeof(gpu_instance);
-    iarena[0] = (gpu_instance){
-        .r          = context->r, 
-        .g          = context->g, 
-        .b          = context->b, 
-        .a          = context->a,
-        .center_x   = rcx, 
-        .center_y   = rcy,
-        .radius     = radius,
+    frame->arena[frame->position++] = (gpu_instance){
+        .x0 = x0, .y0 = y0,
+        .x1 = x1, .y1 = y1,
+        .x2 = x2, .y2 = y2,
+        .r  = context->r, 
+        .g  = context->g, 
+        .b  = context->b, 
+        .a  = context->a,
+        .cx = rcx, 
+        .cy = rcy,
+        .radius = radius,
     };
 };
 
-void dshp_set_color(
-    dshp_context* context,
-    float r, float g, float b, float a
-) {
+void dshp_set_color(dshp_context* context, float r, float g, float b, float a) {
     context->r = r; context->g = g; context->b = b; context->a = a;
 }
 
-void dshp_set_line_thickness(
-    dshp_context* context,
-    float line_thickness
-) {
+void dshp_set_line_thickness(dshp_context* context, float line_thickness) {
     context->line_thickness = line_thickness;
 }
 
-void dshp_line(
-    dshp_context* context,
-    dla_vec2 begin, dla_vec2 end
-) {
-    single_frame* frame = &context->contextes->frames[context->frame_in_flight];
+void dshp_line(dshp_context* context, dla_vec2 begin, dla_vec2 end) {
+    single_frame* frame = &context->frames->frames[context->index];
 
     float dx = end.x - begin.x;
     float dy = end.y - begin.y;
@@ -690,17 +488,11 @@ void dshp_line(
     );
 }
 
-void dshp_triangle(
-    dshp_context* context,
-    dla_vec2 a, dla_vec2 b, dla_vec2 c
-) {
+void dshp_triangle(dshp_context* context, dla_vec2 a, dla_vec2 b, dla_vec2 c) {
     emit_triangle(context, a.x, a.y, b.x, b.y, c.x, c.y, 0, 0, -1.0f); // unrounded
 }
 
-void dshp_rect(
-    dshp_context* context,
-    dla_vec2 first_corner, dla_vec2 second_corner
-) {
+void dshp_rect(dshp_context* context, dla_vec2 first_corner, dla_vec2 second_corner) {
     emit_triangle(
         context,
         first_corner.x,  first_corner.y,
@@ -718,10 +510,7 @@ void dshp_rect(
     );
 }
 
-void dshp_circle(
-    dshp_context* context,
-    dla_vec2 center, float radius
-) {
+void dshp_circle(dshp_context* context, dla_vec2 center, float radius) {
     emit_triangle(context, 
         center.x - radius, center.y - radius, 
         center.x - radius, center.y + radius, 

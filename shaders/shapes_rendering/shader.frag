@@ -1,26 +1,31 @@
 #version 430
+#extension GL_EXT_nonuniform_qualifier : require
 
-layout(location = 0) in  vec2       in_pos;
-layout(location = 1) flat in int    in_instance;
-
-layout(location = 0) out vec4       out_color;
+layout(location = 0) flat in int in_instance;
+layout(location = 1) in vec2 in_position;
 
 struct gpu_instance {
-    float r, g, b, a;
-    float center_x, center_y;
-    float radius;
+    float x0, y0;       // First  vertex pos
+    float x1, y1;       // Second vertex pos
+    float x2, y2;       // Third  vertex pos
+    float r, g, b, a;   // RGBA color
+    float cx, cy;       // Bounding circle center
+    float radius;       // Circle radius
+    float pad[3];
 };
 
-layout(set = 0, binding = 0) readonly buffer Instances {
+layout(push_constant) uniform PushConstants {
+    layout(offset = 4) uint buffer_index;
+} pc;
+
+layout(set = 0, binding = 1) readonly buffer InstancesBuffer {
     gpu_instance instances[];
-};
+} buffers[];
+
+layout(location = 0) out vec4 out_color;
 
 void main() {
-    gpu_instance inst = instances[in_instance];
-
-    // radius constrain
-    if (inst.radius > 0.0 && distance(in_pos, vec2(inst.center_x, inst.center_y)) > inst.radius) discard;
-
-    // color
-    out_color = vec4(inst.r, inst.g, inst.b, inst.a);
+    gpu_instance instance = buffers[(pc.buffer_index)].instances[in_instance];
+    if (instance.radius > 0.0 && distance(in_position, vec2(instance.cx, instance.cy)) > instance.radius) discard;
+    out_color = vec4(instance.r, instance.g, instance.b, instance.a);
 }
