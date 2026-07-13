@@ -500,6 +500,7 @@ _claim_partition:
 }
 
 void dpr_partitioner_free_partition(dpr_partitioner* partitioner, dpr_partition* partition) {
+    if (!partition) return;
     mark_partition_free(partition);
     merge_neighbour_free(partitioner, partition);
     push_to_free_list(partitioner, partition);
