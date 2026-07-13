@@ -2156,6 +2156,14 @@ static inline dgx_buffer* create_ssbo(dgx_hardware* hardware, uint64_t bytes) {
     });
 }
 
+static inline dgx_buffer* create_glyph_ssbo(dgx_hardware* hardware, uint64_t bytes) {
+    return dgx_create_buffer(hardware, &(dgx_buffer_create_info){
+        .bytes  = bytes,
+        .access = dgx_memory_access_staging_read_and_write,
+        .usage  = dgx_buffer_usage_storage
+    });
+}
+
 // ===========================
 // Shared Object
 
@@ -2186,7 +2194,7 @@ dui_shared* dui_create_shared(dgx_hardware* hardware, const dui_shared_create_in
     }); if (!shared->sampler) goto _fail;
 
     // Glyphs buffer
-    shared->glyph_buffer = create_ssbo(hardware, INITIAL_GLYPH_BUFFER_SIZE);
+    shared->glyph_buffer = create_glyph_ssbo(hardware, INITIAL_GLYPH_BUFFER_SIZE);
     if (!shared->glyph_buffer) goto _fail;
 
     // Glyph buffer partitioner
@@ -2337,6 +2345,19 @@ static void ui_upload_record(void* raw_params) {
     }
 }
 
+typedef struct glyphs_rewrite_params {
+    dgx_buffer* old_buffer;
+    dgx_buffer* new_buffer;
+} glyphs_rewrite_params;
+
+static void glyphs_rewrite_record(void* raw_params) {
+    glyphs_rewrite_params* params = raw_params;
+    dgx_tcmd_copy_buffer_to_buffer(
+        params->old_buffer, params->new_buffer, 0, 0, 
+        dgx_buffer_query_bytes(params->old_buffer)
+    );
+}
+
 int dui_upload_cache(
     dui_cache*          cache,
     dui_shared*         shared,
@@ -2363,22 +2384,23 @@ int dui_upload_cache(
 
     // Prepare partitions for text draws
     for (size_t i = 0; i < cache->text_requests_count; i++) {
+    _try_partition:
         text_request     req  = cache->text_requests[i];
         text_cache_slot* slot = text_cache_get_utill(cache, req.owning_node);
 
         // Store partitioner to return partition to
         slot->glyphs_partitioner = shared->glyph_buffer_partitioner;
 
-        // always free owned partition to reduce fragmentation
+        // Always free owned partition
         if (slot->glyphs_partition) {
             dpr_partitioner_free_partition(shared->glyph_buffer_partitioner, slot->glyphs_partition);
             slot->glyphs_partition = NULL;
         }
 
-        // new text is empty - creation of 0 bytes partition is forbidden
+        // New text is empty - creation of 0 bytes partition is forbidden
         if (!req.glyphs_count) continue;
 
-        // request new partition
+        // Request new partition
         slot->glyphs_partition = dpr_partitioner_alloc_partition(
             shared->glyph_buffer_partitioner,
             req.glyphs_count * sizeof(gpu_glyph), 
@@ -2387,7 +2409,42 @@ int dui_upload_cache(
 
         // Failed to create partition - create bigger text buffer
         if (!slot->glyphs_partition) {
-            // todo rewrite (must sync)
+            dgx_hardware_wait_idle(hardware);
+
+            // Alloc new buffer with double size
+            uint64_t old_bytes = dgx_buffer_query_bytes(shared->glyph_buffer);
+            dgx_buffer* new_buffer = create_glyph_ssbo(hardware, old_bytes * 2);
+
+            // Failed to alloc new buffer
+            if (!new_buffer) continue;
+
+            // Rewrite contents
+            dgx_command_list* rewrite_list = dgx_create_command_list(hardware, &(dgx_command_list_create_info){
+                .domain = dgx_command_domain_transfer,
+                .aindex = transfer_work_group_index,
+                .record = glyphs_rewrite_record,
+                .params = &(glyphs_rewrite_params){
+                    .old_buffer = shared->glyph_buffer,
+                    .new_buffer = new_buffer
+                }
+            });
+
+            // Submit
+            dgx_command_list_submit(1, &rewrite_list, &(dgx_submit_info){.domain_work_group = 0});
+            dgx_hardware_wait_idle(hardware); dgx_free_command_list(rewrite_list);
+
+            // Since rewrited, pick new buffer
+            dgx_free_buffer(shared->glyph_buffer);
+            shared->glyph_buffer = new_buffer;
+
+            // Resize partitioner
+            shared->glyph_buffer_partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
+                .memory_bytes    = old_bytes * 2,
+                .old_partitioner = shared->glyph_buffer_partitioner
+            });
+
+            // Try again
+            goto _try_partition;
         }
     }
 

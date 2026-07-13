@@ -483,6 +483,14 @@ void dgx_tcmd_copy_staging_memory_to_texture(
     dgx_texture_dimensions  texture_write_region_size
 );
 
+void dgx_tcmd_copy_buffer_to_buffer(
+    dgx_buffer*             source_buffer,
+    dgx_buffer*             target_buffer,
+    uint64_t                source_region_offset,
+    uint64_t                target_region_offset,
+    uint64_t                target_region_size
+);
+
 // ===========================
 // Graphics Commands (gcmd)
 // Can only be called inside 
@@ -2535,6 +2543,27 @@ void dgx_tcmd_copy_staging_memory_to_texture(
         target_texture->image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1, &region
+    );
+}
+
+void dgx_tcmd_copy_buffer_to_buffer(
+    dgx_buffer*             source_buffer,
+    dgx_buffer*             target_buffer,
+    uint64_t                source_region_offset,
+    uint64_t                target_region_offset,
+    uint64_t                target_region_size
+) {
+    VkBufferCopy copy_region = {
+        .srcOffset  = source_region_offset,
+        .size       = target_region_size,
+        .dstOffset  = target_region_offset
+    };
+
+    vkCmdCopyBuffer(
+        recording_state_command_list->command_buffer, 
+        source_buffer->buffer, 
+        target_buffer->buffer, 
+        1, &copy_region
     );
 }
 
