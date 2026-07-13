@@ -32,3 +32,26 @@ Framework areas of **interest** are:
 - *include* - This is where the libraries live.
 - *shaders* - GPU shaders required by the libraries.
 - *utility* - Utility scripts, file format converters, and other development tools. This directory contains development-only code and is not intended for shipping.
+- *examples* - Code examples
+
+# Platform Support
+
+Most Demiurg libraries are platform-independent. They either rely on Demiurg's platform abstraction interfaces or do not require any platform-specific code.
+
+Only a few libraries have platform-specific backends. Their current support status is listed below.
+
+> **Note:** Platform support is actively expanding. Additional operating systems and graphics backends will be implemented over time.
+
+### Graphics.h
+
+| Platform | Vulkan |
+| -------- | :----: |
+| Windows  | No     |
+| Linux    | Yes    |
+
+### Input.h
+
+| Platform | Support |
+| -------- | :-----: |
+| Windows  | No      |
+| Linux    | Yes     |
