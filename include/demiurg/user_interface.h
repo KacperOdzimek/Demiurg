@@ -135,7 +135,7 @@ typedef dui_node_layout_func_signature* dui_node_layout_func;
 
 typedef void(dui_node_render_func_signature)(
     void*                   node_data,          // node data
-    dla_mat2x3*             transform,          // given transform, can be changed
+    dla_mat3*               transform,          // given transform, can be changed
     int                     resolution_x,       // screen resolution x
     int                     resolution_y        // screen resolution y
 );
@@ -579,18 +579,18 @@ static inline int limit_length_gain(int current, dui_length limit, int proposed)
     return proposed;
 }
 
-static inline dla_mat2x3 mat2x3_scale(dla_mat2x3 m, float sx, float sy) {
+static inline dla_mat3 mat2x3_scale(dla_mat3 m, float sx, float sy) {
     m.m[0][0] *= sx;  m.m[0][1] *= sy;
     m.m[1][0] *= sx;  m.m[1][1] *= sy;
     return m;
 }
 
-static inline dla_mat2x3 mat2x3_offset(dla_mat2x3 m, float ox, float oy) {
+static inline dla_mat3 mat2x3_offset(dla_mat3 m, float ox, float oy) {
     m.m[2][0] += ox; m.m[2][1] += oy;
     return m;
 }
 
-int is_point_in_transformed_box(dla_mat2x3 t, float px, float py) {
+int is_point_in_transformed_box(dla_affine2 t, float px, float py) {
     // Translation
     float tx = t.m[2][0];
     float ty = t.m[2][1];
@@ -1465,7 +1465,7 @@ static inline text_cache_slot* text_cache_get_utill(dui_cache* cache, node_stabl
 // Cache dynamic arrays
 
 struct draw_request {
-    dla_mat2x3              transform;
+    dla_affine2             transform;
     int                     clip_index;
     short                   depth_index;
     char                    is_box_not_text;
@@ -1482,7 +1482,7 @@ struct text_request {
 };
 
 struct clipbox_request {
-    dla_mat2x3              transform;
+    dla_affine2             transform;
 };
 
 struct cursor_input_box {
@@ -1490,7 +1490,7 @@ struct cursor_input_box {
     dui_node_cursor_func    handle;
     int                     clip_index;
     short                   depth_index;
-    dla_mat2x3              box_transform;
+    dla_affine2             box_transform;
 };
 
 // Definies one function:
@@ -1817,14 +1817,14 @@ static void render_dfs(
     int                             previous_width,
     int                             previous_height, 
     const dui_node*                 node,
-    dla_mat2x3                      transform, 
+    dla_mat3                      transform, 
     const render_dfs_subtree_state* state
 );
 
 static inline void render_dfs_recurse(
     dui_cache*                      cache, 
     cache_slot*                     own,
-    dla_mat2x3                      transform, 
+    dla_mat3                      transform, 
     const render_dfs_subtree_state* state
 ) {
     const dui_node* child = get_node_child(own->key.node, own->key.instance);
@@ -1848,7 +1848,7 @@ static void render_dfs(
     int                             previous_width,
     int                             previous_height, 
     const dui_node*                 node,
-    dla_mat2x3                      transform, 
+    dla_mat3                      transform, 
     const render_dfs_subtree_state* state
 ) {
     node_stable_index index = {node, state->instance};
@@ -1881,7 +1881,7 @@ static void render_dfs(
     // Push pinkbox request
     if (node->flags & dui_flag_pink_box) {
         draw_request_cache_push(cache, (draw_request){
-            .transform          = transform,
+            .transform          = dla_affine2_pack(transform),
             .clip_index         = state->clipbox_index,
             .depth_index        = state->depth_index,
             .is_box_not_text    = 1,
@@ -1898,7 +1898,7 @@ static void render_dfs(
     if (node->type == &dui_box_type){
         const dui_box_data* bdata = data;
         draw_request_cache_push(cache, (draw_request){
-            .transform          = transform,
+            .transform          = dla_affine2_pack(transform),
             .clip_index         = state->clipbox_index,
             .depth_index        = state->depth_index,
             .is_box_not_text    = 1,
@@ -1914,7 +1914,7 @@ static void render_dfs(
         if (text_cache) text_cache->last_frame_used_in_render = cache->frame_index;
 
         draw_request_cache_push(cache, (draw_request){
-            .transform          = transform,
+            .transform          = dla_affine2_pack(transform),
             .clip_index         = state->clipbox_index,
             .depth_index        = state->depth_index,
             .is_box_not_text    = 0,
@@ -1930,7 +1930,7 @@ static void render_dfs(
             .handle         = node->type->cursor,
             .depth_index    = state->depth_index,
             .clip_index     = state->clipbox_index,
-            .box_transform  = transform
+            .box_transform  = dla_affine2_pack(transform)
         });
     }
     if (node->type == &dui_cursor_call_type && state->cursor_handle) {
@@ -1939,7 +1939,7 @@ static void render_dfs(
             .handle         = state->cursor_handle,
             .depth_index    = state->depth_index,
             .clip_index     = state->clipbox_index,
-            .box_transform  = transform
+            .box_transform  = dla_affine2_pack(transform)
         });
     }
 
@@ -1967,7 +1967,7 @@ static void render_dfs(
 
     // Clipbox flag
     if (node->flags & dui_flag_clipbox) {
-        new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = transform});
+        new_state.clipbox_index = clipbox_request_cache_push(cache, (clipbox_request){.transform = dla_affine2_pack(transform)});
     }
 
     // Default recursion without state changes
@@ -2017,7 +2017,7 @@ void dui_update_cache(
         .depth_index    = 0,
         .clipbox_index  = -1
     };
-    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat2x3_identity(), &default_subtree_state);
+    render_dfs(cache, cache->resolution_x, cache->resolution_y, root, dla_mat3_identity(), &default_subtree_state);
 
     // Sort render requests and input boxes by depth
     stable_sort(cache->draw_requests,       cache->draw_requests_count,      sizeof(draw_request),      helper_draw_requests_greater_depth);
@@ -2112,7 +2112,7 @@ typedef struct gpu_instance {
 } gpu_instance;
 
 typedef struct gpu_draw_item {
-    dla_mat2x3  transform;
+    dla_affine2 transform;
     dgx_uv_2d   atlas_position;
     int         texture_index;
     int         clipbox_index;
@@ -2121,7 +2121,7 @@ typedef struct gpu_draw_item {
 } gpu_draw_item;
 
 typedef struct gpu_clipbox {
-    dla_mat2x3  transform;
+    dla_affine2 transform;
 } gpu_clipbox;
 
 typedef struct gpu_glyph {
@@ -2888,7 +2888,7 @@ static void vertical_scrollbox_scroll_cursor_func(void* node_data, dui_node_curs
     }
 }
 
-static void vertical_scrollbox_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+static void vertical_scrollbox_transform_func(void* node_data, dla_mat3* transform, int resolution_x, int resolution_y) {
     dui_scrollbox_data* data = node_data;
 
     // Calculate offset
@@ -2941,11 +2941,11 @@ static const dui_type vertical_scrollbox_scroller_type = {
     .transform  = vertical_scrollbox_transform_func
 };
 
-static void vertical_scrollbox_handle_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+static void vertical_scrollbox_handle_transform_func(void* node_data, dla_mat3* transform, int resolution_x, int resolution_y) {
     dui_scrollbox_data* data = node_data;
 
     if (!data->content_height) {
-        *transform = (dla_mat2x3){0}; return;
+        *transform = (dla_mat3){0}; return;
     }
 
     // Find handle height as a fraction of displayed height
@@ -3109,7 +3109,7 @@ static void horizontal_scrollbox_scroll_cursor_func(void* node_data, dui_node_cu
     }
 }
 
-static void horizontal_scrollbox_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+static void horizontal_scrollbox_transform_func(void* node_data, dla_mat3* transform, int resolution_x, int resolution_y) {
     dui_scrollbox_data* data = node_data;
 
     // Calculate offset
@@ -3162,11 +3162,11 @@ static const dui_type horizontal_scrollbox_scroller_type = {
     .transform  = horizontal_scrollbox_transform_func
 };
 
-static void horizontal_scrollbox_handle_transform_func(void* node_data, dla_mat2x3* transform, int resolution_x, int resolution_y) {
+static void horizontal_scrollbox_handle_transform_func(void* node_data, dla_mat3* transform, int resolution_x, int resolution_y) {
     dui_scrollbox_data* data = node_data;
 
     if (!data->content_height) {
-        *transform = (dla_mat2x3){0}; return;
+        *transform = (dla_mat3){0}; return;
     }
 
     // Find handle width as a fraction of displayed width
