@@ -559,11 +559,12 @@ void dgx_gcmd_set_viewport(
 
 #include <stdlib.h>
 #include <string.h>
-#include <threads.h>
 #include <assert.h>
 
 #include <vulkan/vulkan.h>
-#include "algorithm/partitioner.h"
+
+#include "demiurg/algorithm/partitioner.h"
+#include "demiurg/platform/threads.h"
 
 // ===========================
 // Config
@@ -928,7 +929,7 @@ struct dgx_hardware {
     // Mutexed, since will have to respond to queries from diffrent threads
     // As command list (while creation) and not hardware is the API sync unit
     // Managed by separate code section see "Command Allocation"
-    mtx_t               command_allocators_mutex;   // structure mutex
+    dth_mutex*          command_allocators_mutex;   // structure mutex
     command_allocator*  command_allocators;         // indexed with allocator index
 
     // Memory allocator data
@@ -1148,7 +1149,7 @@ int hardware_init_command_allocators(dgx_hardware* hardware, const dgx_hardware_
         };
     }
 
-    mtx_init(&hardware->command_allocators_mutex, mtx_plain);
+    hardware->command_allocators_mutex = dth_create_mutex(&(dth_mutex_create_info){});
     return 1;
 }
 
@@ -1170,13 +1171,13 @@ void hardware_free_command_allocators(dgx_hardware* hardware) {
         }
     }
     free(hardware->command_allocators);
-    mtx_destroy(&hardware->command_allocators_mutex);
+    dth_free_mutex(hardware->command_allocators_mutex);
 }
 
 // Thread safe operation, returns VK_NULL_HANDLE on failure
 VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_domain requested_domain, uint8_t allocator_index) {
     // Lock structure access
-    mtx_lock(&hardware->command_allocators_mutex);
+    dth_free_mutex(hardware->command_allocators_mutex);
 
     // Get allocator
     command_allocator* allocator = &hardware->command_allocators[allocator_index];
@@ -1205,7 +1206,7 @@ VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_doma
 
 _finish:
     // Unlock access and return handle
-    mtx_unlock(&hardware->command_allocators_mutex);
+    dth_mutex_unlock(hardware->command_allocators_mutex);
     if (result_source == NULL) return VK_NULL_HANDLE;
     return *result_source;
 }
@@ -1222,7 +1223,7 @@ typedef struct memory_pool {
 } memory_pool;
 
 struct memory_allocator {
-    mtx_t               mutex;          // allocator mutex
+    dth_mutex*          mutex;          // allocator mutex
     VkDeviceSize        minimal_size;   // typical alloc size
     memory_pool*        first_pool;     // first memory pool
 };
@@ -1238,7 +1239,7 @@ int hardware_init_memory_allocators(dgx_hardware* hardware, const dgx_hardware_c
     vkGetPhysicalDeviceMemoryProperties(hardware->physical_device, &hardware->memory_properties);
     hardware->memory_allocators = calloc(hardware->memory_properties.memoryTypeCount, sizeof(memory_allocator));
     for (size_t i = 0; i < hardware->memory_properties.memoryTypeCount; i++) {
-        mtx_init(&hardware->memory_allocators[i].mutex, mtx_plain);
+        hardware->memory_allocators[i].mutex = dth_create_mutex(&(dth_mutex_create_info){});
     }
     return 1;
 }
@@ -1253,7 +1254,7 @@ void hardware_free_memory_allocators(dgx_hardware* hardware) {
             dpr_free_partitioner(pool->partitioner);
             free(pool);
         }
-        mtx_destroy(&ma->mutex);
+        dth_free_mutex(ma->mutex);
     }
     free(hardware->memory_allocators);
 }
@@ -1291,7 +1292,7 @@ int hardware_get_memory(
         if (memory_type == UINT32_MAX) return 0; // failure, no suitable memory type
         memory_allocator* ma = &hardware->memory_allocators[memory_type];
         
-        mtx_lock(&ma->mutex);   // Lock allocator for this type
+        dth_mutex_lock(ma->mutex);   // Lock allocator for this type
 
         // Try suballocate exisiting pools
         dpr_partition* partition = NULL;
@@ -1339,7 +1340,7 @@ int hardware_get_memory(
         }
 
     _unlock_mutex:
-        mtx_unlock(&ma->mutex); // Unlock this allocator
+        dth_mutex_unlock(ma->mutex); // Unlock this allocator
         
         // If succeeded to suballocate
         // return partition
@@ -1364,9 +1365,9 @@ int hardware_get_memory(
 // Thread safe operation
 void hardware_free_memory(dgx_hardware* hardware, memory_allocation alloc) {
     if (!alloc.owning_allocator) return;        // so buffer fail paths work
-    mtx_lock(&alloc.owning_allocator->mutex);   // lock allocator for this type
+    dth_mutex_lock(alloc.owning_allocator->mutex);   // lock allocator for this type
     dpr_partitioner_free_partition(alloc.owning_pool->partitioner, alloc.partition);
-    mtx_unlock(&alloc.owning_allocator->mutex); // unlock this allocator
+    dth_mutex_unlock(alloc.owning_allocator->mutex); // unlock this allocator
 }
 
 // ===========================
@@ -1385,10 +1386,10 @@ VkDescriptorType dgx_resource_type_to_vk_descriptor_type(dgx_resource_type type)
 }
 
 struct bindless_allocator {
-    mtx_t     mutex;            // allocator mutex
-    uint32_t  free_capacity;    // count of slots
-    uint32_t  free_count;       // stack elements count
-    uint32_t* free_stack;       // stack of freed indices
+    dth_mutex*  mutex;            // allocator mutex
+    uint32_t    free_capacity;    // count of slots
+    uint32_t    free_count;       // stack elements count
+    uint32_t*   free_stack;       // stack of freed indices
 };
 
 // No thread safe, as dgx_create_hardware is not thread safe, therefore no need
@@ -1445,12 +1446,11 @@ int hardware_init_shader_access(dgx_hardware* hardware, const dgx_hardware_creat
         bindless_allocator* ba = &hardware->bindless_allocators[type];
         uint32_t cap = info->shader_resources_limit[type];
         *ba = (bindless_allocator){
-            .mutex          = {},
+            .mutex          = dth_create_mutex(&(dth_mutex_create_info){}),
             .free_capacity  = cap,
             .free_count     = cap,
             .free_stack     = malloc(cap * sizeof(uint32_t))
         };
-        mtx_init(&ba->mutex, mtx_plain);
         for (uint32_t i = 0; i < cap; i++) ba->free_stack[i] = i;
     }
 
@@ -1461,7 +1461,7 @@ void hardware_free_shader_access(dgx_hardware* hardware) {
     vkDestroyDescriptorSetLayout(hardware->logical_device, hardware->bindless_descriptor_layout, NULL);
     vkDestroyDescriptorPool(hardware->logical_device, hardware->bindless_descriptor_pool, NULL);
     for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
-        mtx_destroy(&hardware->bindless_allocators[type].mutex);
+        dth_free_mutex(hardware->bindless_allocators[type].mutex);
         free(hardware->bindless_allocators[type].free_stack);
     }
     free(hardware->bindless_allocators);
@@ -1502,17 +1502,17 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
     }
 
     // Find and take free index
-    mtx_lock(&ba->mutex);
+    dth_mutex_lock(ba->mutex);
 
     // Check again if bound
     // May happen if two threds try to bind the same resource for the first time
     if ((bc->bind_mask >> type) & 1U) {
-        mtx_unlock(&ba->mutex); return bc->indices[type];
+        dth_mutex_unlock(ba->mutex); return bc->indices[type];
     }
 
     // Failed to allocate index
     if (ba->free_count == 0) {
-        mtx_unlock(&ba->mutex); *success &= 0; return 0; // Arbitrary
+        dth_mutex_unlock(ba->mutex); *success &= 0; return 0; // Arbitrary
     }
 
     // Obtain index
@@ -1523,7 +1523,7 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
     bc->indices[type] = idx;
     bc->bind_mask |= (1U << type);
 
-    mtx_unlock(&ba->mutex);
+    dth_mutex_unlock(ba->mutex);
     
     // Resouce Info
     VkDescriptorBufferInfo  buffer_info;
@@ -1586,9 +1586,9 @@ void shader_resource_unbind(dgx_hardware* hardware, resource_bind_cache* bc) {
         if (!((bc->bind_mask >> type) & 1U)) continue; // Was not bound
 
         // Release index
-        mtx_lock(&ba->mutex);
+        dth_mutex_lock(ba->mutex);
         ba->free_stack[ba->free_count++] = bc->indices[type];
-        mtx_unlock(&ba->mutex);
+        dth_mutex_unlock(ba->mutex);
     }
 }
 
@@ -1661,7 +1661,7 @@ uint64_t dgx_timeline_get_value(dgx_timeline* timeline) {
 // Command List
 
 // Command list recording target
-static thread_local dgx_command_list* recording_state_command_list = NULL;
+static dth_thread_local dgx_command_list* recording_state_command_list = NULL;
 
 struct dgx_command_list {
     dgx_hardware*       owning_hardware;
