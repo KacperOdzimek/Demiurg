@@ -563,7 +563,7 @@ void dgx_gcmd_set_viewport(
 #include <assert.h>
 
 #include <vulkan/vulkan.h>
-#include "partitioner.h"
+#include "algorithm/partitioner.h"
 
 // ===========================
 // Config

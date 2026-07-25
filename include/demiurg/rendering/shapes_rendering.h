@@ -25,8 +25,8 @@ Usage
 #ifndef DEMIURG_SHAPES_H
 #define DEMIURG_SHAPES_H
 
-#include "graphics.h"
-#include "linear_algebra.h"
+#include "rendering/graphics.h"
+#include "mathematics/linear_algebra.h"
 
 // Shapes Rendering Shared Object
 
