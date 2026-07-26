@@ -1014,7 +1014,7 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
             );
 
             // if no queues, try to fallback
-            if (qf_info.count[assigned_domain] == 0 && info->work_groups_per_domain[assigned_domain] != 0) {
+            if (qf_info.count[read_domain] == 0 && info->work_groups_per_domain[assigned_domain] != 0) {
                 read_domains_itr++; if (read_domains_itr >= read_count) goto _fail; continue;
             }
 
