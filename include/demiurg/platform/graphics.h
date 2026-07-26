@@ -561,7 +561,8 @@ void dgx_gcmd_set_viewport(
 #include <string.h>
 #include <assert.h>
 
-#include <vulkan/vulkan.h>
+#include "../../../depedency/volk/volk.h"
+#include "../../../depedency/volk/volk.c"
 
 #include "demiurg/algorithm/partitioner.h"
 #include "demiurg/platform/threads.h"
@@ -769,7 +770,14 @@ struct dgx_library {
     void*       windowing;
 };
 
+static int was_vulkan_loaded = 0;
 dgx_library* dgx_create_library(const dgx_library_create_info* info) {
+    if (!was_vulkan_loaded) {
+        if (volkInitialize() == VK_SUCCESS) {
+            was_vulkan_loaded = 1;
+        }  else return NULL;
+    }
+     
     dgx_library* library = calloc(1, sizeof(dgx_library));
     if (!library) return NULL;
 
@@ -816,7 +824,8 @@ dgx_library* dgx_create_library(const dgx_library_create_info* info) {
 
     VkResult result = vkCreateInstance(&create_info, 0, &library->instance);
     free(enabled_extensions_combined); if (result != VK_SUCCESS) goto _fail;
-    
+
+    volkLoadInstance(library->instance);
     return library;
 
 _fail: windowing_platform_term(library); free(library); return NULL;
