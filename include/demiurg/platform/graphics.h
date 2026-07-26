@@ -1177,7 +1177,7 @@ void hardware_free_command_allocators(dgx_hardware* hardware) {
 // Thread safe operation, returns VK_NULL_HANDLE on failure
 VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_domain requested_domain, uint8_t allocator_index) {
     // Lock structure access
-    dth_free_mutex(hardware->command_allocators_mutex);
+    dth_mutex_lock(hardware->command_allocators_mutex);
 
     // Get allocator
     command_allocator* allocator = &hardware->command_allocators[allocator_index];

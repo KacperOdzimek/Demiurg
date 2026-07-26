@@ -147,7 +147,6 @@ uint32_t dth_hardware_concurrency(void);
     #include <windows.h>
     #include <process.h>
 #else
-    #define _POSIX_C_SOURCE 200809L
     #include <pthread.h>
     #include <sched.h>
     #include <time.h>
