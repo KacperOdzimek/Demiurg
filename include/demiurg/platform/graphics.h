@@ -561,7 +561,8 @@ void dgx_gcmd_set_viewport(
 #include <string.h>
 #include <assert.h>
 
-#include <vulkan/vulkan.h>
+#include "../../../depedency/volk/volk.h"
+#include "../../../depedency/volk/volk.c"
 
 #include "demiurg/algorithm/partitioner.h"
 #include "demiurg/platform/threads.h"
@@ -769,7 +770,14 @@ struct dgx_library {
     void*       windowing;
 };
 
+static int was_vulkan_loaded = 0;
 dgx_library* dgx_create_library(const dgx_library_create_info* info) {
+    if (!was_vulkan_loaded) {
+        if (volkInitialize() == VK_SUCCESS) {
+            was_vulkan_loaded = 1;
+        }  else return NULL;
+    }
+     
     dgx_library* library = calloc(1, sizeof(dgx_library));
     if (!library) return NULL;
 
@@ -816,7 +824,8 @@ dgx_library* dgx_create_library(const dgx_library_create_info* info) {
 
     VkResult result = vkCreateInstance(&create_info, 0, &library->instance);
     free(enabled_extensions_combined); if (result != VK_SUCCESS) goto _fail;
-    
+
+    volkLoadInstance(library->instance);
     return library;
 
 _fail: windowing_platform_term(library); free(library); return NULL;
@@ -1005,7 +1014,7 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
             );
 
             // if no queues, try to fallback
-            if (qf_info.count[assigned_domain] == 0 && info->work_groups_per_domain[assigned_domain] != 0) {
+            if (qf_info.count[read_domain] == 0 && info->work_groups_per_domain[assigned_domain] != 0) {
                 read_domains_itr++; if (read_domains_itr >= read_count) goto _fail; continue;
             }
 
@@ -1177,7 +1186,7 @@ void hardware_free_command_allocators(dgx_hardware* hardware) {
 // Thread safe operation, returns VK_NULL_HANDLE on failure
 VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_domain requested_domain, uint8_t allocator_index) {
     // Lock structure access
-    dth_free_mutex(hardware->command_allocators_mutex);
+    dth_mutex_lock(hardware->command_allocators_mutex);
 
     // Get allocator
     command_allocator* allocator = &hardware->command_allocators[allocator_index];
