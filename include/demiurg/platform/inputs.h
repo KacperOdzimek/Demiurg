@@ -211,7 +211,7 @@ typedef struct din_input_state {
 #endif // DEMIURG_INPUTS_H
 
 #ifdef DEMIURG_INPUTS_IMPL
-#if definied(DEMIURG_INPUTS_LINUX)
+#if defined(DEMIURG_INPUTS_LINUX)
 
 /*
     The caller needs read access to /dev/input/event* devices.
@@ -682,7 +682,7 @@ void din_slot_query_input_state(din_slot* slot, din_input_state* st) {
     }
 }
 
-#elif definied(DEMIURG_INPUTS_WINDOWS)
+#elif defined(DEMIURG_INPUTS_WINDOWS)
 
 #define DIRECTINPUT_VERSION 0x0800
  
@@ -831,9 +831,8 @@ din_library* din_create_library() {
     din_library* lib = (din_library*)calloc(1, sizeof(din_library));
     if (!lib) return NULL;
  
-    if (FAILED(DirectInput8Create(GetModuleHandle(NULL), DIRECTINPUT_VERSION,
-                                   IID_IDirectInput8A, (VOID**)&lib->dinput, NULL))) {
-        lib->dinput = NULL; // degrade gracefully: keyboard/mouse/XInput still work
+   if (FAILED(DirectInput8Create(GetModuleHandle(NULL), DIRECTINPUT_VERSION, &IID_IDirectInput8A, (void**)&lib->dinput, NULL))) {
+        lib->dinput = NULL;
     }
  
     return lib;
@@ -1166,7 +1165,7 @@ void din_slot_query_input_state(din_slot* slot, din_input_state* out) {
     if (slot->type != din_device_gamepad) return;
  
     if (slot->gp_backend == din_win_gp_backend_xinput) din_win__query_xinput(slot, out);
-    else                                                din_win__query_dinput(slot, out);
+    else din_win__query_dinput(slot, out);
 }
 
 #else

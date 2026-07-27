@@ -7,11 +7,11 @@
 	typedef struct HINSTANCE__* HINSTANCE;
 	typedef HINSTANCE HMODULE;
 	#if defined(_MINWINDEF_)
-		/* minwindef.h defines FARPROC, and attempting to redefine it may conflict with -Wstrict-prototypes */
+		/* minwindef.h defines FARPROC_VOLK, and attempting to redefine it may conflict with -Wstrict-prototypes */
 	#elif defined(_WIN64)
-		typedef __int64 (__stdcall* FARPROC)(void);
+		typedef __int64 (__stdcall* FARPROC_VOLK)(void);
 	#else
-		typedef int (__stdcall* FARPROC)(void);
+		typedef int (__stdcall* FARPROC_VOLK)(void);
 	#endif
 #else
 #	include <dlfcn.h>
@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 __declspec(dllimport) HMODULE __stdcall LoadLibraryA(LPCSTR);
-__declspec(dllimport) FARPROC __stdcall GetProcAddress(HMODULE, LPCSTR);
+__declspec(dllimport) FARPROC_VOLK __stdcall GetProcAddress(HMODULE, LPCSTR);
 __declspec(dllimport) int __stdcall FreeLibrary(HMODULE);
 #ifdef __cplusplus
 }
