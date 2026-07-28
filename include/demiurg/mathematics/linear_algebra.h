@@ -24,6 +24,7 @@ Notes:
 
 #include <math.h>
 #include <string.h>
+
 // ===========================
 // Scalar helpers
 
