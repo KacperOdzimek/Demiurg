@@ -32,6 +32,10 @@ Notes:
 #define DLA_DEG2RAD(d) ((d) * (DLA_PI / 180.0f))
 #define DLA_RAD2DEG(r) ((r) * (180.0f / DLA_PI))
 
+static inline float dla_float_clamp(float v, float min, float max) {
+    return v < min ? min : (v > max ? max : v);
+}
+
 // ===========================
 // Types
 
