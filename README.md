@@ -46,7 +46,7 @@ Only a few libraries have platform-specific backends. Their current support stat
 
 | Platform | Vulkan |
 | -------- | :----: |
-| Windows  | No     |
+| Windows  | Yes    |
 | Linux    | Yes    |
 
 ### Input.h
@@ -55,3 +55,10 @@ Only a few libraries have platform-specific backends. Their current support stat
 | -------- | :-----: |
 | Windows  | No      |
 | Linux    | Yes     |
+
+### Threads.h
+
+| Platform | Vulkan |
+| -------- | :----: |
+| Windows  | Yes    |
+| Linux    | Yes    |
