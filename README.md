@@ -19,6 +19,7 @@ Framework areas of **interest** are:
 | Library | Domain | Usage |
 | ------- | ------ | ----- |
 | Linear Algebra.h | Mathematics | Linear algebra library |
+| Camera.h | Mathematics | Camera projection and movement |
 | Graphics.h | Platform | A graphics RHI |
 | Input.h | Platform | HID device interface |
 | Threads.h | Platform | Cross platform multithreading api |
