@@ -16,16 +16,17 @@ Framework areas of **interest** are:
 
 # Contents
 
-| Library | Usage |
-| ------- | ----- |
-| Graphics.h | A graphics RHI |
-| Input.h | HID device interface |
-| User Interface.h | A flexible user interface |
-| Font.h | Font loader |
-| Partitioner.h | Efficient TLSF memory suballocator |
-| Linear Algebra.h | Linear algebra library |
-| Segmenter.h | Library for segmenting uploads over bandwidth-constrained connections |
-| Serialization.h | Safe cross-platform serialization |
+| Library | Domain | Usage |
+| ------- | ------ | ----- |
+| Linear Algebra.h | Mathematics | Linear algebra library |
+| Graphics.h | Platform | A graphics RHI |
+| Input.h | Platform | HID device interface |
+| Threads.h | Platform | Cross platform multithreading api |
+| Partitioner.h | Algorithm | Efficient TLSF memory suballocator |
+| Segmenter.h | Algorithm |  Library for segmenting uploads over bandwidth-constrained connections |
+| Serialization.h | Algorithm | Safe cross-platform serialization |
+| Font.h | Resource | Font loader and system |
+| User Interface.h | User Interface | A flexible user interface |
 
 # Repository Structure
 
@@ -38,7 +39,7 @@ Framework areas of **interest** are:
 
 Most Demiurg libraries are platform-independent. They either rely on Demiurg's platform abstraction interfaces or do not require any platform-specific code.
 
-Only a few libraries have platform-specific backends. Their current support status is listed below.
+Only a few libraries in include/platform have platform-specific backends. Their current support status is listed below.
 
 > **Note:** Platform support is actively expanding. Additional operating systems and graphics backends will be implemented over time.
 
@@ -46,7 +47,7 @@ Only a few libraries have platform-specific backends. Their current support stat
 
 | Platform | Vulkan |
 | -------- | :----: |
-| Windows  | No     |
+| Windows  | Yes    |
 | Linux    | Yes    |
 
 ### Input.h
@@ -55,3 +56,10 @@ Only a few libraries have platform-specific backends. Their current support stat
 | -------- | :-----: |
 | Windows  | No      |
 | Linux    | Yes     |
+
+### Threads.h
+
+| Platform | Vulkan |
+| -------- | :----: |
+| Windows  | Yes    |
+| Linux    | Yes    |

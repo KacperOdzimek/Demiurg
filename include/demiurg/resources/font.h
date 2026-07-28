@@ -33,7 +33,7 @@ Possible Optimizations:
 #ifndef DEMIURG_FONT_H
 #define DEMIURG_FONT_H
 
-#include "rendering/graphics.h"
+#include "demiurg/platform/graphics.h"
 #include <stddef.h>
 
 /*

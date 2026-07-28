@@ -19,13 +19,12 @@ Usage: See dedicated documentation
 
 
 /*
-    Depedencies
+    Header Depedencies
 */
 
-#include "algorithm/partitioner.h"
-#include "mathematics/linear_algebra.h"
-#include "rendering/graphics.h"
-#include "resources/font.h"
+#include "demiurg/mathematics/linear_algebra.h"
+#include "demiurg/platform/graphics.h"
+#include "demiurg/resources/font.h"
 
 /*
     Implementation Injections
@@ -544,7 +543,8 @@ static inline dui_color dui_hex(const char* hex) {
 #ifdef DEMIURG_USER_INTERFACE_IMPL
 
 #include <stdlib.h>
-#include "algorithm/segmenter.h"
+#include "demiurg/algorithm/segmenter.h"
+#include "demiurg/algorithm/partitioner.h"
 
 // Implementation Notes:
 // 1 - last_frame_used_in_render values reference
