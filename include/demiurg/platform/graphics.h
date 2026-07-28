@@ -2636,6 +2636,8 @@ void dgx_gcmd_begin_rendering(dgx_gcmd_rendering_info* info) {
             }
         }
     );
+
+    free(color_infos);
 }
 
 void dgx_gcmd_finish_rendering() {

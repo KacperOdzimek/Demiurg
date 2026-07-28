@@ -23,7 +23,7 @@ Usage:
 // Projection Math
 
 static inline dla_mat4 dcam_perspective(float fov_y_rad, float aspect, float z_near, float z_far) {
-    dla_mat4 m; dla_mat4 m = (dla_mat4){0};
+    dla_mat4 m = (dla_mat4){0};
     float tan_half_fov = tanf(fov_y_rad * 0.5f);
 
     m.m[0][0] = 1.0f / (aspect * tan_half_fov);
