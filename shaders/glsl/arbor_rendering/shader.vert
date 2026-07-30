@@ -3,9 +3,12 @@
 
 layout(location = 0) out      vec2  out_pos;
 layout(location = 1) out      vec2  out_uv;
-layout(location = 2) flat out int   out_clipbox_index;
-layout(location = 3) flat out int   out_texture_index;
-layout(location = 4) flat out vec4  out_color;
+layout(location = 2) out      vec2  out_local_pos;
+layout(location = 3) flat out int   out_clipbox_index;
+layout(location = 4) flat out int   out_texture_index;
+layout(location = 5) flat out float out_rounding;
+layout(location = 6) flat out vec4  out_color;
+layout(location = 7) flat out vec2  out_half_size_px;
 
 struct uv_2d {
     float min_x, min_y;
@@ -23,6 +26,7 @@ struct gpu_draw_item {
     int    texture_index;
     int    clipbox_index;
     uint   shader_index;
+    int    rounding_pixel;
     float  r, g, b, a;
 };
 
@@ -40,15 +44,15 @@ layout(push_constant) uniform PushConstants {
     uint glyphs_buffer_index;
 } pc;
 
-layout(set = 0, binding = 1) readonly buffer InstancesBuffer {
+layout(std430, set = 0, binding = 1) readonly buffer InstancesBuffer {
     gpu_instance instances[];
 } instances_buffers[];
 
-layout(set = 0, binding = 1) readonly buffer DrawItemsBuffer {
+layout(std430, set = 0, binding = 1) readonly buffer DrawItemsBuffer {
     gpu_draw_item draw_items[];
 } draw_items_buffers[];
 
-layout(set = 0, binding = 1) readonly buffer GlyphsBuffer {
+layout(std430, set = 0, binding = 1) readonly buffer GlyphsBuffer {
     gpu_glyph glyphs[];
 } glyphs_buffers[];
 
@@ -79,6 +83,11 @@ void main() {
     gpu_draw_item item = draw_items_buffers[nonuniformEXT(pc.draw_items_buffer_index)].draw_items[inst.item];
 
     mat3 transform = expand_affine(item.transform);
+
+    vec2 box_half_size_px = vec2(
+        pc.resolution_width  * 0.5 * (abs(transform[0][0]) + abs(transform[0][1])),
+        pc.resolution_height * 0.5 * (abs(transform[1][0]) + abs(transform[1][1]))
+    );
 
     vec2 uv = mix(
         vec2(item.atlas_position.min_x, item.atlas_position.min_y),
@@ -122,15 +131,16 @@ void main() {
         transform = transform * local_transform;
     }
 
-    vec2 pos = vert_pos[gl_VertexIndex];
-    vec3 result = transform * vec3(pos, 1.0);
-
-    pos = result.xy;
+    vec2 local_pos = vert_pos[gl_VertexIndex];
+    vec2 pos = (transform * vec3(local_pos, 1.0)).xy;
     gl_Position = vec4(pos.x, -pos.y, 0.0, 1.0);
 
     out_pos           = pos;
     out_uv            = uv;
     out_clipbox_index = item.clipbox_index;
     out_texture_index = item.texture_index;
+    out_rounding      = float(item.rounding_pixel);
     out_color         = vec4(item.r, item.g, item.b, item.a);
+    out_local_pos     = local_pos;
+    out_half_size_px  = box_half_size_px;
 }

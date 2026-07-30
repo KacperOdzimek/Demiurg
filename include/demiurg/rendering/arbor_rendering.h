@@ -95,6 +95,7 @@ typedef struct gpu_draw_item {
     int         texture_index;
     int         clipbox_index;
     uint32_t    shader_index;
+    int         rounding_pixel;
     float       r, g, b, a;
 } gpu_draw_item;
 
@@ -475,6 +476,7 @@ int dar_upload_cache(
                 .texture_index  = texture_index,
                 .clipbox_index  = req.clip_index,
                 .shader_index   = req.box.data.shader,
+                .rounding_pixel = 16,
                 .r              = (float)req.box.data.tint.r / 255.0f,
                 .g              = (float)req.box.data.tint.g / 255.0f,
                 .b              = (float)req.box.data.tint.b / 255.0f,
