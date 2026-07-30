@@ -1,0 +1,61 @@
+#version 430
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(location = 0) in      vec2 in_pos;
+layout(location = 1) in      vec2 in_uv;
+layout(location = 2) flat in int  in_clipbox_index;
+layout(location = 3) flat in int  in_texture_index;
+layout(location = 4) flat in vec4 in_color;
+
+layout(location = 0) out vec4 outColor;
+
+struct gpu_clipbox {
+    mat3 transform;
+};
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 20) uint resolution_width;
+    layout(offset = 24) uint resolution_height;
+    layout(offset = 28) uint clips_buffer_index;
+    layout(offset = 32) uint sampler_index;
+} pc;
+
+layout(std430, set = 0, binding = 1) readonly buffer ClipboxesBuffer {
+    gpu_clipbox clipboxes[];
+} clipboxes_buffers[];
+
+layout(set = 0, binding = 2) uniform texture2D textures[];
+layout(set = 0, binding = 4) uniform sampler samplers[];
+
+bool point_in_clip(mat3 transform, vec2 p) {
+    vec3 local = inverse(transform) * vec3(p, 1.0);
+    return (local.x >= -1.0 && local.x <=  1.0 && local.y >= -1.0 && local.y <= 1.0);
+}
+
+vec3 srgb_to_linear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+
+void main() {
+    if (in_clipbox_index >= 0) {
+        gpu_clipbox clip = clipboxes_buffers[nonuniformEXT(pc.clips_buffer_index)].clipboxes[in_clipbox_index];
+        if (!point_in_clip(clip.transform, in_pos)) discard;
+    }
+
+    vec4 tint = vec4(srgb_to_linear(in_color.rgb), in_color.a);
+
+    bool has_texture = in_texture_index != 0;
+    bool is_font     = in_texture_index < 0;
+    int  tex_index = has_texture ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1) : 0;
+
+    vec4 texture_color = has_texture ? texture(sampler2D(textures[tex_index], samplers[pc.sampler_index]), in_uv) : vec4(1.0);
+
+    if (is_font) {
+        float dist  = texture_color.r;
+        float width = fwidth(dist);
+        float alpha = smoothstep(0.5 - width, 0.5 + width, dist);
+        texture_color = vec4(1.0, 1.0, 1.0, alpha);
+    }
+
+    outColor = vec4(texture_color.rgb * tint.rgb, texture_color.a * tint.a);
+}

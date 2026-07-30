@@ -2758,7 +2758,7 @@ void free_swapchain_support_details(swapchain_support_details details) {
 }
 
 int windowing_platform_init(dgx_library* library) {
-    glfwInit();
+    return glfwInit() == GLFW_TRUE;
 }
 
 void windowing_platform_term(dgx_library* library) {
@@ -2766,7 +2766,7 @@ void windowing_platform_term(dgx_library* library) {
 }
 
 int windowing_platform_get_required_extensions(dgx_library* library, uint32_t* count, const char*** names) {
-    *names = glfwGetRequiredInstanceExtensions(count);
+    *names = glfwGetRequiredInstanceExtensions(count); return 1;
 }
 
 int windowing_platform_query_presentation_support(dgx_library* library, VkPhysicalDevice device) {
