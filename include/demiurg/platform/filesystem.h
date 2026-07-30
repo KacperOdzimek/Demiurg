@@ -95,18 +95,22 @@ int dvfs_filesystem_system( // Translates virtual to system path, saves to given
 void dvfs_filesystem_update( // Pools changes on watched mount directories, out_infos are filesystem owned, valid till next update
     dvfs_filesystem*, uint32_t* out_count, const dvfs_change_info** out_infos
 );
-
+ 
 // ===========================
 // File Map
-
-int dvfs_file_mmap(     // Maps file to addressing space, allowing zero-copy read from file
-    const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped
+ 
+typedef struct dvfs_file_mmap_registry dvfs_file_mmap_registry;
+dvfs_file_mmap_registry* dvfs_create_file_mmap_registry();
+void dvfs_free_file_mmap_registry();
+ 
+int dvfs_file_mmap_registry_map( // Maps file to addressing space, allowing zero-copy read from file, non-zero at success
+    dvfs_file_mmap_registry*, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped
 );
-
-void dvfs_file_unmap(   // Unmaps mapped file from addresing space, must be given out_mapped from dvfs_file_mmap
-    const char* mapped
+ 
+void dvfs_file_mmap_registry_unmap( // Unmaps mapped file from addresing space, must be given out_mapped from dvfs_file_mmap
+    dvfs_file_mmap_registry*, const char* mapped
 );
-
+ 
 #endif // DEMIURG_VIRTUAL_FILESYSTEM_H
 
 #ifdef DEMIURG_VIRTUAL_FILESYSTEM_IMPL
