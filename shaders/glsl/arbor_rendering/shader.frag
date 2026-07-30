@@ -1,17 +1,20 @@
 #version 430
 #extension GL_EXT_nonuniform_qualifier : require
 
-layout(location = 0) in      vec2 in_pos;
-layout(location = 1) in      vec2 in_uv;
-layout(location = 2) flat in int  in_clipbox_index;
-layout(location = 3) flat in int  in_texture_index;
-layout(location = 4) flat in vec4 in_color;
+layout(location = 0) in      vec2  in_pos;
+layout(location = 1) in      vec2  in_uv;
+layout(location = 2) flat in int   in_clipbox_index;
+layout(location = 3) flat in int   in_texture_index;
+layout(location = 4) flat in vec4  in_color;
 
 layout(location = 0) out vec4 outColor;
 
-struct gpu_clipbox {
-    mat3 transform;
-};
+layout(std430, set = 0, binding = 1) readonly buffer ClipboxesBuffer {
+    mat3x2 clipboxes[];
+} clipboxes_buffers[];
+
+layout(set = 0, binding = 2) uniform texture2D textures[];
+layout(set = 0, binding = 4) uniform sampler samplers[];
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 20) uint resolution_width;
@@ -20,42 +23,121 @@ layout(push_constant) uniform PushConstants {
     layout(offset = 32) uint sampler_index;
 } pc;
 
-layout(std430, set = 0, binding = 1) readonly buffer ClipboxesBuffer {
-    gpu_clipbox clipboxes[];
-} clipboxes_buffers[];
 
-layout(set = 0, binding = 2) uniform texture2D textures[];
-layout(set = 0, binding = 4) uniform sampler samplers[];
-
-bool point_in_clip(mat3 transform, vec2 p) {
-    vec3 local = inverse(transform) * vec3(p, 1.0);
-    return (local.x >= -1.0 && local.x <=  1.0 && local.y >= -1.0 && local.y <= 1.0);
+mat3 expand_affine(mat3x2 a)
+{
+    return mat3(
+        vec3(a[0], 0.0),
+        vec3(a[1], 0.0),
+        vec3(a[2], 1.0)
+    );
 }
 
-vec3 srgb_to_linear(vec3 c) {
-    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+
+bool point_in_clip(mat3 t, vec2 p)
+{
+    vec2 c0 = t[0].xy; // (m00, m10)
+    vec2 c1 = t[1].xy; // (m01, m11)
+    vec2 c2 = t[2].xy; // (tx, ty)
+
+    float det = c0.x * c1.y - c1.x * c0.y;
+
+    if (abs(det) < 0.00001)
+        return true;
+
+    float inv00 =  c1.y / det;
+    float inv01 = -c1.x / det;
+    float inv10 = -c0.y / det;
+    float inv11 =  c0.x / det;
+
+    vec2 d = p - c2;
+
+    vec2 local = vec2(
+        inv00 * d.x + inv01 * d.y,
+        inv10 * d.x + inv11 * d.y
+    );
+
+    return (
+        local.x >= -1.0 &&
+        local.x <=  1.0 &&
+        local.y >= -1.0 &&
+        local.y <=  1.0
+    );
 }
 
-void main() {
-    if (in_clipbox_index >= 0) {
-        gpu_clipbox clip = clipboxes_buffers[nonuniformEXT(pc.clips_buffer_index)].clipboxes[in_clipbox_index];
-        if (!point_in_clip(clip.transform, in_pos)) discard;
+
+vec3 srgb_to_linear(vec3 c)
+{
+    return mix(
+        c / 12.92,
+        pow((c + 0.055) / 1.055, vec3(2.4)),
+        step(0.04045, c)
+    );
+}
+
+
+void main()
+{
+    if (in_clipbox_index >= 0)
+    {
+        mat3 clip =
+            expand_affine(
+                clipboxes_buffers[nonuniformEXT(pc.clips_buffer_index)]
+                .clipboxes[in_clipbox_index]
+            );
+
+        if (!point_in_clip(clip, in_pos))
+            discard;
     }
 
-    vec4 tint = vec4(srgb_to_linear(in_color.rgb), in_color.a);
+
+    vec4 tint = vec4(
+        srgb_to_linear(in_color.rgb),
+        in_color.a
+    );
+
 
     bool has_texture = in_texture_index != 0;
     bool is_font     = in_texture_index < 0;
-    int  tex_index = has_texture ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1) : 0;
 
-    vec4 texture_color = has_texture ? texture(sampler2D(textures[tex_index], samplers[pc.sampler_index]), in_uv) : vec4(1.0);
 
-    if (is_font) {
-        float dist  = texture_color.r;
+    int tex_index =
+        has_texture
+        ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1)
+        : 0;
+
+
+    vec4 texture_color =
+        has_texture
+        ? texture(
+            sampler2D(
+                textures[tex_index],
+                samplers[pc.sampler_index]
+            ),
+            in_uv
+        )
+        : vec4(1.0);
+
+
+    if (is_font)
+    {
+        float dist = texture_color.r;
+
+        float edge  = 0.5;
         float width = fwidth(dist);
-        float alpha = smoothstep(0.5 - width, 0.5 + width, dist);
+
+        float alpha = smoothstep(
+            edge - width,
+            edge + width,
+            dist
+        );
+
         texture_color = vec4(1.0, 1.0, 1.0, alpha);
     }
 
-    outColor = vec4(texture_color.rgb * tint.rgb, texture_color.a * tint.a);
+
+    outColor = vec4(
+        texture_color.rgb * tint.rgb,
+        texture_color.a * tint.a
+    );
 }

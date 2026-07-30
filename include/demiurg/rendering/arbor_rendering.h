@@ -4,7 +4,7 @@
 // ===========================
 // Header Depedency
 
-#include "arbor/architecture.h"
+#include "arbor/arbor.h"
 #include "demiurg/platform/graphics.h"
 #include <stdint.h>
 
@@ -90,7 +90,7 @@ typedef struct gpu_instance {
 } gpu_instance;
 
 typedef struct gpu_draw_item {
-    arb_mat3    transform;
+    arb_mat3x2  transform;
     arb_uv_2d   atlas_position;
     int         texture_index;
     int         clipbox_index;
@@ -99,7 +99,7 @@ typedef struct gpu_draw_item {
 } gpu_draw_item;
 
 typedef struct gpu_clipbox {
-    arb_mat3    transform;
+    arb_mat3x2  transform;
 } gpu_clipbox;
 
 typedef struct gpu_glyph {

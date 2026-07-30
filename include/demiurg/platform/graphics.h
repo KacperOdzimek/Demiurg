@@ -2928,7 +2928,7 @@ void safe_free_retired_swapchains(dgx_window* window);
 
 void window_resized_callback(GLFWwindow* platform_window, int width, int height) {
     dgx_window* window = glfwGetWindowUserPointer(platform_window);
-    //if (window->swapchain.width != (uint32_t)width || window->swapchain.height != (uint32_t)height) create_swapchain(window);
+    if (window->swapchain.width != (uint32_t)width || window->swapchain.height != (uint32_t)height) create_swapchain(window);
 }
 
 void window_scroll_callback(GLFWwindow* platform_window, double xoffset, double yoffset) {
@@ -3172,8 +3172,8 @@ void dgx_window_query_input(dgx_window* window, int* left_pressed, int* right_pr
 // Window Queries
 
 void dgx_window_query_size(dgx_window* window, uint32_t* width, uint32_t* height) {
-    if (width)  *width  = window->swapchain.width;
-    if (height) *height = window->swapchain.height;
+    int iwidth, iheight; glfwGetFramebufferSize(window->window, &iwidth, &iheight);
+    if (width)  *width  = iwidth; if (height) *height = iheight;
 }
 
 // Swapchain
