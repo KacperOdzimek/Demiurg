@@ -23,9 +23,7 @@ layout(push_constant) uniform PushConstants {
     layout(offset = 32) uint sampler_index;
 } pc;
 
-
-mat3 expand_affine(mat3x2 a)
-{
+mat3 expand_affine(mat3x2 a) {
     return mat3(
         vec3(a[0], 0.0),
         vec3(a[1], 0.0),
@@ -33,95 +31,49 @@ mat3 expand_affine(mat3x2 a)
     );
 }
 
-
-bool point_in_clip(mat3 t, vec2 p)
-{
+bool point_in_clip(mat3 t, vec2 p) {
     vec2 c0 = t[0].xy; // (m00, m10)
     vec2 c1 = t[1].xy; // (m01, m11)
     vec2 c2 = t[2].xy; // (tx, ty)
 
     float det = c0.x * c1.y - c1.x * c0.y;
+    if (abs(det) < 0.00001) return true;
 
-    if (abs(det) < 0.00001)
-        return true;
-
-    float inv00 =  c1.y / det;
-    float inv01 = -c1.x / det;
-    float inv10 = -c0.y / det;
-    float inv11 =  c0.x / det;
+    float inv00 =  c1.y / det; float inv01 = -c1.x / det;
+    float inv10 = -c0.y / det; float inv11 =  c0.x / det;
 
     vec2 d = p - c2;
-
     vec2 local = vec2(
         inv00 * d.x + inv01 * d.y,
         inv10 * d.x + inv11 * d.y
     );
 
     return (
-        local.x >= -1.0 &&
-        local.x <=  1.0 &&
-        local.y >= -1.0 &&
-        local.y <=  1.0
+        local.x >= -1.0 && local.x <= 1.0 && 
+        local.y >= -1.0 && local.y <= 1.0
     );
 }
 
-
-vec3 srgb_to_linear(vec3 c)
-{
-    return mix(
-        c / 12.92,
-        pow((c + 0.055) / 1.055, vec3(2.4)),
-        step(0.04045, c)
-    );
+vec3 srgb_to_linear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 
-
-void main()
-{
-    if (in_clipbox_index >= 0)
-    {
-        mat3 clip =
-            expand_affine(
-                clipboxes_buffers[nonuniformEXT(pc.clips_buffer_index)]
-                .clipboxes[in_clipbox_index]
-            );
-
-        if (!point_in_clip(clip, in_pos))
-            discard;
+void main() {
+    if (in_clipbox_index >= 0) {
+        mat3 clip = expand_affine(clipboxes_buffers[nonuniformEXT(pc.clips_buffer_index)].clipboxes[in_clipbox_index]);
+        if (!point_in_clip(clip, in_pos)) discard;
     }
 
-
-    vec4 tint = vec4(
-        srgb_to_linear(in_color.rgb),
-        in_color.a
-    );
-
+    vec4 tint = vec4(srgb_to_linear(in_color.rgb), in_color.a);
 
     bool has_texture = in_texture_index != 0;
     bool is_font     = in_texture_index < 0;
+    int tex_index    = has_texture ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1) : 0;
 
+    vec4 texture_color = has_texture ? texture(sampler2D(textures[tex_index], samplers[pc.sampler_index]), in_uv) : vec4(1.0);
 
-    int tex_index =
-        has_texture
-        ? (is_font ? -(in_texture_index + 1) : in_texture_index - 1)
-        : 0;
-
-
-    vec4 texture_color =
-        has_texture
-        ? texture(
-            sampler2D(
-                textures[tex_index],
-                samplers[pc.sampler_index]
-            ),
-            in_uv
-        )
-        : vec4(1.0);
-
-
-    if (is_font)
-    {
-        float dist = texture_color.r;
+    if (is_font) {
+        float dist  = texture_color.r;
 
         float edge  = 0.5;
         float width = fwidth(dist);
@@ -134,7 +86,6 @@ void main()
 
         texture_color = vec4(1.0, 1.0, 1.0, alpha);
     }
-
 
     outColor = vec4(
         texture_color.rgb * tint.rgb,

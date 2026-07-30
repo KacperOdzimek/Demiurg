@@ -52,7 +52,6 @@ layout(set = 0, binding = 1) readonly buffer GlyphsBuffer {
     gpu_glyph glyphs[];
 } glyphs_buffers[];
 
-
 vec2 vert_pos[4] = {
     vec2(-1.0, -1.0),
     vec2( 1.0, -1.0),
@@ -67,9 +66,7 @@ vec2 vert_uv[4] = {
     vec2(1.0, 1.0)
 };
 
-
-mat3 expand_affine(mat3x2 a)
-{
+mat3 expand_affine(mat3x2 a) {
     return mat3(
         vec3(a[0], 0.0),
         vec3(a[1], 0.0),
@@ -77,20 +74,11 @@ mat3 expand_affine(mat3x2 a)
     );
 }
 
-
-void main()
-{
-    gpu_instance inst =
-        instances_buffers[nonuniformEXT(pc.instances_buffer_index)]
-        .instances[gl_InstanceIndex];
-
-    gpu_draw_item item =
-        draw_items_buffers[nonuniformEXT(pc.draw_items_buffer_index)]
-        .draw_items[inst.item];
-
+void main() {
+    gpu_instance  inst = instances_buffers[nonuniformEXT(pc.instances_buffer_index)].instances[gl_InstanceIndex];
+    gpu_draw_item item = draw_items_buffers[nonuniformEXT(pc.draw_items_buffer_index)].draw_items[inst.item];
 
     mat3 transform = expand_affine(item.transform);
-
 
     vec2 uv = mix(
         vec2(item.atlas_position.min_x, item.atlas_position.min_y),
@@ -98,22 +86,13 @@ void main()
         vert_uv[gl_VertexIndex]
     );
 
+    if (inst.glyph != -1) {
+        gpu_glyph glyph = glyphs_buffers[nonuniformEXT(pc.glyphs_buffer_index)].glyphs[inst.glyph];
 
-    if (inst.glyph != -1)
-    {
         vec2 text_box_size = vec2(
-            pc.resolution_width  *
-            (abs(transform[0][0]) + abs(transform[0][1])),
-
-            pc.resolution_height *
-            (abs(transform[1][0]) + abs(transform[1][1]))
+            pc.resolution_width  * (abs(transform[0][0]) + abs(transform[0][1])),
+            pc.resolution_height * (abs(transform[1][0]) + abs(transform[1][1]))
         );
-
-
-        gpu_glyph glyph =
-            glyphs_buffers[nonuniformEXT(pc.glyphs_buffer_index)]
-            .glyphs[inst.glyph];
-
 
         uv = mix(
             vec2(glyph.atlas_position.min_x, glyph.atlas_position.min_y),
@@ -121,20 +100,16 @@ void main()
             uv
         );
 
-
         float pixel_to_norm_x = 2.0 / text_box_size.x;
         float pixel_to_norm_y = 2.0 / text_box_size.y;
 
-
         mat3 local_transform = mat3(1.0);
-
 
         local_transform *= mat3(
             glyph.size_x * pixel_to_norm_x / 2, 0.0, 0.0,
             0.0, glyph.size_y * pixel_to_norm_y / 2, 0.0,
             0.0, 0.0, 1.0
         );
-
 
         local_transform *= mat3(
             1.0, 0.0, 0.0,
@@ -144,10 +119,8 @@ void main()
             1.0
         );
 
-
         transform = transform * local_transform;
     }
-
 
     vec2 pos = vert_pos[gl_VertexIndex];
     vec3 result = transform * vec3(pos, 1.0);
