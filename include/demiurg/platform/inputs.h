@@ -219,7 +219,6 @@ typedef struct din_input_state {
 */
 
 #include <libevdev/libevdev.h>
-#include <dinux/input.h>
 
 #include <dirent.h>
 #include <errno.h>
