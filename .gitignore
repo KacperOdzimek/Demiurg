@@ -17,9 +17,6 @@
 !shaders
 !shaders/**
 
-!examples
-!examples/**
-
 !documentation
 !documentation/**
 
