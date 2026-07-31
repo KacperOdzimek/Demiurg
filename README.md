@@ -1,11 +1,9 @@
 # Demiurg
 
-**Demiurg** is a minimalistic set of C99 libraries for application development.
-
-Framework areas of **interest** are:
-- **Graphics** — Demiurg provides an RHI that enables performant cross-platform rendering.
-- **User Interface** — Demiurg provides a flexible, data-driven UI system suitable for both simple GUI applications and visually rich game UIs.
-- **Fast prototyping** — Demiurg requires little boilerplate (especially for a C application) and includes useful prefabs such as an intermediate shape rendering system.
+**Demiurg** is a minimalistic set of C99 libraries for application development, aiming to provide stable, cross-platform foundation in following areas:
+- Graphics — Demiurg provides an RHI that enables performant cross-platform rendering.
+- Threading - Cross platform threading library included
+- Input - Allows reading input from mouse, keyboard and multiple gamepads
 - And much more in less-emphasized areas.
 
 # Design Points
@@ -30,9 +28,7 @@ Framework areas of **interest** are:
 # Repository Structure
 
 - *include* - This is where the libraries live.
-- *shaders* - GPU shaders required by the libraries.
-- *utility* - Utility scripts, file format converters, and other development tools. This directory contains development-only code and is not intended for shipping.
-- *examples* - Code examples
+- *depdency* - Libraries implementations depedencies
 
 # Platform Support
 
