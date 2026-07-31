@@ -20,14 +20,12 @@ Framework areas of **interest** are:
 | ------- | ------ | ----- |
 | Linear Algebra.h | Mathematics | Linear algebra library |
 | Camera.h | Mathematics | Camera projection and movement |
+| Partitioner.h | Algorithm | Efficient TLSF memory suballocator |
+| Segmenter.h | Algorithm |  Library for segmenting uploads over bandwidth-constrained connections |
 | Graphics.h | Platform | A graphics RHI |
 | Input.h | Platform | HID device interface |
 | Threads.h | Platform | Cross platform multithreading api |
-| Partitioner.h | Algorithm | Efficient TLSF memory suballocator |
-| Segmenter.h | Algorithm |  Library for segmenting uploads over bandwidth-constrained connections |
-| Serialization.h | Algorithm | Safe cross-platform serialization |
-| Font.h | Resource | Font loader and system |
-| User Interface.h | User Interface | A flexible user interface |
+| Filesystem.h | Platform | Cross platform virtual filesystem, with directory watching |
 
 # Repository Structure
 
@@ -38,9 +36,7 @@ Framework areas of **interest** are:
 
 # Platform Support
 
-Most Demiurg libraries are platform-independent. They either rely on Demiurg's platform abstraction interfaces or do not require any platform-specific code.
-
-Only a few libraries in include/platform have platform-specific backends. Their current support status is listed below.
+Demiurg libraries in include/platform have platform-specific backends. Their current support status is listed below.
 
 > **Note:** Platform support is actively expanding. Additional operating systems and graphics backends will be implemented over time.
 
@@ -60,7 +56,14 @@ Only a few libraries in include/platform have platform-specific backends. Their 
 
 ### Threads.h
 
-| Platform | Vulkan |
-| -------- | :----: |
-| Windows  | Yes    |
-| Linux    | Yes    |
+| Platform | Support |
+| -------- | :----:  |
+| Windows  | Yes     |
+| Linux    | Yes     |
+
+### Filesystem.h
+
+| Platform | Support |
+| -------- | :-----: |
+| Windows  | No      |
+| Linux    | Yes     |
