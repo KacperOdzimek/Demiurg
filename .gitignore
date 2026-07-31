@@ -14,9 +14,6 @@
 !include/demiurg/
 !include/demiurg/**
 
-!utility
-!utility/**
-
 !shaders
 !shaders/**
 
