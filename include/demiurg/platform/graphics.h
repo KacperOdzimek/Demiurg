@@ -10,456 +10,456 @@
 // ===========================
 // Enumerations
 
-typedef enum dgx_memory_access {
-    dgx_memory_access_rendering_internal,       // resource can be used by gpu processes only
-    dgx_memory_access_staging_read,             // resource can also be copied to staging buffer
-    dgx_memory_access_staging_write,            // resource can also be written from staging buffer
-    dgx_memory_access_staging_read_and_write    // resource can also be copied and written with staging buffer
-} dgx_memory_access;
+typedef enum dmg_gfx_memory_access {
+    dmg_gfx_memory_access_rendering_internal,       // resource can be used by gpu processes only
+    dmg_gfx_memory_access_staging_read,             // resource can also be copied to staging buffer
+    dmg_gfx_memory_access_staging_write,            // resource can also be written from staging buffer
+    dmg_gfx_memory_access_staging_read_and_write    // resource can also be copied and written with staging buffer
+} dmg_gfx_memory_access;
 
-typedef enum dgx_command_domain {
-    dgx_command_domain_transfer,    // transfer commands
-    dgx_command_domain_compute,     // transfer and compute commands
-    dgx_command_domain_graphics,    // transfer, compute and graphics commands
-    dgx_command_domain_count
-} dgx_command_domain;
+typedef enum dmg_gfx_command_domain {
+    dmg_gfx_command_domain_transfer,    // transfer commands
+    dmg_gfx_command_domain_compute,     // transfer and compute commands
+    dmg_gfx_command_domain_graphics,    // transfer, compute and graphics commands
+    dmg_gfx_command_domain_count
+} dmg_gfx_command_domain;
 
-typedef enum dgx_resource_type {
-    dgx_resource_type_uniform_buffer,
-    dgx_resource_type_storage_buffer,
-    dgx_resource_type_sampled_texture,
-    dgx_resource_type_storage_texture,
-    dgx_resource_type_sampler,
-    dgx_resource_type_count
-} dgx_resource_type;
+typedef enum dmg_gfx_resource_type {
+    dmg_gfx_resource_type_uniform_buffer,
+    dmg_gfx_resource_type_storage_buffer,
+    dmg_gfx_resource_type_sampled_texture,
+    dmg_gfx_resource_type_storage_texture,
+    dmg_gfx_resource_type_sampler,
+    dmg_gfx_resource_type_count
+} dmg_gfx_resource_type;
 
 // ===========================
 // Utility Structs
 
-typedef struct dgx_color {
+typedef struct dmg_gfx_color {
     float r, g, b, a;
-} dgx_color;
+} dmg_gfx_color;
 
-typedef struct dgx_uv_2d {
+typedef struct dmg_gfx_uv_2d {
     float min_x, min_y;
     float max_x, max_y;
-} dgx_uv_2d;
+} dmg_gfx_uv_2d;
 
 // ===========================
 // Library
 
-typedef struct dgx_library_create_info {
-} dgx_library_create_info;
+typedef struct dmg_gfx_library_create_info {
+} dmg_gfx_library_create_info;
 
-typedef struct dgx_library dgx_library;
-dgx_library* dgx_create_library(const dgx_library_create_info*);
-void dgx_free_library(dgx_library*);
+typedef struct dmg_gfx_library dmg_gfx_library;
+dmg_gfx_library* dmg_gfx_create_library(const dmg_gfx_library_create_info*);
+void dmg_gfx_free_library(dmg_gfx_library*);
 
 // detected devices count
-uint32_t dgx_library_query_hardware_count(dgx_library*);
+uint32_t dmg_gfx_library_query_hardware_count(dmg_gfx_library*);
 
 // name must be freed
-char*    dgx_library_query_hardware_name(dgx_library*, uint32_t index); 
+char*    dmg_gfx_library_query_hardware_name(dmg_gfx_library*, uint32_t index); 
 
 // whether this rhi support this hardware
-int      dgx_library_query_hardware_supported(dgx_library*, uint32_t index);  
+int      dmg_gfx_library_query_hardware_supported(dmg_gfx_library*, uint32_t index);  
 
 // whether can create and render to windows      
-int      dgx_library_query_hardware_windowing_support(dgx_library*, uint32_t index);
+int      dmg_gfx_library_query_hardware_windowing_support(dmg_gfx_library*, uint32_t index);
 
 // how many will truly work simultaneously
-uint8_t  dgx_library_query_hardware_concurrent_work_groups(dgx_library*, uint32_t index, dgx_command_domain domain);
+uint8_t  dmg_gfx_library_query_hardware_concurrent_work_groups(dmg_gfx_library*, uint32_t index, dmg_gfx_command_domain domain);
 
 // ===========================
 // Hardware
 
-typedef enum dgx_hardware_type {
-    dgx_hardware_type_dont_mind = 0,
-    dgx_hardware_type_discrete,
-    dgx_hardware_type_integrated,
-} dgx_hardware_type;
+typedef enum dmg_gfx_hardware_type {
+    dmg_gfx_hardware_type_dont_mind = 0,
+    dmg_gfx_hardware_type_discrete,
+    dmg_gfx_hardware_type_integrated,
+} dmg_gfx_hardware_type;
 
-typedef struct dgx_hardware_create_info {
+typedef struct dmg_gfx_hardware_create_info {
     uint32_t    hardware_index;                                     // library detected hardware index
     int         enable_windowing;                                   // enable windowing on this hardware
-    uint8_t     work_groups_per_domain[dgx_command_domain_count];   // created abstract work groups per command domain
-    uint32_t    shader_resources_limit[dgx_resource_type_count];    // maximum objects of type accessed by shader
-} dgx_hardware_create_info;
+    uint8_t     work_groups_per_domain[dmg_gfx_command_domain_count];   // created abstract work groups per command domain
+    uint32_t    shader_resources_limit[dmg_gfx_resource_type_count];    // maximum objects of type accessed by shader
+} dmg_gfx_hardware_create_info;
 
-typedef struct dgx_hardware dgx_hardware;
-dgx_hardware* dgx_create_hardware(dgx_library*, const dgx_hardware_create_info* info);
-void dgx_free_hardware(dgx_hardware*);
+typedef struct dmg_gfx_hardware dmg_gfx_hardware;
+dmg_gfx_hardware* dmg_gfx_create_hardware(dmg_gfx_library*, const dmg_gfx_hardware_create_info* info);
+void dmg_gfx_free_hardware(dmg_gfx_hardware*);
 
 // Wait till all hardware have no work at all
-void dgx_hardware_wait_idle(dgx_hardware*);
+void dmg_gfx_hardware_wait_idle(dmg_gfx_hardware*);
 
 // ===========================
 // Timeline
 
-typedef struct dgx_timeline_create_info {
+typedef struct dmg_gfx_timeline_create_info {
     uint64_t initial_value;
-} dgx_timeline_create_info;
+} dmg_gfx_timeline_create_info;
 
-typedef struct dgx_timeline dgx_timeline;
-dgx_timeline* dgx_create_timeline(dgx_hardware*, const dgx_timeline_create_info* info);
-void dgx_free_timeline(dgx_timeline*);
+typedef struct dmg_gfx_timeline dmg_gfx_timeline;
+dmg_gfx_timeline* dmg_gfx_create_timeline(dmg_gfx_hardware*, const dmg_gfx_timeline_create_info* info);
+void dmg_gfx_free_timeline(dmg_gfx_timeline*);
 
-void     dgx_timeline_signal     (dgx_timeline*, uint64_t value);   // Set timeline value from CPU
-void     dgx_timeline_wait       (dgx_timeline*, uint64_t value);   // CPU wait until completed value >= value
-int      dgx_timeline_is_after   (dgx_timeline*, uint64_t value);   // Optional non-blocking check
-uint64_t dgx_timeline_get_value  (dgx_timeline*);                   // Query highest completed value
+void     dmg_gfx_timeline_signal     (dmg_gfx_timeline*, uint64_t value);   // Set timeline value from CPU
+void     dmg_gfx_timeline_wait       (dmg_gfx_timeline*, uint64_t value);   // CPU wait until completed value >= value
+int      dmg_gfx_timeline_is_after   (dmg_gfx_timeline*, uint64_t value);   // Optional non-blocking check
+uint64_t dmg_gfx_timeline_get_value  (dmg_gfx_timeline*);                   // Query highest completed value
 
 // ===========================
 // Command List
 
-typedef void (*dgx_command_list_recorder_func)(void* params);
-typedef struct dgx_command_list dgx_command_list;
+typedef void (*dmg_gfx_command_list_recorder_func)(void* params);
+typedef struct dmg_gfx_command_list dmg_gfx_command_list;
 
-typedef struct dgx_command_list_create_info {
-    dgx_command_domain              domain; // allowed command types for this command list
+typedef struct dmg_gfx_command_list_create_info {
+    dmg_gfx_command_domain              domain; // allowed command types for this command list
     uint8_t                         aindex; // selects allocator; create/free on the same (domain, aindex) must be externally synchronized
-    dgx_command_list*               parent; // previous version of list, from same group, consumed here to save resources (do not free later)
-    dgx_command_list_recorder_func  record; // recorder callback function pointer
+    dmg_gfx_command_list*               parent; // previous version of list, from same group, consumed here to save resources (do not free later)
+    dmg_gfx_command_list_recorder_func  record; // recorder callback function pointer
     void*                           params; // recorder callback parameters pointer
-} dgx_command_list_create_info;
+} dmg_gfx_command_list_create_info;
 
-dgx_command_list* dgx_create_command_list(dgx_hardware*, const dgx_command_list_create_info* info);
-void dgx_free_command_list(dgx_command_list*);
+dmg_gfx_command_list* dmg_gfx_create_command_list(dmg_gfx_hardware*, const dmg_gfx_command_list_create_info* info);
+void dmg_gfx_free_command_list(dmg_gfx_command_list*);
 
-typedef struct dgx_submit_info {
+typedef struct dmg_gfx_submit_info {
     uint8_t          domain_work_group;   // target work group
 
     uint32_t         wait_count;
-    dgx_timeline**   wait_timelines;
+    dmg_gfx_timeline**   wait_timelines;
     uint64_t*        wait_values;
 
     uint32_t         signal_count;
-    dgx_timeline**   signal_timelines;
+    dmg_gfx_timeline**   signal_timelines;
     uint64_t*        signal_values;
-} dgx_submit_info;
+} dmg_gfx_submit_info;
 
-void dgx_command_list_submit(uint32_t count, dgx_command_list** lists, const dgx_submit_info* info);
+void dmg_gfx_command_list_submit(uint32_t count, dmg_gfx_command_list** lists, const dmg_gfx_submit_info* info);
 
 // ==========================
 // Staging Memory
 
-typedef struct dgx_staging_memory_create_info {
+typedef struct dmg_gfx_staging_memory_create_info {
     uint64_t bytes;
-} dgx_staging_memory_create_info;
+} dmg_gfx_staging_memory_create_info;
 
-typedef struct dgx_staging_memory dgx_staging_memory;
-dgx_staging_memory* dgx_create_staging_memory(dgx_hardware*, const dgx_staging_memory_create_info*);
-void dgx_free_staging_memory(dgx_staging_memory*);
+typedef struct dmg_gfx_staging_memory dmg_gfx_staging_memory;
+dmg_gfx_staging_memory* dmg_gfx_create_staging_memory(dmg_gfx_hardware*, const dmg_gfx_staging_memory_create_info*);
+void dmg_gfx_free_staging_memory(dmg_gfx_staging_memory*);
 
-void* dgx_staging_memory_map(dgx_staging_memory*, uint64_t region_offset, uint64_t region_size);
-void dgx_staging_memory_unmap(dgx_staging_memory*);
+void* dmg_gfx_staging_memory_map(dmg_gfx_staging_memory*, uint64_t region_offset, uint64_t region_size);
+void dmg_gfx_staging_memory_unmap(dmg_gfx_staging_memory*);
 
 // ===========================
 // Buffer
 
-typedef enum dgx_buffer_usage {
-    dgx_buffer_usage_uniform,
-    dgx_buffer_usage_storage
-} dgx_buffer_usage;
+typedef enum dmg_gfx_buffer_usage {
+    dmg_gfx_buffer_usage_uniform,
+    dmg_gfx_buffer_usage_storage
+} dmg_gfx_buffer_usage;
 
-typedef struct dgx_buffer_create_info {
+typedef struct dmg_gfx_buffer_create_info {
     uint64_t            bytes;
-    dgx_buffer_usage    usage;
-    dgx_memory_access   access;
-} dgx_buffer_create_info;
+    dmg_gfx_buffer_usage    usage;
+    dmg_gfx_memory_access   access;
+} dmg_gfx_buffer_create_info;
 
-typedef struct dgx_buffer dgx_buffer;
-dgx_buffer* dgx_create_buffer(dgx_hardware*, const dgx_buffer_create_info* info);
-void dgx_free_buffer(dgx_buffer*);
+typedef struct dmg_gfx_buffer dmg_gfx_buffer;
+dmg_gfx_buffer* dmg_gfx_create_buffer(dmg_gfx_hardware*, const dmg_gfx_buffer_create_info* info);
+void dmg_gfx_free_buffer(dmg_gfx_buffer*);
 
-uint64_t dgx_buffer_query_bytes(dgx_buffer*);
+uint64_t dmg_gfx_buffer_query_bytes(dmg_gfx_buffer*);
 
 // ==========================
 // Texture
 
-typedef enum dgx_texture_usage {
-    dgx_texture_usage_sampled,
-    dgx_texture_usage_storage,
-    dgx_texture_usage_color_attachment,
-    dgx_texture_usage_depth_stencil_attachment,
-} dgx_texture_usage;
+typedef enum dmg_gfx_texture_usage {
+    dmg_gfx_texture_usage_sampled,
+    dmg_gfx_texture_usage_storage,
+    dmg_gfx_texture_usage_color_attachment,
+    dmg_gfx_texture_usage_depth_stencil_attachment,
+} dmg_gfx_texture_usage;
 
-typedef enum dgx_texture_type {
-    dgx_texture_type_1d,
-    dgx_texture_type_2d,
-    dgx_texture_type_3d,
-    dgx_texture_type_cubemap,
-} dgx_texture_type;
+typedef enum dmg_gfx_texture_type {
+    dmg_gfx_texture_type_1d,
+    dmg_gfx_texture_type_2d,
+    dmg_gfx_texture_type_3d,
+    dmg_gfx_texture_type_cubemap,
+} dmg_gfx_texture_type;
 
-typedef enum dgx_texture_format {
-    dgx_texture_format_undefined = 0,
+typedef enum dmg_gfx_texture_format {
+    dmg_gfx_texture_format_undefined = 0,
 
     // 8-bit
-    dgx_texture_format_r8_unorm,
-    dgx_texture_format_rg8_unorm,
-    dgx_texture_format_rgba8_unorm,
-    dgx_texture_format_rgba8_srgb,
-    dgx_texture_format_bgra8_unorm,
-    dgx_texture_format_bgra8_srgb,
+    dmg_gfx_texture_format_r8_unorm,
+    dmg_gfx_texture_format_rg8_unorm,
+    dmg_gfx_texture_format_rgba8_unorm,
+    dmg_gfx_texture_format_rgba8_srgb,
+    dmg_gfx_texture_format_bgra8_unorm,
+    dmg_gfx_texture_format_bgra8_srgb,
 
     // 16-bit float
-    dgx_texture_format_r16_float,
-    dgx_texture_format_rg16_float,
-    dgx_texture_format_rgba16_float,
+    dmg_gfx_texture_format_r16_float,
+    dmg_gfx_texture_format_rg16_float,
+    dmg_gfx_texture_format_rgba16_float,
 
     // 32-bit float
-    dgx_texture_format_r32_float,
-    dgx_texture_format_rg32_float,
-    dgx_texture_format_rgba32_float,
+    dmg_gfx_texture_format_r32_float,
+    dmg_gfx_texture_format_rg32_float,
+    dmg_gfx_texture_format_rgba32_float,
 
     // Depth / stencil
-    dgx_texture_format_depth16_unorm,
-    dgx_texture_format_depth24_unorm_stencil8,
-    dgx_texture_format_depth32_float,
-} dgx_texture_format;
+    dmg_gfx_texture_format_depth16_unorm,
+    dmg_gfx_texture_format_depth24_unorm_stencil8,
+    dmg_gfx_texture_format_depth32_float,
+} dmg_gfx_texture_format;
 
-typedef struct dgx_texture_dimensions {
+typedef struct dmg_gfx_texture_dimensions {
     uint32_t width;
     uint32_t height;
     uint32_t depth;
-} dgx_texture_dimensions;
+} dmg_gfx_texture_dimensions;
 
-typedef struct dgx_texture_create_info {
-    dgx_texture_type        type;
-    dgx_texture_usage       usage;
-    dgx_texture_format      format;
-    dgx_texture_dimensions  dimensions;
+typedef struct dmg_gfx_texture_create_info {
+    dmg_gfx_texture_type        type;
+    dmg_gfx_texture_usage       usage;
+    dmg_gfx_texture_format      format;
+    dmg_gfx_texture_dimensions  dimensions;
     uint32_t                array_length;
     uint32_t                sample_count;
     uint32_t                mipmap_layers;
-    dgx_memory_access       memory_access;
-} dgx_texture_create_info;
+    dmg_gfx_memory_access       memory_access;
+} dmg_gfx_texture_create_info;
 
-typedef struct dgx_texture dgx_texture;
-dgx_texture* dgx_create_texture(dgx_hardware*, const dgx_texture_create_info* info);
-void dgx_free_texture(dgx_texture* texture);
+typedef struct dmg_gfx_texture dmg_gfx_texture;
+dmg_gfx_texture* dmg_gfx_create_texture(dmg_gfx_hardware*, const dmg_gfx_texture_create_info* info);
+void dmg_gfx_free_texture(dmg_gfx_texture* texture);
 
-dgx_texture_dimensions dgx_texture_query_dimensions(dgx_texture*);
+dmg_gfx_texture_dimensions dmg_gfx_texture_query_dimensions(dmg_gfx_texture*);
 
 // ==========================
 // Sampler
 
-typedef enum dgx_sampler_filter {
-    dgx_sampler_filter_nearest,
-    dgx_sampler_filter_linear,
-} dgx_sampler_filter;
+typedef enum dmg_gfx_sampler_filter {
+    dmg_gfx_sampler_filter_nearest,
+    dmg_gfx_sampler_filter_linear,
+} dmg_gfx_sampler_filter;
 
-typedef enum dgx_sampler_wrapping {
-    dgx_sampler_wrapping_repeat,
-    dgx_sampler_wrapping_repeat_mirrored,
-    dgx_sampler_wrapping_repeat_clamp_coordinates,
-    dgx_sampler_wrapping_repeat_clamp_texture
-} dgx_sampler_wrapping;
+typedef enum dmg_gfx_sampler_wrapping {
+    dmg_gfx_sampler_wrapping_repeat,
+    dmg_gfx_sampler_wrapping_repeat_mirrored,
+    dmg_gfx_sampler_wrapping_repeat_clamp_coordinates,
+    dmg_gfx_sampler_wrapping_repeat_clamp_texture
+} dmg_gfx_sampler_wrapping;
 
-typedef struct dgx_sampler_create_info {
-    dgx_sampler_filter      mag_filter;
-    dgx_sampler_filter      min_filter;
-    dgx_sampler_filter      mipmap_filter;
+typedef struct dmg_gfx_sampler_create_info {
+    dmg_gfx_sampler_filter      mag_filter;
+    dmg_gfx_sampler_filter      min_filter;
+    dmg_gfx_sampler_filter      mipmap_filter;
 
-    dgx_sampler_wrapping    x_coord_wrapping;
-    dgx_sampler_wrapping    y_coord_wrapping;
-    dgx_sampler_wrapping    z_coord_wrapping;
+    dmg_gfx_sampler_wrapping    x_coord_wrapping;
+    dmg_gfx_sampler_wrapping    y_coord_wrapping;
+    dmg_gfx_sampler_wrapping    z_coord_wrapping;
     int                     unnormalized_coordinates;
 
     float                   min_lod, max_lod;
     float                   mip_lod_bias;
-} dgx_sampler_create_info;
+} dmg_gfx_sampler_create_info;
 
-typedef struct dgx_sampler dgx_sampler;
-dgx_sampler* dgx_create_sampler(dgx_hardware*, const dgx_sampler_create_info* info);
-void dgx_free_sampler(dgx_sampler*);
+typedef struct dmg_gfx_sampler dmg_gfx_sampler;
+dmg_gfx_sampler* dmg_gfx_create_sampler(dmg_gfx_hardware*, const dmg_gfx_sampler_create_info* info);
+void dmg_gfx_free_sampler(dmg_gfx_sampler*);
 
 // ===========================
 // Shader
 
-typedef enum dgx_shader_stage {
-    dgx_shader_stage_vertex,
-    dgx_shader_stage_geometry,
-    dgx_shader_stage_pixel,
-    dgx_shader_stage_count
-} dgx_shader_stage;
+typedef enum dmg_gfx_shader_stage {
+    dmg_gfx_shader_stage_vertex,
+    dmg_gfx_shader_stage_geometry,
+    dmg_gfx_shader_stage_pixel,
+    dmg_gfx_shader_stage_count
+} dmg_gfx_shader_stage;
 
-typedef struct dgx_shader_create_info {
+typedef struct dmg_gfx_shader_create_info {
     const char* source_code;
     uint32_t    source_size;
-} dgx_shader_create_info;
+} dmg_gfx_shader_create_info;
 
-typedef struct dgx_shader dgx_shader;
-dgx_shader* dgx_create_shader(dgx_hardware*, const dgx_shader_create_info* info);
-void dgx_free_shader(dgx_shader* shader);
+typedef struct dmg_gfx_shader dmg_gfx_shader;
+dmg_gfx_shader* dmg_gfx_create_shader(dmg_gfx_hardware*, const dmg_gfx_shader_create_info* info);
+void dmg_gfx_free_shader(dmg_gfx_shader* shader);
 
 // Returns handle user can use to access resource in shader
 // success value will be and'ed with 1 in case of success and 0 zero otherwise
-uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type, void* resource, int* success);
+uint32_t dmg_gfx_shader_resource_bind(dmg_gfx_hardware* hardware, dmg_gfx_resource_type type, void* resource, int* success);
 
 // ===========================
 // Graphics Pipeline
 
 // Shader Stages
 
-typedef struct dgx_pipeline_shader_stages {
-    dgx_shader*     shaders  [dgx_shader_stage_count];  // shader per stage
-    uint32_t        constants[dgx_shader_stage_count];  // size of constants range per stage
-} dgx_pipeline_shader_stages;
+typedef struct dmg_gfx_pipeline_shader_stages {
+    dmg_gfx_shader*     shaders  [dmg_gfx_shader_stage_count];  // shader per stage
+    uint32_t        constants[dmg_gfx_shader_stage_count];  // size of constants range per stage
+} dmg_gfx_pipeline_shader_stages;
 
 // Attachments
 
-typedef enum dgx_load_op {
-    dgx_load_op_load,       // keep previous contents
-    dgx_load_op_clear,      // clear at start
-    dgx_load_op_dont_care   // undefined (fast)
-} dgx_load_op;
+typedef enum dmg_gfx_load_op {
+    dmg_gfx_load_op_load,       // keep previous contents
+    dmg_gfx_load_op_clear,      // clear at start
+    dmg_gfx_load_op_dont_care   // undefined (fast)
+} dmg_gfx_load_op;
 
-typedef enum dgx_store_op {
-    dgx_store_op_store,     // keep result
-    dgx_store_op_dont_care  // discard after rendering
-} dgx_store_op;
+typedef enum dmg_gfx_store_op {
+    dmg_gfx_store_op_store,     // keep result
+    dmg_gfx_store_op_dont_care  // discard after rendering
+} dmg_gfx_store_op;
 
-typedef struct dgx_pipeline_attachment_state {
+typedef struct dmg_gfx_pipeline_attachment_state {
     uint32_t                color_attachments_count;
-    dgx_texture_format*     color_attachments_formats;
-    dgx_texture_format*     depth_stencil_format;   // nullable
-} dgx_pipeline_attachment_state;
+    dmg_gfx_texture_format*     color_attachments_formats;
+    dmg_gfx_texture_format*     depth_stencil_format;   // nullable
+} dmg_gfx_pipeline_attachment_state;
 
 // Input Assembly
 
-typedef enum dgx_primitive_topology {
-    dgx_primitive_topology_point_list,
-    dgx_primitive_topology_line_list,
-    dgx_primitive_topology_line_strip,
-    dgx_primitive_topology_triangle_list,
-    dgx_primitive_topology_triangle_strip
-} dgx_primitive_topology;
+typedef enum dmg_gfx_primitive_topology {
+    dmg_gfx_primitive_topology_point_list,
+    dmg_gfx_primitive_topology_line_list,
+    dmg_gfx_primitive_topology_line_strip,
+    dmg_gfx_primitive_topology_triangle_list,
+    dmg_gfx_primitive_topology_triangle_strip
+} dmg_gfx_primitive_topology;
 
-typedef struct dgx_pipeline_input_assembler_state {
-    dgx_primitive_topology topology;   
-} dgx_pipeline_input_assembler_state;
+typedef struct dmg_gfx_pipeline_input_assembler_state {
+    dmg_gfx_primitive_topology topology;   
+} dmg_gfx_pipeline_input_assembler_state;
 
 // Rasterizer
 
-typedef enum dgx_cull_mode {
-    dgx_cull_mode_none,
-    dgx_cull_mode_front,
-    dgx_cull_mode_back,
-    dgx_cull_mode_front_and_back
-} dgx_cull_mode;
+typedef enum dmg_gfx_cull_mode {
+    dmg_gfx_cull_mode_none,
+    dmg_gfx_cull_mode_front,
+    dmg_gfx_cull_mode_back,
+    dmg_gfx_cull_mode_front_and_back
+} dmg_gfx_cull_mode;
 
-typedef enum dgx_fill_mode {
-    dgx_fill_mode_solid,
-    dgx_fill_mode_wireframe
-} dgx_fill_mode;
+typedef enum dmg_gfx_fill_mode {
+    dmg_gfx_fill_mode_solid,
+    dmg_gfx_fill_mode_wireframe
+} dmg_gfx_fill_mode;
 
-typedef struct dgx_pipeline_rasterizer_state {
-    dgx_cull_mode       cull_mode;
-    dgx_fill_mode       fill_mode;
+typedef struct dmg_gfx_pipeline_rasterizer_state {
+    dmg_gfx_cull_mode       cull_mode;
+    dmg_gfx_fill_mode       fill_mode;
     int                 depth_clamp_enable;
     int                 scissor_enable;
-} dgx_pipeline_rasterizer_state;
+} dmg_gfx_pipeline_rasterizer_state;
 
 // Blending
 
-typedef enum dgx_blend_op {
-    dgx_blend_op_add = 0,
-    dgx_blend_op_subtract,
-    dgx_blend_op_reverse_subtract,
-    dgx_blend_op_min,
-    dgx_blend_op_max
-} dgx_blend_op;
+typedef enum dmg_gfx_blend_op {
+    dmg_gfx_blend_op_add = 0,
+    dmg_gfx_blend_op_subtract,
+    dmg_gfx_blend_op_reverse_subtract,
+    dmg_gfx_blend_op_min,
+    dmg_gfx_blend_op_max
+} dmg_gfx_blend_op;
 
-typedef enum dgx_blend_factor {
-    dgx_blend_factor_zero = 0,
-    dgx_blend_factor_one,
+typedef enum dmg_gfx_blend_factor {
+    dmg_gfx_blend_factor_zero = 0,
+    dmg_gfx_blend_factor_one,
 
-    dgx_blend_factor_src_color,
-    dgx_blend_factor_one_minus_src_color,
+    dmg_gfx_blend_factor_src_color,
+    dmg_gfx_blend_factor_one_minus_src_color,
 
-    dgx_blend_factor_dst_color,
-    dgx_blend_factor_one_minus_dst_color,
+    dmg_gfx_blend_factor_dst_color,
+    dmg_gfx_blend_factor_one_minus_dst_color,
 
-    dgx_blend_factor_src_alpha,
-    dgx_blend_factor_one_minus_src_alpha,
+    dmg_gfx_blend_factor_src_alpha,
+    dmg_gfx_blend_factor_one_minus_src_alpha,
 
-    dgx_blend_factor_dst_alpha,
-    dgx_blend_factor_one_minus_dst_alpha,
+    dmg_gfx_blend_factor_dst_alpha,
+    dmg_gfx_blend_factor_one_minus_dst_alpha,
 
-    dgx_blend_factor_constant_color,
-    dgx_blend_factor_one_minus_constant_color,
+    dmg_gfx_blend_factor_constant_color,
+    dmg_gfx_blend_factor_one_minus_constant_color,
 
-    dgx_blend_factor_constant_alpha,
-    dgx_blend_factor_one_minus_constant_alpha,
+    dmg_gfx_blend_factor_constant_alpha,
+    dmg_gfx_blend_factor_one_minus_constant_alpha,
 
-    dgx_blend_factor_src_alpha_saturate
-} dgx_blend_factor;
+    dmg_gfx_blend_factor_src_alpha_saturate
+} dmg_gfx_blend_factor;
 
-typedef struct dgx_pipeline_blend_state {
+typedef struct dmg_gfx_pipeline_blend_state {
     int                     blend_enable;
-    dgx_blend_op            blend_op;
-    dgx_blend_factor        src_factor;
-    dgx_blend_factor        dst_factor;
-} dgx_pipeline_blend_state; 
+    dmg_gfx_blend_op            blend_op;
+    dmg_gfx_blend_factor        src_factor;
+    dmg_gfx_blend_factor        dst_factor;
+} dmg_gfx_pipeline_blend_state; 
 
-typedef struct dgx_pipeline_depth_stencil_state {
+typedef struct dmg_gfx_pipeline_depth_stencil_state {
     int depth_test_enable;
     int depth_write_enable;
     int stencil_test_enable;
-} dgx_pipeline_depth_stencil_state;
+} dmg_gfx_pipeline_depth_stencil_state;
 
-typedef struct dgx_pipeline_create_info {
-    dgx_pipeline_shader_stages          shader_stages;
-    dgx_pipeline_attachment_state       attachment_state;
-    dgx_pipeline_input_assembler_state  input_assembler_state;
-    dgx_pipeline_rasterizer_state       rasterizer_state;
-    dgx_pipeline_blend_state            blend_state;
-    dgx_pipeline_depth_stencil_state    depth_stencil_state;
-} dgx_pipeline_create_info;
+typedef struct dmg_gfx_pipeline_create_info {
+    dmg_gfx_pipeline_shader_stages          shader_stages;
+    dmg_gfx_pipeline_attachment_state       attachment_state;
+    dmg_gfx_pipeline_input_assembler_state  input_assembler_state;
+    dmg_gfx_pipeline_rasterizer_state       rasterizer_state;
+    dmg_gfx_pipeline_blend_state            blend_state;
+    dmg_gfx_pipeline_depth_stencil_state    depth_stencil_state;
+} dmg_gfx_pipeline_create_info;
 
-typedef struct dgx_pipeline dgx_pipeline;
-dgx_pipeline* dgx_create_pipeline(dgx_hardware*, const dgx_pipeline_create_info* info);
-void dgx_free_pipeline(dgx_pipeline* pipeline);
+typedef struct dmg_gfx_pipeline dmg_gfx_pipeline;
+dmg_gfx_pipeline* dmg_gfx_create_pipeline(dmg_gfx_hardware*, const dmg_gfx_pipeline_create_info* info);
+void dmg_gfx_free_pipeline(dmg_gfx_pipeline* pipeline);
 
 // ===========================
 // Window
 
-typedef struct dgx_window_create_info {
+typedef struct dmg_gfx_window_create_info {
     const char* title;          // Desired window title
     uint32_t    width;          // Desired window width
     uint32_t    height;         // Desired window height
     uint32_t    attachments;    // Desired color attachments
-} dgx_window_create_info;
+} dmg_gfx_window_create_info;
 
-typedef struct dgx_window dgx_window;
-dgx_window* dgx_create_window(dgx_hardware*, const dgx_window_create_info*);
-void dgx_free_window(dgx_window*);
+typedef struct dmg_gfx_window dmg_gfx_window;
+dmg_gfx_window* dmg_gfx_create_window(dmg_gfx_hardware*, const dmg_gfx_window_create_info*);
+void dmg_gfx_free_window(dmg_gfx_window*);
 
-int  dgx_window_query_shall_close(dgx_window*);
-void dgx_window_query_is_focused(dgx_window*, int* is);
-void dgx_window_query_cursor_pos(dgx_window*, int* xpos, int* ypos);
-void dgx_window_query_input(dgx_window*, int* left_pressed, int* right_pressed, float* scroll);
+int  dmg_gfx_window_query_shall_close(dmg_gfx_window*);
+void dmg_gfx_window_query_is_focused(dmg_gfx_window*, int* is);
+void dmg_gfx_window_query_cursor_pos(dmg_gfx_window*, int* xpos, int* ypos);
+void dmg_gfx_window_query_input(dmg_gfx_window*, int* left_pressed, int* right_pressed, float* scroll);
 
-void dgx_window_query_size    (dgx_window*, uint32_t* width, uint32_t* height);
+void dmg_gfx_window_query_size    (dmg_gfx_window*, uint32_t* width, uint32_t* height);
 
 // non-zero at success
-int  dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index);
-void dgx_window_submit_present(dgx_window* window, uint32_t target_index, dgx_timeline* wait_timeline, uint64_t wait_signal);
+int  dmg_gfx_window_acquire_index (dmg_gfx_window* window, dmg_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index);
+void dmg_gfx_window_submit_present(dmg_gfx_window* window, uint32_t target_index, dmg_gfx_timeline* wait_timeline, uint64_t wait_signal);
 
-dgx_texture*        dgx_window_get_attachment_color(dgx_window*, uint32_t target_index);
-dgx_texture_format  dgx_window_get_attachment_format(dgx_window*);
+dmg_gfx_texture*        dmg_gfx_window_get_attachment_color(dmg_gfx_window*, uint32_t target_index);
+dmg_gfx_texture_format  dmg_gfx_window_get_attachment_format(dmg_gfx_window*);
 
 // ===========================
 // General Commands (cmd)
 // Can only be called inside 
 // command list recorder callback
 
-/*void dgx_cmd_declare_buffer_use(
-    dgx_usage_type          producer,
-    dgx_usage_type          consumer,
+/*void dmg_gfx_cmd_declare_buffer_use(
+    dmg_gfx_usage_type          producer,
+    dmg_gfx_usage_type          consumer,
     uint32_t                buffers_count,
-    dgx_buffer**            buffers
+    dmg_gfx_buffer**            buffers
 );*/
 
 // ===========================
@@ -467,25 +467,25 @@ dgx_texture_format  dgx_window_get_attachment_format(dgx_window*);
 // Can only be called inside 
 // command list recorder callback
 
-void dgx_tcmd_copy_staging_memory_to_buffer(
-    dgx_staging_memory*     staging_memory,
-    dgx_buffer*             target_buffer,
+void dmg_gfx_tcmd_copy_staging_memory_to_buffer(
+    dmg_gfx_staging_memory*     staging_memory,
+    dmg_gfx_buffer*             target_buffer,
     uint64_t                staging_memory_region_offset,
     uint64_t                buffer_write_region_offset,
     uint64_t                buffer_write_region_size
 );
 
-void dgx_tcmd_copy_staging_memory_to_texture(
-    dgx_staging_memory*     staging_memory,
-    dgx_texture*            target_texture,
+void dmg_gfx_tcmd_copy_staging_memory_to_texture(
+    dmg_gfx_staging_memory*     staging_memory,
+    dmg_gfx_texture*            target_texture,
     uint64_t                staging_memory_region_offset,
-    dgx_texture_dimensions  texture_write_region_offset,
-    dgx_texture_dimensions  texture_write_region_size
+    dmg_gfx_texture_dimensions  texture_write_region_offset,
+    dmg_gfx_texture_dimensions  texture_write_region_size
 );
 
-void dgx_tcmd_copy_buffer_to_buffer(
-    dgx_buffer*             source_buffer,
-    dgx_buffer*             target_buffer,
+void dmg_gfx_tcmd_copy_buffer_to_buffer(
+    dmg_gfx_buffer*             source_buffer,
+    dmg_gfx_buffer*             target_buffer,
     uint64_t                source_region_offset,
     uint64_t                target_region_offset,
     uint64_t                target_region_size
@@ -496,47 +496,47 @@ void dgx_tcmd_copy_buffer_to_buffer(
 // Can only be called inside 
 // command list recorder callback
 
-typedef struct dgx_gcmd_rendering_attachment_info {
-    dgx_color       clear_color;
-    dgx_load_op     load_op;
-    dgx_store_op    store_op;
-    dgx_texture*    texture;
-} dgx_gcmd_rendering_attachment_info;
+typedef struct dmg_gfx_gcmd_rendering_attachment_info {
+    dmg_gfx_color       clear_color;
+    dmg_gfx_load_op     load_op;
+    dmg_gfx_store_op    store_op;
+    dmg_gfx_texture*    texture;
+} dmg_gfx_gcmd_rendering_attachment_info;
 
-typedef struct dgx_gcmd_rendering_info {
+typedef struct dmg_gfx_gcmd_rendering_info {
     int32_t                                 area_offset_x, area_offset_y;
     uint32_t                                area_width, area_height;
     uint32_t                                color_attachments_count;
-    dgx_gcmd_rendering_attachment_info*     color_attachments;
-    dgx_gcmd_rendering_attachment_info*     depth_stencil_attachment; // nullable
-} dgx_gcmd_rendering_info;
+    dmg_gfx_gcmd_rendering_attachment_info*     color_attachments;
+    dmg_gfx_gcmd_rendering_attachment_info*     depth_stencil_attachment; // nullable
+} dmg_gfx_gcmd_rendering_info;
 
-void dgx_gcmd_begin_rendering (dgx_gcmd_rendering_info* info);
-void dgx_gcmd_finish_rendering();
+void dmg_gfx_gcmd_begin_rendering (dmg_gfx_gcmd_rendering_info* info);
+void dmg_gfx_gcmd_finish_rendering();
 
-void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline);
+void dmg_gfx_gcmd_bind_graphics_pipeline(dmg_gfx_pipeline* pipeline);
 
-void dgx_gcmd_write_constants(
-    dgx_pipeline*    pipeline, 
-    dgx_shader_stage stage, 
+void dmg_gfx_gcmd_write_constants(
+    dmg_gfx_pipeline*    pipeline, 
+    dmg_gfx_shader_stage stage, 
     uint32_t         offset,
     uint32_t         bytes, 
     void*            data
 );
 
-void dgx_gcmd_draw(
+void dmg_gfx_gcmd_draw(
     uint32_t vertices_base,
     uint32_t vertices_count,
     uint32_t instances_base,
     uint32_t instances_count
 );
 
-void dgx_gcmd_set_scissors(
+void dmg_gfx_gcmd_set_scissors(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 );
 
-void dgx_gcmd_set_viewport(
+void dmg_gfx_gcmd_set_viewport(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 );
@@ -622,12 +622,12 @@ const uint32_t config_all_pipelines_dynamic_state_count = 2;
 // ===========================
 // Windowing Platform Library Forward
 
-int     windowing_platform_init(dgx_library*);
-void    windowing_platform_term(dgx_library*);
-int     windowing_platform_get_required_extensions(dgx_library*, uint32_t* count, const char*** names);
-int     windowing_platform_query_presentation_support(dgx_library*, VkPhysicalDevice device);
-int     windowing_platform_create_test_surface(dgx_library* library, VkSurfaceKHR* surface, void** other_data_storage);
-void    windowing_platform_free_test_surface  (dgx_library*, VkSurfaceKHR surface, void* other_data_return);
+int     windowing_platform_init(dmg_gfx_library*);
+void    windowing_platform_term(dmg_gfx_library*);
+int     windowing_platform_get_required_extensions(dmg_gfx_library*, uint32_t* count, const char*** names);
+int     windowing_platform_query_presentation_support(dmg_gfx_library*, VkPhysicalDevice device);
+int     windowing_platform_create_test_surface(dmg_gfx_library* library, VkSurfaceKHR* surface, void** other_data_storage);
+void    windowing_platform_free_test_surface  (dmg_gfx_library*, VkSurfaceKHR surface, void* other_data_return);
 
 // ===========================
 // Physical Device Queries
@@ -671,14 +671,14 @@ int check_physical_device_feature_support(VkPhysicalDevice device) {
 }
 
 typedef struct queues_family_info {
-    uint32_t family[dgx_command_domain_count];
-    uint32_t count [dgx_command_domain_count];
+    uint32_t family[dmg_gfx_command_domain_count];
+    uint32_t count [dmg_gfx_command_domain_count];
     int      presentation_separate;
     uint32_t presentation_family;
     uint32_t presentation_count;
 } queues_family_info;
  
-queues_family_info get_physical_device_queues_family_info(dgx_library* library, VkPhysicalDevice device, int windowing_enabled) {
+queues_family_info get_physical_device_queues_family_info(dmg_gfx_library* library, VkPhysicalDevice device, int windowing_enabled) {
     // Enumerate queue families
     uint32_t family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, NULL);
@@ -736,19 +736,19 @@ queues_family_info get_physical_device_queues_family_info(dgx_library* library, 
         }
         
         // Graphics domain: has graphics (and implicitly compute and transfer)
-        if (has_graphics && info.count[dgx_command_domain_graphics] == 0) {
-            info.family[dgx_command_domain_graphics] = i;
-            info.count [dgx_command_domain_graphics] = families[i].queueCount;
+        if (has_graphics && info.count[dmg_gfx_command_domain_graphics] == 0) {
+            info.family[dmg_gfx_command_domain_graphics] = i;
+            info.count [dmg_gfx_command_domain_graphics] = families[i].queueCount;
         }
         // Compute domain: has compute (and implicitly transfer) but not graphics
-        else if (!has_graphics && has_compute && info.count[dgx_command_domain_compute] == 0) {
-            info.family[dgx_command_domain_compute] = i;
-            info.count [dgx_command_domain_compute] = families[i].queueCount;
+        else if (!has_graphics && has_compute && info.count[dmg_gfx_command_domain_compute] == 0) {
+            info.family[dmg_gfx_command_domain_compute] = i;
+            info.count [dmg_gfx_command_domain_compute] = families[i].queueCount;
         }
         // Transfer domain: only transfer, no graphics or compute
-        else if (!has_graphics && !has_compute && has_transfer && info.count[dgx_command_domain_transfer] == 0) {
-            info.family[dgx_command_domain_transfer] = i;
-            info.count [dgx_command_domain_transfer] = families[i].queueCount;
+        else if (!has_graphics && !has_compute && has_transfer && info.count[dmg_gfx_command_domain_transfer] == 0) {
+            info.family[dmg_gfx_command_domain_transfer] = i;
+            info.count [dmg_gfx_command_domain_transfer] = families[i].queueCount;
         }
     }
     
@@ -765,20 +765,20 @@ queues_family_info get_physical_device_queues_family_info(dgx_library* library, 
 // ===========================
 // Library
 
-struct dgx_library {
+struct dmg_gfx_library {
     VkInstance  instance;
     void*       windowing;
 };
 
 static int was_vulkan_loaded = 0;
-dgx_library* dgx_create_library(const dgx_library_create_info* info) {
+dmg_gfx_library* dmg_gfx_create_library(const dmg_gfx_library_create_info* info) {
     if (!was_vulkan_loaded) {
         if (volkInitialize() == VK_SUCCESS) {
             was_vulkan_loaded = 1;
         }  else return NULL;
     }
      
-    dgx_library* library = calloc(1, sizeof(dgx_library));
+    dmg_gfx_library* library = calloc(1, sizeof(dmg_gfx_library));
     if (!library) return NULL;
 
     VkApplicationInfo app_info = {
@@ -831,14 +831,14 @@ dgx_library* dgx_create_library(const dgx_library_create_info* info) {
 _fail: windowing_platform_term(library); free(library); return NULL;
 }
 
-void dgx_free_library(dgx_library* library) {
+void dmg_gfx_free_library(dmg_gfx_library* library) {
     if (!library) return;
     vkDestroyInstance(library->instance, 0);
     windowing_platform_term(library);
     free(library);
 }
 
-int get_physical_device_at_index(dgx_library* library, uint32_t index, VkPhysicalDevice* target) {
+int get_physical_device_at_index(dmg_gfx_library* library, uint32_t index, VkPhysicalDevice* target) {
     if (!library || !library->instance) return 0;
     
     uint32_t device_count = 0; if (vkEnumeratePhysicalDevices(library->instance, &device_count, NULL) != VK_SUCCESS) return 0;
@@ -850,13 +850,13 @@ int get_physical_device_at_index(dgx_library* library, uint32_t index, VkPhysica
     *target = devices[index]; free(devices); return 1;
 }
 
-uint32_t dgx_library_query_hardware_count(dgx_library* library) {
+uint32_t dmg_gfx_library_query_hardware_count(dmg_gfx_library* library) {
     if (!library || !library->instance) return 0;
     uint32_t device_count = 0; if (vkEnumeratePhysicalDevices(library->instance, &device_count, NULL) != VK_SUCCESS) return 0;
     return device_count;
 }
 
-char* dgx_library_query_hardware_name(dgx_library* library, uint32_t index) {
+char* dmg_gfx_library_query_hardware_name(dmg_gfx_library* library, uint32_t index) {
     VkPhysicalDevice device; if (!get_physical_device_at_index(library, index, &device)) return NULL;
 
     VkPhysicalDeviceProperties properties; vkGetPhysicalDeviceProperties(device, &properties);
@@ -868,7 +868,7 @@ char* dgx_library_query_hardware_name(dgx_library* library, uint32_t index) {
 }
 
 // check if hardware support required extensions
-int dgx_library_query_hardware_supported(dgx_library* library, uint32_t index) {
+int dmg_gfx_library_query_hardware_supported(dmg_gfx_library* library, uint32_t index) {
     VkPhysicalDevice device; if (!get_physical_device_at_index(library, index, &device)) return 0;
     int success = 1;
     success &= check_physical_device_extension_support(device);
@@ -876,7 +876,7 @@ int dgx_library_query_hardware_supported(dgx_library* library, uint32_t index) {
     return success;
 }
 
-int dgx_library_query_hardware_windowing_support(dgx_library* library, uint32_t index) {
+int dmg_gfx_library_query_hardware_windowing_support(dmg_gfx_library* library, uint32_t index) {
     VkPhysicalDevice device; if (!get_physical_device_at_index(library, index, &device)) return 0;
     
     // Query presentation support with platform-specific surface
@@ -884,7 +884,7 @@ int dgx_library_query_hardware_windowing_support(dgx_library* library, uint32_t 
     return supports_windowing;
 }
 
-uint8_t dgx_library_query_hardware_concurrent_work_groups(dgx_library* library, uint32_t index, dgx_command_domain domain) {
+uint8_t dmg_gfx_library_query_hardware_concurrent_work_groups(dmg_gfx_library* library, uint32_t index, dmg_gfx_command_domain domain) {
     VkPhysicalDevice   device; if (!get_physical_device_at_index(library, index, &device)) return 0;
     queues_family_info qf_info = get_physical_device_queues_family_info(library, device, 0);
     uint8_t count = qf_info.count[domain] > 255 ? 255 : qf_info.count[domain];
@@ -894,14 +894,14 @@ uint8_t dgx_library_query_hardware_concurrent_work_groups(dgx_library* library, 
 // ===========================
 // Hardware Allocators Forwards
 
-int  hardware_init_command_allocators(dgx_hardware* hardware, const dgx_hardware_create_info*);
-void hardware_free_command_allocators(dgx_hardware* hardware);
+int  hardware_init_command_allocators(dmg_gfx_hardware* hardware, const dmg_gfx_hardware_create_info*);
+void hardware_free_command_allocators(dmg_gfx_hardware* hardware);
 
-int  hardware_init_memory_allocators(dgx_hardware* hardware, const dgx_hardware_create_info*);
-void hardware_free_memory_allocators(dgx_hardware* hardware);
+int  hardware_init_memory_allocators(dmg_gfx_hardware* hardware, const dmg_gfx_hardware_create_info*);
+void hardware_free_memory_allocators(dmg_gfx_hardware* hardware);
 
-int  hardware_init_shader_access(dgx_hardware* hardware, const dgx_hardware_create_info*);
-void hardware_free_shader_access(dgx_hardware* hardware);
+int  hardware_init_shader_access(dmg_gfx_hardware* hardware, const dmg_gfx_hardware_create_info*);
+void hardware_free_shader_access(dmg_gfx_hardware* hardware);
 
 // ===========================
 // Hardware
@@ -910,10 +910,10 @@ typedef struct command_allocator  command_allocator;
 typedef struct memory_allocator   memory_allocator;
 typedef struct bindless_allocator bindless_allocator;
 
-struct dgx_hardware {
+struct dmg_gfx_hardware {
     // Hardware device info
     // Set at creation
-    dgx_library*                owning_library;
+    dmg_gfx_library*                owning_library;
     VkPhysicalDevice            physical_device;
     VkPhysicalDeviceProperties  physical_device_properties;
     VkDevice                    logical_device;
@@ -928,9 +928,9 @@ struct dgx_hardware {
 
     // Work groups info
     // Set at creation
-    uint8_t  work_group_count       [dgx_command_domain_count];                             // Requested work groups count
-    uint32_t work_group_queue_family[dgx_command_domain_count];                             // Mapping : domain to queue family
-    VkQueue  work_group_queue       [dgx_command_domain_count][HARDWARE_MAX_WORK_GROUPS];   // Mapping work groups to queues
+    uint8_t  work_group_count       [dmg_gfx_command_domain_count];                             // Requested work groups count
+    uint32_t work_group_queue_family[dmg_gfx_command_domain_count];                             // Mapping : domain to queue family
+    VkQueue  work_group_queue       [dmg_gfx_command_domain_count][HARDWARE_MAX_WORK_GROUPS];   // Mapping work groups to queues
     VkQueue  presentation_queue;
     uint32_t presentation_queue_family;
 
@@ -938,7 +938,7 @@ struct dgx_hardware {
     // Mutexed, since will have to respond to queries from diffrent threads
     // As command list (while creation) and not hardware is the API sync unit
     // Managed by separate code section see "Command Allocation"
-    dth_mutex*          command_allocators_mutex;   // structure mutex
+    dmg_thr_mutex*          command_allocators_mutex;   // structure mutex
     command_allocator*  command_allocators;         // indexed with allocator index
 
     // Memory allocator data
@@ -958,8 +958,8 @@ uint8_t queues_count_min(uint8_t desired_work_groups, uint32_t hardware_queues) 
     return desired_work_groups < hardware_queues ? desired_work_groups : hardware_queues;
 }
 
-dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_create_info* info) {
-    dgx_hardware* hardware = calloc(1, sizeof(dgx_hardware));
+dmg_gfx_hardware* dmg_gfx_create_hardware(dmg_gfx_library* library, const dmg_gfx_hardware_create_info* info) {
+    dmg_gfx_hardware* hardware = calloc(1, sizeof(dmg_gfx_hardware));
     hardware->owning_library = library;
 
     // Get physical device
@@ -974,9 +974,9 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
     if (qf_info.presentation_count == 0 && info->enable_windowing) goto _fail;
 
     // Find queue families and counts
-    uint32_t domain_created_queues  [dgx_command_domain_count] = {0};
-    uint32_t domain_fallback_domain [dgx_command_domain_count] = {0};
-    for (uint32_t assigned_domain = 0; assigned_domain < dgx_command_domain_count; assigned_domain++) {
+    uint32_t domain_created_queues  [dmg_gfx_command_domain_count] = {0};
+    uint32_t domain_fallback_domain [dmg_gfx_command_domain_count] = {0};
+    for (uint32_t assigned_domain = 0; assigned_domain < dmg_gfx_command_domain_count; assigned_domain++) {
         // by default read from the target domain
         uint32_t* read_domains = (uint32_t[]){assigned_domain};
         uint32_t  read_count = 1;
@@ -984,12 +984,12 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
         // for selected domains allow fallback queue families
         // in case hardware does not have dedicated queues
         switch (assigned_domain) {
-        case dgx_command_domain_transfer: {
-            read_domains = (uint32_t[]){dgx_command_domain_transfer, dgx_command_domain_compute, dgx_command_domain_graphics};
+        case dmg_gfx_command_domain_transfer: {
+            read_domains = (uint32_t[]){dmg_gfx_command_domain_transfer, dmg_gfx_command_domain_compute, dmg_gfx_command_domain_graphics};
             read_count = 3;
         } break;
-        case dgx_command_domain_compute: {
-            read_domains = (uint32_t[]){dgx_command_domain_compute, dgx_command_domain_graphics};
+        case dmg_gfx_command_domain_compute: {
+            read_domains = (uint32_t[]){dmg_gfx_command_domain_compute, dmg_gfx_command_domain_graphics};
             read_count = 2;
         } break;
         }
@@ -1028,9 +1028,9 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
 
     // Queues Creation Info
     uint32_t                queues_create_info_itr = 0;
-    VkDeviceQueueCreateInfo queues_create_infos[dgx_command_domain_count + 1];  // +1 for possible presentation queue
+    VkDeviceQueueCreateInfo queues_create_infos[dmg_gfx_command_domain_count + 1];  // +1 for possible presentation queue
 
-    for (uint32_t domain = 0; domain < dgx_command_domain_count; domain++) {
+    for (uint32_t domain = 0; domain < dmg_gfx_command_domain_count; domain++) {
         if (!domain_created_queues[domain]) continue;
         queues_create_infos[queues_create_info_itr++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -1082,7 +1082,7 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
     free(queues_priorities); if (result != VK_SUCCESS) goto _fail;
 
     // Pull domains queue objects
-    for (uint32_t domain = 0; domain < dgx_command_domain_count; domain++) {
+    for (uint32_t domain = 0; domain < dmg_gfx_command_domain_count; domain++) {
         uint32_t queues_domain = domain_fallback_domain[domain];
         uint32_t queues_count  = domain_created_queues[queues_domain];
         uint32_t family_index  = hardware->work_group_queue_family[domain];
@@ -1118,10 +1118,10 @@ dgx_hardware* dgx_create_hardware(dgx_library* library, const dgx_hardware_creat
     // Return
     return hardware;
 
-_fail: dgx_free_hardware(hardware); return NULL;
+_fail: dmg_gfx_free_hardware(hardware); return NULL;
 }
 
-void dgx_free_hardware(dgx_hardware* hardware) {
+void dmg_gfx_free_hardware(dmg_gfx_hardware* hardware) {
     if (!hardware) return;
     hardware_free_command_allocators(hardware);
     hardware_free_memory_allocators(hardware);
@@ -1130,7 +1130,7 @@ void dgx_free_hardware(dgx_hardware* hardware) {
     free(hardware);
 }
 
-void dgx_hardware_wait_idle(dgx_hardware* hardware) {
+void dmg_gfx_hardware_wait_idle(dmg_gfx_hardware* hardware) {
     vkDeviceWaitIdle(hardware->logical_device);
 }
 
@@ -1144,8 +1144,8 @@ struct command_allocator {
     VkCommandPool   graphics_pool;
 };
 
-// No thread safe, as dgx_create_hardware is not thread safe, therefore no need
-int hardware_init_command_allocators(dgx_hardware* hardware, const dgx_hardware_create_info* info) {
+// No thread safe, as dmg_gfx_create_hardware is not thread safe, therefore no need
+int hardware_init_command_allocators(dmg_gfx_hardware* hardware, const dmg_gfx_hardware_create_info* info) {
     hardware->command_allocators = calloc(HARDWARE_COMMANDS_ALLOCATORS_COUNT, sizeof(command_allocator));
     if (!hardware->command_allocators) return 0;
 
@@ -1158,12 +1158,12 @@ int hardware_init_command_allocators(dgx_hardware* hardware, const dgx_hardware_
         };
     }
 
-    hardware->command_allocators_mutex = dth_create_mutex(&(dth_mutex_create_info){});
+    hardware->command_allocators_mutex = dmg_thr_create_mutex(&(dmg_thr_mutex_create_info){});
     return 1;
 }
 
-// No thread safe, as dgx_free_hardware is not thread safe, therefore no need
-void hardware_free_command_allocators(dgx_hardware* hardware) {
+// No thread safe, as dmg_gfx_free_hardware is not thread safe, therefore no need
+void hardware_free_command_allocators(dmg_gfx_hardware* hardware) {
     for (size_t i = 0; i < HARDWARE_COMMANDS_ALLOCATORS_COUNT; i++) {
         command_allocator* allocator = &hardware->command_allocators[i];
         if (allocator->transfer_pool != VK_NULL_HANDLE) {
@@ -1180,13 +1180,13 @@ void hardware_free_command_allocators(dgx_hardware* hardware) {
         }
     }
     free(hardware->command_allocators);
-    dth_free_mutex(hardware->command_allocators_mutex);
+    dmg_thr_free_mutex(hardware->command_allocators_mutex);
 }
 
 // Thread safe operation, returns VK_NULL_HANDLE on failure
-VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_domain requested_domain, uint8_t allocator_index) {
+VkCommandPool hardware_get_command_pool(dmg_gfx_hardware* hardware, dmg_gfx_command_domain requested_domain, uint8_t allocator_index) {
     // Lock structure access
-    dth_mutex_lock(hardware->command_allocators_mutex);
+    dmg_thr_mutex_lock(hardware->command_allocators_mutex);
 
     // Get allocator
     command_allocator* allocator = &hardware->command_allocators[allocator_index];
@@ -1194,9 +1194,9 @@ VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_doma
     // Ensure command poll within allocator exist
     VkCommandPool* result_source = NULL;
     switch (requested_domain) {
-    case dgx_command_domain_transfer:  result_source = &allocator->transfer_pool;   break;
-    case dgx_command_domain_compute:   result_source = &allocator->compute_pool;    break;
-    case dgx_command_domain_graphics:  result_source = &allocator->graphics_pool;   break;
+    case dmg_gfx_command_domain_transfer:  result_source = &allocator->transfer_pool;   break;
+    case dmg_gfx_command_domain_compute:   result_source = &allocator->compute_pool;    break;
+    case dmg_gfx_command_domain_graphics:  result_source = &allocator->graphics_pool;   break;
     default: goto _finish; // Invalid domain
     }
 
@@ -1215,7 +1215,7 @@ VkCommandPool hardware_get_command_pool(dgx_hardware* hardware, dgx_command_doma
 
 _finish:
     // Unlock access and return handle
-    dth_mutex_unlock(hardware->command_allocators_mutex);
+    dmg_thr_mutex_unlock(hardware->command_allocators_mutex);
     if (result_source == NULL) return VK_NULL_HANDLE;
     return *result_source;
 }
@@ -1225,45 +1225,45 @@ _finish:
 // Hardware owned and managed
 
 typedef struct memory_pool {
-    VkDeviceSize        bytes;
-    dpr_partitioner*    partitioner;
-    VkDeviceMemory      memory;
-    struct memory_pool* next;
+    VkDeviceSize            bytes;
+    dmg_par_partitioner*    partitioner;
+    VkDeviceMemory          memory;
+    struct memory_pool*     next;
 } memory_pool;
 
 struct memory_allocator {
-    dth_mutex*          mutex;          // allocator mutex
-    VkDeviceSize        minimal_size;   // typical alloc size
-    memory_pool*        first_pool;     // first memory pool
+    dmg_thr_mutex*          mutex;          // allocator mutex
+    VkDeviceSize            minimal_size;   // typical alloc size
+    memory_pool*            first_pool;     // first memory pool
 };
 
 typedef struct memory_allocation {
-    memory_allocator*   owning_allocator;
-    memory_pool*        owning_pool;
-    dpr_partition*      partition;
+    memory_allocator*       owning_allocator;
+    memory_pool*            owning_pool;
+    dmg_par_partition*      partition;
 } memory_allocation;
 
-// No thread safe, as dgx_create_hardware is not thread safe, therefore no need
-int hardware_init_memory_allocators(dgx_hardware* hardware, const dgx_hardware_create_info* info) {
+// No thread safe, as dmg_gfx_create_hardware is not thread safe, therefore no need
+int hardware_init_memory_allocators(dmg_gfx_hardware* hardware, const dmg_gfx_hardware_create_info* info) {
     vkGetPhysicalDeviceMemoryProperties(hardware->physical_device, &hardware->memory_properties);
     hardware->memory_allocators = calloc(hardware->memory_properties.memoryTypeCount, sizeof(memory_allocator));
     for (size_t i = 0; i < hardware->memory_properties.memoryTypeCount; i++) {
-        hardware->memory_allocators[i].mutex = dth_create_mutex(&(dth_mutex_create_info){});
+        hardware->memory_allocators[i].mutex = dmg_thr_create_mutex(&(dmg_thr_mutex_create_info){});
     }
     return 1;
 }
 
-// No thread safe, as dgx_free_hardware is not thread safe, therefore no need
-void hardware_free_memory_allocators(dgx_hardware* hardware) {
+// No thread safe, as dmg_gfx_free_hardware is not thread safe, therefore no need
+void hardware_free_memory_allocators(dmg_gfx_hardware* hardware) {
     for (size_t i = 0; i < hardware->memory_properties.memoryTypeCount; i++) {
         memory_allocator* ma = &hardware->memory_allocators[i];
         while (ma->first_pool) {
             memory_pool* pool = ma->first_pool; ma->first_pool = pool->next;
             vkFreeMemory(hardware->logical_device, pool->memory, NULL);
-            dpr_free_partitioner(pool->partitioner);
+            dmg_par_free_partitioner(pool->partitioner);
             free(pool);
         }
-        dth_free_mutex(ma->mutex);
+        dmg_thr_free_mutex(ma->mutex);
     }
     free(hardware->memory_allocators);
 }
@@ -1284,7 +1284,7 @@ static inline uint32_t find_memory_type(
 
 // Thread safe operation, returns non-zero at success
 int hardware_get_memory(
-    dgx_hardware* hardware, VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, memory_allocation* out_alloc
+    dmg_gfx_hardware* hardware, VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, memory_allocation* out_alloc
 ) {
     uint32_t search_start = 0;
 
@@ -1301,13 +1301,13 @@ int hardware_get_memory(
         if (memory_type == UINT32_MAX) return 0; // failure, no suitable memory type
         memory_allocator* ma = &hardware->memory_allocators[memory_type];
         
-        dth_mutex_lock(ma->mutex);   // Lock allocator for this type
+        dmg_thr_mutex_lock(ma->mutex);   // Lock allocator for this type
 
         // Try suballocate exisiting pools
-        dpr_partition* partition = NULL;
+        dmg_par_partition* partition = NULL;
         memory_pool*   pool = ma->first_pool;
         while (pool) {
-            partition = dpr_partitioner_alloc_partition(pool->partitioner, requirements.size, requirements.alignment);
+            partition = dmg_par_partitioner_alloc_partition(pool->partitioner, requirements.size, requirements.alignment);
             if (partition)          break;  // succeeded to suballocate
             if (pool->next == NULL) break;  // no next pool
             pool = pool->next;              // advance
@@ -1332,7 +1332,7 @@ int hardware_get_memory(
             }
 
             // Create partitioner
-            new_pool->partitioner = dpr_create_partitioner(&(dpr_partitioner_create_info){
+            new_pool->partitioner = dmg_par_create_partitioner(&(dmg_par_partitioner_create_info){
                 .memory_bytes = new_size
             }); if (!new_pool->partitioner) {
                 vkFreeMemory(hardware->logical_device, new_pool->memory, NULL);
@@ -1344,12 +1344,12 @@ int hardware_get_memory(
             else      ma->first_pool = new_pool;
 
             // Suballocate new pool
-            partition = dpr_partitioner_alloc_partition(new_pool->partitioner, requirements.size, requirements.alignment);
+            partition = dmg_par_partitioner_alloc_partition(new_pool->partitioner, requirements.size, requirements.alignment);
             pool = new_pool;
         }
 
     _unlock_mutex:
-        dth_mutex_unlock(ma->mutex); // Unlock this allocator
+        dmg_thr_mutex_unlock(ma->mutex); // Unlock this allocator
         
         // If succeeded to suballocate
         // return partition
@@ -1372,43 +1372,43 @@ int hardware_get_memory(
 }
 
 // Thread safe operation
-void hardware_free_memory(dgx_hardware* hardware, memory_allocation alloc) {
+void hardware_free_memory(dmg_gfx_hardware* hardware, memory_allocation alloc) {
     if (!alloc.owning_allocator) return;        // so buffer fail paths work
-    dth_mutex_lock(alloc.owning_allocator->mutex);   // lock allocator for this type
-    dpr_partitioner_free_partition(alloc.owning_pool->partitioner, alloc.partition);
-    dth_mutex_unlock(alloc.owning_allocator->mutex); // unlock this allocator
+    dmg_thr_mutex_lock(alloc.owning_allocator->mutex);   // lock allocator for this type
+    dmg_par_partitioner_free_partition(alloc.owning_pool->partitioner, alloc.partition);
+    dmg_thr_mutex_unlock(alloc.owning_allocator->mutex); // unlock this allocator
 }
 
 // ===========================
 // Shader Access
 // Hardware owned and managed
 
-VkDescriptorType dgx_resource_type_to_vk_descriptor_type(dgx_resource_type type) {
+VkDescriptorType dmg_gfx_resource_type_to_vk_descriptor_type(dmg_gfx_resource_type type) {
     switch (type) {
-    case dgx_resource_type_uniform_buffer:  return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    case dgx_resource_type_storage_buffer:  return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    case dgx_resource_type_sampled_texture: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    case dgx_resource_type_storage_texture: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    case dgx_resource_type_sampler:         return VK_DESCRIPTOR_TYPE_SAMPLER;
-    default: assert(0 && "Invalid dgx_resource_type!");
+    case dmg_gfx_resource_type_uniform_buffer:  return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    case dmg_gfx_resource_type_storage_buffer:  return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    case dmg_gfx_resource_type_sampled_texture: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    case dmg_gfx_resource_type_storage_texture: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    case dmg_gfx_resource_type_sampler:         return VK_DESCRIPTOR_TYPE_SAMPLER;
+    default: assert(0 && "Invalid dmg_gfx_resource_type!");
     } return 0;
 }
 
 struct bindless_allocator {
-    dth_mutex*  mutex;            // allocator mutex
+    dmg_thr_mutex*  mutex;            // allocator mutex
     uint32_t    free_capacity;    // count of slots
     uint32_t    free_count;       // stack elements count
     uint32_t*   free_stack;       // stack of freed indices
 };
 
-// No thread safe, as dgx_create_hardware is not thread safe, therefore no need
-int hardware_init_shader_access(dgx_hardware* hardware, const dgx_hardware_create_info* info) {
-    VkDescriptorSetLayoutBinding* bindings = malloc(dgx_resource_type_count * sizeof(VkDescriptorSetLayoutBinding));
-    for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
+// No thread safe, as dmg_gfx_create_hardware is not thread safe, therefore no need
+int hardware_init_shader_access(dmg_gfx_hardware* hardware, const dmg_gfx_hardware_create_info* info) {
+    VkDescriptorSetLayoutBinding* bindings = malloc(dmg_gfx_resource_type_count * sizeof(VkDescriptorSetLayoutBinding));
+    for (uint32_t type = 0; type < dmg_gfx_resource_type_count; type++) {
         bindings[type] = (VkDescriptorSetLayoutBinding){
             .binding            = type,
             .descriptorCount    = info->shader_resources_limit[type],
-            .descriptorType     = dgx_resource_type_to_vk_descriptor_type(type),
+            .descriptorType     = dmg_gfx_resource_type_to_vk_descriptor_type(type),
             .stageFlags         = VK_SHADER_STAGE_ALL
         };
     }
@@ -1416,19 +1416,19 @@ int hardware_init_shader_access(dgx_hardware* hardware, const dgx_hardware_creat
     if (vkCreateDescriptorSetLayout(hardware->logical_device, &(VkDescriptorSetLayoutCreateInfo){
         .sType          = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .flags          = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
-        .bindingCount   = dgx_resource_type_count,
+        .bindingCount   = dmg_gfx_resource_type_count,
         .pBindings      = bindings
     }, NULL, &hardware->bindless_descriptor_layout) != VK_SUCCESS) {
         free(bindings); return 0;
     } free(bindings);
 
     uint32_t sizes_count = 0;
-    VkDescriptorPoolSize* sizes = malloc(dgx_resource_type_count * sizeof(VkDescriptorPoolSize));
-    for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
+    VkDescriptorPoolSize* sizes = malloc(dmg_gfx_resource_type_count * sizeof(VkDescriptorPoolSize));
+    for (uint32_t type = 0; type < dmg_gfx_resource_type_count; type++) {
         if (info->shader_resources_limit[type] == 0) continue; // due to spec
         sizes[sizes_count++] = (VkDescriptorPoolSize){
             .descriptorCount    = info->shader_resources_limit[type],
-            .type               = dgx_resource_type_to_vk_descriptor_type(type)
+            .type               = dmg_gfx_resource_type_to_vk_descriptor_type(type)
         };
     }
 
@@ -1449,13 +1449,13 @@ int hardware_init_shader_access(dgx_hardware* hardware, const dgx_hardware_creat
         .pSetLayouts        = &hardware->bindless_descriptor_layout,
     }, &hardware->bindless_descriptor) != VK_SUCCESS) return 0;
     
-    hardware->bindless_allocators = calloc(dgx_resource_type_count, sizeof(bindless_allocator));
+    hardware->bindless_allocators = calloc(dmg_gfx_resource_type_count, sizeof(bindless_allocator));
     if (!hardware->bindless_allocators) return 0;
-    for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
+    for (uint32_t type = 0; type < dmg_gfx_resource_type_count; type++) {
         bindless_allocator* ba = &hardware->bindless_allocators[type];
         uint32_t cap = info->shader_resources_limit[type];
         *ba = (bindless_allocator){
-            .mutex          = dth_create_mutex(&(dth_mutex_create_info){}),
+            .mutex          = dmg_thr_create_mutex(&(dmg_thr_mutex_create_info){}),
             .free_capacity  = cap,
             .free_count     = cap,
             .free_stack     = malloc(cap * sizeof(uint32_t))
@@ -1466,11 +1466,11 @@ int hardware_init_shader_access(dgx_hardware* hardware, const dgx_hardware_creat
     return 1;
 }
 
-void hardware_free_shader_access(dgx_hardware* hardware) {
+void hardware_free_shader_access(dmg_gfx_hardware* hardware) {
     vkDestroyDescriptorSetLayout(hardware->logical_device, hardware->bindless_descriptor_layout, NULL);
     vkDestroyDescriptorPool(hardware->logical_device, hardware->bindless_descriptor_pool, NULL);
-    for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
-        dth_free_mutex(hardware->bindless_allocators[type].mutex);
+    for (uint32_t type = 0; type < dmg_gfx_resource_type_count; type++) {
+        dmg_thr_free_mutex(hardware->bindless_allocators[type].mutex);
         free(hardware->bindless_allocators[type].free_stack);
     }
     free(hardware->bindless_allocators);
@@ -1478,29 +1478,29 @@ void hardware_free_shader_access(dgx_hardware* hardware) {
 
 typedef struct resource_bind_cache {
     uint32_t bind_mask;                         // bit[resource type index] -> whether was bound
-    uint32_t indices[dgx_resource_type_count];  // bind index
+    uint32_t indices[dmg_gfx_resource_type_count];  // bind index
 } resource_bind_cache;
 
-resource_bind_cache* get_buffer_resource_bind_cache (dgx_buffer*  buffer);
-resource_bind_cache* get_texture_resource_bind_cache(dgx_texture* texture);
-resource_bind_cache* get_sampler_resource_bind_cache(dgx_sampler* sampler);
+resource_bind_cache* get_buffer_resource_bind_cache (dmg_gfx_buffer*  buffer);
+resource_bind_cache* get_texture_resource_bind_cache(dmg_gfx_texture* texture);
+resource_bind_cache* get_sampler_resource_bind_cache(dmg_gfx_sampler* sampler);
 
-VkBuffer    get_native_buffer_handle (dgx_buffer*  buffer);
-VkImageView get_native_texture_handle(dgx_texture* texture);
-VkSampler   get_native_sampler_handle(dgx_sampler* sampler);
+VkBuffer    get_native_buffer_handle (dmg_gfx_buffer*  buffer);
+VkImageView get_native_texture_handle(dmg_gfx_texture* texture);
+VkSampler   get_native_sampler_handle(dmg_gfx_sampler* sampler);
 
 // Thread safe operation
-uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type, void* resource, int* success) {
+uint32_t dmg_gfx_shader_resource_bind(dmg_gfx_hardware* hardware, dmg_gfx_resource_type type, void* resource, int* success) {
     bindless_allocator*  ba = &hardware->bindless_allocators[type];
     resource_bind_cache* bc;
     switch (type) {
-        case dgx_resource_type_uniform_buffer: case dgx_resource_type_storage_buffer: {
+        case dmg_gfx_resource_type_uniform_buffer: case dmg_gfx_resource_type_storage_buffer: {
             bc = get_buffer_resource_bind_cache(resource);
         } break;
-        case dgx_resource_type_sampled_texture: case dgx_resource_type_storage_texture: {
+        case dmg_gfx_resource_type_sampled_texture: case dmg_gfx_resource_type_storage_texture: {
             bc = get_texture_resource_bind_cache(resource);
         } break;
-        case dgx_resource_type_sampler: {
+        case dmg_gfx_resource_type_sampler: {
             bc = get_sampler_resource_bind_cache(resource);
         } break;
     }
@@ -1511,17 +1511,17 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
     }
 
     // Find and take free index
-    dth_mutex_lock(ba->mutex);
+    dmg_thr_mutex_lock(ba->mutex);
 
     // Check again if bound
     // May happen if two threds try to bind the same resource for the first time
     if ((bc->bind_mask >> type) & 1U) {
-        dth_mutex_unlock(ba->mutex); return bc->indices[type];
+        dmg_thr_mutex_unlock(ba->mutex); return bc->indices[type];
     }
 
     // Failed to allocate index
     if (ba->free_count == 0) {
-        dth_mutex_unlock(ba->mutex); *success &= 0; return 0; // Arbitrary
+        dmg_thr_mutex_unlock(ba->mutex); *success &= 0; return 0; // Arbitrary
     }
 
     // Obtain index
@@ -1532,7 +1532,7 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
     bc->indices[type] = idx;
     bc->bind_mask |= (1U << type);
 
-    dth_mutex_unlock(ba->mutex);
+    dmg_thr_mutex_unlock(ba->mutex);
     
     // Resouce Info
     VkDescriptorBufferInfo  buffer_info;
@@ -1542,8 +1542,8 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
     VkDescriptorImageInfo*  image_info_ptr  = NULL;
 
     switch (type) {
-    case dgx_resource_type_uniform_buffer: case dgx_resource_type_storage_buffer:{
-        dgx_buffer* buffer_resource = resource;
+    case dmg_gfx_resource_type_uniform_buffer: case dmg_gfx_resource_type_storage_buffer:{
+        dmg_gfx_buffer* buffer_resource = resource;
         buffer_info = (VkDescriptorBufferInfo){
             .buffer = get_native_buffer_handle(buffer_resource),
             .offset = 0,
@@ -1551,8 +1551,8 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
         };
         buffer_info_ptr = &buffer_info;   
     } break;
-    case dgx_resource_type_sampled_texture: case dgx_resource_type_storage_texture: {
-        dgx_texture* texture_resource = resource;
+    case dmg_gfx_resource_type_sampled_texture: case dmg_gfx_resource_type_storage_texture: {
+        dmg_gfx_texture* texture_resource = resource;
         image_info = (VkDescriptorImageInfo){
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             .imageView   = get_native_texture_handle(texture_resource),
@@ -1560,8 +1560,8 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
         };
         image_info_ptr = &image_info;
     } break;
-    case dgx_resource_type_sampler: {
-        dgx_sampler* sampler_resource = resource;
+    case dmg_gfx_resource_type_sampler: {
+        dmg_gfx_sampler* sampler_resource = resource;
         image_info = (VkDescriptorImageInfo){
             .imageLayout = 0,
             .imageView   = VK_NULL_HANDLE,
@@ -1577,7 +1577,7 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
         .dstSet             = hardware->bindless_descriptor,
         .dstBinding         = type,
         .dstArrayElement    = idx,
-        .descriptorType     = dgx_resource_type_to_vk_descriptor_type(type),
+        .descriptorType     = dmg_gfx_resource_type_to_vk_descriptor_type(type),
         .descriptorCount    = 1,
         .pBufferInfo        = buffer_info_ptr,
         .pImageInfo         = image_info_ptr,
@@ -1589,29 +1589,29 @@ uint32_t dgx_shader_resource_bind(dgx_hardware* hardware, dgx_resource_type type
 }
 
 // Thread safe operation
-void shader_resource_unbind(dgx_hardware* hardware, resource_bind_cache* bc) {
-    for (uint32_t type = 0; type < dgx_resource_type_count; type++) {
+void shader_resource_unbind(dmg_gfx_hardware* hardware, resource_bind_cache* bc) {
+    for (uint32_t type = 0; type < dmg_gfx_resource_type_count; type++) {
         bindless_allocator* ba = &hardware->bindless_allocators[type];
         if (!((bc->bind_mask >> type) & 1U)) continue; // Was not bound
 
         // Release index
-        dth_mutex_lock(ba->mutex);
+        dmg_thr_mutex_lock(ba->mutex);
         ba->free_stack[ba->free_count++] = bc->indices[type];
-        dth_mutex_unlock(ba->mutex);
+        dmg_thr_mutex_unlock(ba->mutex);
     }
 }
 
 // ===========================
 // Timeline
 
-struct dgx_timeline {
-    dgx_hardware*   owning_hardware;
+struct dmg_gfx_timeline {
+    dmg_gfx_hardware*   owning_hardware;
     VkSemaphore     timeline_semaphore;
 };
 
-dgx_timeline* dgx_create_timeline(dgx_hardware* hardware, const dgx_timeline_create_info* info) {
-    dgx_timeline* timeline = malloc(sizeof(dgx_timeline));
-    if (!timeline) return NULL; *timeline = (dgx_timeline){.owning_hardware = hardware};
+dmg_gfx_timeline* dmg_gfx_create_timeline(dmg_gfx_hardware* hardware, const dmg_gfx_timeline_create_info* info) {
+    dmg_gfx_timeline* timeline = malloc(sizeof(dmg_gfx_timeline));
+    if (!timeline) return NULL; *timeline = (dmg_gfx_timeline){.owning_hardware = hardware};
 
     VkSemaphoreTypeCreateInfoKHR type_info = {
         .sType         = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR,
@@ -1627,16 +1627,16 @@ dgx_timeline* dgx_create_timeline(dgx_hardware* hardware, const dgx_timeline_cre
     }, NULL, &timeline->timeline_semaphore) != VK_SUCCESS) goto _fail;
 
     return timeline;
-_fail: dgx_free_timeline(timeline); return NULL;
+_fail: dmg_gfx_free_timeline(timeline); return NULL;
 }
 
-void dgx_free_timeline(dgx_timeline* timeline) {
+void dmg_gfx_free_timeline(dmg_gfx_timeline* timeline) {
     if (!timeline) return;
     vkDestroySemaphore(timeline->owning_hardware->logical_device, timeline->timeline_semaphore, NULL);
     free(timeline);
 }
 
-void dgx_timeline_signal(dgx_timeline* timeline, uint64_t value) {
+void dmg_gfx_timeline_signal(dmg_gfx_timeline* timeline, uint64_t value) {
     timeline->owning_hardware->vkSignalSemaphoreKHR(timeline->owning_hardware->logical_device, &(VkSemaphoreSignalInfoKHR){
         .sType      = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO_KHR,
         .semaphore  = timeline->timeline_semaphore,
@@ -1644,7 +1644,7 @@ void dgx_timeline_signal(dgx_timeline* timeline, uint64_t value) {
     });
 }
 
-void dgx_timeline_wait(dgx_timeline* timeline, uint64_t value) {
+void dmg_gfx_timeline_wait(dmg_gfx_timeline* timeline, uint64_t value) {
     timeline->owning_hardware->vkWaitSemaphoresKHR(timeline->owning_hardware->logical_device, &(VkSemaphoreWaitInfoKHR){
         .sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR,
         .flags          = 0,
@@ -1654,11 +1654,11 @@ void dgx_timeline_wait(dgx_timeline* timeline, uint64_t value) {
     }, UINT64_MAX);
 }
 
-int dgx_timeline_is_after(dgx_timeline* timeline, uint64_t value) {
-    return dgx_timeline_get_value(timeline) >= value;
+int dmg_gfx_timeline_is_after(dmg_gfx_timeline* timeline, uint64_t value) {
+    return dmg_gfx_timeline_get_value(timeline) >= value;
 }
 
-uint64_t dgx_timeline_get_value(dgx_timeline* timeline) {
+uint64_t dmg_gfx_timeline_get_value(dmg_gfx_timeline* timeline) {
     uint64_t value = 0;
     if (timeline->owning_hardware->vkGetSemaphoreCounterValueKHR(
         timeline->owning_hardware->logical_device, timeline->timeline_semaphore, &value
@@ -1670,22 +1670,22 @@ uint64_t dgx_timeline_get_value(dgx_timeline* timeline) {
 // Command List
 
 // Command list recording target
-static dth_thread_local dgx_command_list* recording_state_command_list = NULL;
+static dmg_thr_thread_local dmg_gfx_command_list* recording_state_command_list = NULL;
 
-struct dgx_command_list {
-    dgx_hardware*       owning_hardware;
+struct dmg_gfx_command_list {
+    dmg_gfx_hardware*       owning_hardware;
     VkCommandPool       owning_pool;
     uint8_t             allocator_index;
-    dgx_command_domain  command_domain;
+    dmg_gfx_command_domain  command_domain;
     VkCommandBuffer     command_buffer;
 };
 
-dgx_command_list* dgx_create_command_list(dgx_hardware* hardware, const dgx_command_list_create_info* info) {
-    dgx_command_list* list = NULL;
+dmg_gfx_command_list* dmg_gfx_create_command_list(dmg_gfx_hardware* hardware, const dmg_gfx_command_list_create_info* info) {
+    dmg_gfx_command_list* list = NULL;
 
     // If no parent to reuse, create new list
     if (!info->parent) {
-        list = calloc(1, sizeof(dgx_command_list));
+        list = calloc(1, sizeof(dmg_gfx_command_list));
         if (!list) return NULL;
 
         VkCommandPool pool = hardware_get_command_pool(hardware, info->domain, info->aindex);
@@ -1704,7 +1704,7 @@ dgx_command_list* dgx_create_command_list(dgx_hardware* hardware, const dgx_comm
             free(list); return NULL;
         }
 
-        *list = (dgx_command_list){
+        *list = (dmg_gfx_command_list){
             .owning_hardware = hardware,
             .owning_pool     = pool,
             .allocator_index = info->aindex,
@@ -1735,10 +1735,10 @@ dgx_command_list* dgx_create_command_list(dgx_hardware* hardware, const dgx_comm
     if (vkEndCommandBuffer(list->command_buffer) != VK_SUCCESS) goto _fail; // failed to record command buffer
     return list;    // Return List
 
-_fail: dgx_free_command_list(list); return NULL;
+_fail: dmg_gfx_free_command_list(list); return NULL;
 }
 
-void dgx_free_command_list(dgx_command_list* list) {
+void dmg_gfx_free_command_list(dmg_gfx_command_list* list) {
     if (!list) return;
     vkFreeCommandBuffers(
         list->owning_hardware->logical_device,
@@ -1747,7 +1747,7 @@ void dgx_free_command_list(dgx_command_list* list) {
     free(list);
 }
 
-void dgx_command_list_submit(uint32_t count, dgx_command_list** lists, const dgx_submit_info* info) {
+void dmg_gfx_command_list_submit(uint32_t count, dmg_gfx_command_list** lists, const dmg_gfx_submit_info* info) {
     if (count == 0) return;
 
     VkQueue queue = lists[0]->owning_hardware->work_group_queue[lists[0]->command_domain][info->domain_work_group];
@@ -1806,17 +1806,17 @@ void dgx_command_list_submit(uint32_t count, dgx_command_list** lists, const dgx
 // ===========================
 // Staging Memory
 
-struct dgx_staging_memory {
-    dgx_hardware*       owning_hardware;
+struct dmg_gfx_staging_memory {
+    dmg_gfx_hardware*       owning_hardware;
     memory_allocation   allocation;
     VkBuffer            buffer;
 };
 
-dgx_staging_memory* dgx_create_staging_memory(dgx_hardware* hardware, const dgx_staging_memory_create_info* info) {
-    dgx_staging_memory* staging_memory = calloc(1, sizeof(dgx_staging_memory));
+dmg_gfx_staging_memory* dmg_gfx_create_staging_memory(dmg_gfx_hardware* hardware, const dmg_gfx_staging_memory_create_info* info) {
+    dmg_gfx_staging_memory* staging_memory = calloc(1, sizeof(dmg_gfx_staging_memory));
     if (!staging_memory) goto _fail;
 
-    *staging_memory = (dgx_staging_memory){
+    *staging_memory = (dmg_gfx_staging_memory){
         .owning_hardware = hardware
     };
 
@@ -1837,22 +1837,22 @@ dgx_staging_memory* dgx_create_staging_memory(dgx_hardware* hardware, const dgx_
     if (vkBindBufferMemory(
         hardware->logical_device, staging_memory->buffer,
         staging_memory->allocation.owning_pool->memory,
-        dpr_partition_query_offset(staging_memory->allocation.partition)
+        dmg_par_partition_query_offset(staging_memory->allocation.partition)
     ) != VK_SUCCESS) goto _fail;
 
     return staging_memory;
 
-_fail: dgx_free_staging_memory(staging_memory); return NULL;
+_fail: dmg_gfx_free_staging_memory(staging_memory); return NULL;
 }
 
-void dgx_free_staging_memory(dgx_staging_memory* staging_memory) {
+void dmg_gfx_free_staging_memory(dmg_gfx_staging_memory* staging_memory) {
     if (!staging_memory) return;
     vkDestroyBuffer(staging_memory->owning_hardware->logical_device, staging_memory->buffer, 0);
     hardware_free_memory(staging_memory->owning_hardware, staging_memory->allocation);
     free(staging_memory);
 }
 
-void* dgx_staging_memory_map(dgx_staging_memory* memory, uint64_t region_offset, uint64_t region_size) {
+void* dmg_gfx_staging_memory_map(dmg_gfx_staging_memory* memory, uint64_t region_offset, uint64_t region_size) {
     void* data; if (vkMapMemory(
         memory->owning_hardware->logical_device, 
         memory->allocation.owning_pool->memory, region_offset, region_size, 0, &data
@@ -1860,54 +1860,54 @@ void* dgx_staging_memory_map(dgx_staging_memory* memory, uint64_t region_offset,
     return data;
 }
 
-void dgx_staging_memory_unmap(dgx_staging_memory* memory) {
+void dmg_gfx_staging_memory_unmap(dmg_gfx_staging_memory* memory) {
     vkUnmapMemory(memory->owning_hardware->logical_device, memory->allocation.owning_pool->memory);
 }
 
 // ===========================
 // Buffer
 
-static inline VkBufferUsageFlags dgx_memory_access_to_vk_buffer_usage(dgx_memory_access access) {
+static inline VkBufferUsageFlags dmg_gfx_memory_access_to_vk_buffer_usage(dmg_gfx_memory_access access) {
     switch (access) {
-    case dgx_memory_access_rendering_internal:      return 0;
-    case dgx_memory_access_staging_read:            return VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    case dgx_memory_access_staging_write:           return VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    case dgx_memory_access_staging_read_and_write:  return VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    default: assert(0 && "Invalid dgx_memory_access!");
+    case dmg_gfx_memory_access_rendering_internal:      return 0;
+    case dmg_gfx_memory_access_staging_read:            return VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    case dmg_gfx_memory_access_staging_write:           return VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    case dmg_gfx_memory_access_staging_read_and_write:  return VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    default: assert(0 && "Invalid dmg_gfx_memory_access!");
     } return 0;
 }
 
-static inline VkBufferUsageFlags dgx_buffer_usage_to_vk_buffer_usage(dgx_buffer_usage usage) {
+static inline VkBufferUsageFlags dmg_gfx_buffer_usage_to_vk_buffer_usage(dmg_gfx_buffer_usage usage) {
     switch (usage) {
-        case dgx_buffer_usage_uniform:  return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        case dgx_buffer_usage_storage:  return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        default: assert(0 && "invalid dgx_buffer_usage");
+        case dmg_gfx_buffer_usage_uniform:  return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        case dmg_gfx_buffer_usage_storage:  return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        default: assert(0 && "invalid dmg_gfx_buffer_usage");
     } return 0;
 }
 
-struct dgx_buffer {
-    dgx_hardware*       owning_hardware;
+struct dmg_gfx_buffer {
+    dmg_gfx_hardware*       owning_hardware;
     memory_allocation   allocation;
     VkBuffer            buffer;
     resource_bind_cache bind_cache;
 };
 
-VkBuffer get_native_buffer_handle(dgx_buffer* buffer) {
+VkBuffer get_native_buffer_handle(dmg_gfx_buffer* buffer) {
     return buffer->buffer;
 }
 
-resource_bind_cache* get_buffer_resource_bind_cache (dgx_buffer*  buffer) {
+resource_bind_cache* get_buffer_resource_bind_cache (dmg_gfx_buffer*  buffer) {
     return &buffer->bind_cache;
 }
 
-dgx_buffer* dgx_create_buffer(dgx_hardware* hardware, const dgx_buffer_create_info* info) {
-    dgx_buffer* buffer = malloc(sizeof(dgx_buffer));
-    if (!buffer) goto _fail; *buffer = (dgx_buffer){.owning_hardware = hardware};
+dmg_gfx_buffer* dmg_gfx_create_buffer(dmg_gfx_hardware* hardware, const dmg_gfx_buffer_create_info* info) {
+    dmg_gfx_buffer* buffer = malloc(sizeof(dmg_gfx_buffer));
+    if (!buffer) goto _fail; *buffer = (dmg_gfx_buffer){.owning_hardware = hardware};
 
     if (vkCreateBuffer(hardware->logical_device, &(VkBufferCreateInfo){
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size        = info->bytes,
-        .usage       = dgx_buffer_usage_to_vk_buffer_usage(info->usage) | dgx_memory_access_to_vk_buffer_usage(info->access),
+        .usage       = dmg_gfx_buffer_usage_to_vk_buffer_usage(info->usage) | dmg_gfx_memory_access_to_vk_buffer_usage(info->access),
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE
     }, 0, &buffer->buffer) != VK_SUCCESS) goto _fail;
 
@@ -1921,14 +1921,14 @@ dgx_buffer* dgx_create_buffer(dgx_hardware* hardware, const dgx_buffer_create_in
     if (vkBindBufferMemory(
         hardware->logical_device, buffer->buffer,
         buffer->allocation.owning_pool->memory,
-        dpr_partition_query_offset(buffer->allocation.partition)
+        dmg_par_partition_query_offset(buffer->allocation.partition)
     ) != VK_SUCCESS) goto _fail;
 
     return buffer;
-_fail: dgx_free_buffer(buffer); return NULL;
+_fail: dmg_gfx_free_buffer(buffer); return NULL;
 }
 
-void dgx_free_buffer(dgx_buffer* buffer) {
+void dmg_gfx_free_buffer(dmg_gfx_buffer* buffer) {
     if (!buffer) return;
     shader_resource_unbind(buffer->owning_hardware, &buffer->bind_cache);
     vkDestroyBuffer(buffer->owning_hardware->logical_device, buffer->buffer, 0);
@@ -1936,17 +1936,17 @@ void dgx_free_buffer(dgx_buffer* buffer) {
     free(buffer);
 }
 
-uint64_t dgx_buffer_query_bytes(dgx_buffer* buffer) {
-    return dpr_partition_query_size(buffer->allocation.partition);
+uint64_t dmg_gfx_buffer_query_bytes(dmg_gfx_buffer* buffer) {
+    return dmg_par_partition_query_size(buffer->allocation.partition);
 }
 
 // ===========================
 // Texture
 
-struct dgx_texture {
-    dgx_hardware*           owning_hardware;
+struct dmg_gfx_texture {
+    dmg_gfx_hardware*           owning_hardware;
     memory_allocation       allocation;
-    dgx_texture_dimensions  dimensions;
+    dmg_gfx_texture_dimensions  dimensions;
     uint32_t                mip_levels;
     uint32_t                layers;
     VkImage                 image;
@@ -1954,74 +1954,74 @@ struct dgx_texture {
     resource_bind_cache     bind_cache;
 };
 
-VkImageView get_native_texture_handle(dgx_texture* texture) {
+VkImageView get_native_texture_handle(dmg_gfx_texture* texture) {
     return texture->view;
 }
 
-resource_bind_cache* get_texture_resource_bind_cache(dgx_texture* texture) {
+resource_bind_cache* get_texture_resource_bind_cache(dmg_gfx_texture* texture) {
     return &texture->bind_cache;
 }
 
-static inline VkFormat dgx_to_vk_texture_format(dgx_texture_format format) {
+static inline VkFormat dmg_gfx_to_vk_texture_format(dmg_gfx_texture_format format) {
     switch (format) {
-        case dgx_texture_format_undefined:              return VK_FORMAT_UNDEFINED;
+        case dmg_gfx_texture_format_undefined:              return VK_FORMAT_UNDEFINED;
 
-        case dgx_texture_format_r8_unorm:               return VK_FORMAT_R8_UNORM;
-        case dgx_texture_format_rg8_unorm:              return VK_FORMAT_R8G8_UNORM;
-        case dgx_texture_format_rgba8_unorm:            return VK_FORMAT_R8G8B8A8_UNORM;
-        case dgx_texture_format_rgba8_srgb:             return VK_FORMAT_R8G8B8A8_SRGB;
-        case dgx_texture_format_bgra8_unorm:            return VK_FORMAT_B8G8R8A8_UNORM;
-        case dgx_texture_format_bgra8_srgb:             return VK_FORMAT_B8G8R8A8_SRGB;
+        case dmg_gfx_texture_format_r8_unorm:               return VK_FORMAT_R8_UNORM;
+        case dmg_gfx_texture_format_rg8_unorm:              return VK_FORMAT_R8G8_UNORM;
+        case dmg_gfx_texture_format_rgba8_unorm:            return VK_FORMAT_R8G8B8A8_UNORM;
+        case dmg_gfx_texture_format_rgba8_srgb:             return VK_FORMAT_R8G8B8A8_SRGB;
+        case dmg_gfx_texture_format_bgra8_unorm:            return VK_FORMAT_B8G8R8A8_UNORM;
+        case dmg_gfx_texture_format_bgra8_srgb:             return VK_FORMAT_B8G8R8A8_SRGB;
 
-        case dgx_texture_format_r16_float:              return VK_FORMAT_R16_SFLOAT;
-        case dgx_texture_format_rg16_float:             return VK_FORMAT_R16G16_SFLOAT;
-        case dgx_texture_format_rgba16_float:           return VK_FORMAT_R16G16B16A16_SFLOAT;
+        case dmg_gfx_texture_format_r16_float:              return VK_FORMAT_R16_SFLOAT;
+        case dmg_gfx_texture_format_rg16_float:             return VK_FORMAT_R16G16_SFLOAT;
+        case dmg_gfx_texture_format_rgba16_float:           return VK_FORMAT_R16G16B16A16_SFLOAT;
 
-        case dgx_texture_format_r32_float:              return VK_FORMAT_R32_SFLOAT;
-        case dgx_texture_format_rg32_float:             return VK_FORMAT_R32G32_SFLOAT;
-        case dgx_texture_format_rgba32_float:           return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case dmg_gfx_texture_format_r32_float:              return VK_FORMAT_R32_SFLOAT;
+        case dmg_gfx_texture_format_rg32_float:             return VK_FORMAT_R32G32_SFLOAT;
+        case dmg_gfx_texture_format_rgba32_float:           return VK_FORMAT_R32G32B32A32_SFLOAT;
 
-        case dgx_texture_format_depth16_unorm:          return VK_FORMAT_D16_UNORM;
-        case dgx_texture_format_depth24_unorm_stencil8: return VK_FORMAT_D24_UNORM_S8_UINT;
-        case dgx_texture_format_depth32_float:          return VK_FORMAT_D32_SFLOAT;
+        case dmg_gfx_texture_format_depth16_unorm:          return VK_FORMAT_D16_UNORM;
+        case dmg_gfx_texture_format_depth24_unorm_stencil8: return VK_FORMAT_D24_UNORM_S8_UINT;
+        case dmg_gfx_texture_format_depth32_float:          return VK_FORMAT_D32_SFLOAT;
 
-        default: assert(0 && "Invalid dgx_texture_format!");
+        default: assert(0 && "Invalid dmg_gfx_texture_format!");
     } return VK_FORMAT_UNDEFINED;
 }
 
-static inline VkImageType dgx_texture_type_to_vk_image_type(dgx_texture_type type) {
+static inline VkImageType dmg_gfx_texture_type_to_vk_image_type(dmg_gfx_texture_type type) {
     switch (type) {
-        case dgx_texture_type_1d:       return VK_IMAGE_TYPE_1D;
-        case dgx_texture_type_2d:       return VK_IMAGE_TYPE_2D;
-        case dgx_texture_type_cubemap:  return VK_IMAGE_TYPE_2D;
-        case dgx_texture_type_3d:       return VK_IMAGE_TYPE_3D;
-        default: assert(0 && "Invalid dgx_texture_type");
+        case dmg_gfx_texture_type_1d:       return VK_IMAGE_TYPE_1D;
+        case dmg_gfx_texture_type_2d:       return VK_IMAGE_TYPE_2D;
+        case dmg_gfx_texture_type_cubemap:  return VK_IMAGE_TYPE_2D;
+        case dmg_gfx_texture_type_3d:       return VK_IMAGE_TYPE_3D;
+        default: assert(0 && "Invalid dmg_gfx_texture_type");
     } return VK_IMAGE_TYPE_2D;
 }
 
-static inline VkImageUsageFlags dgx_memory_access_to_vk_image_usage(dgx_memory_access access) {
+static inline VkImageUsageFlags dmg_gfx_memory_access_to_vk_image_usage(dmg_gfx_memory_access access) {
     switch (access) {
-    case dgx_memory_access_rendering_internal:      return 0;
-    case dgx_memory_access_staging_read:            return VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    case dgx_memory_access_staging_write:           return VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    case dgx_memory_access_staging_read_and_write:  return VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    default: assert(0 && "Invalid dgx_memory_access!");
+    case dmg_gfx_memory_access_rendering_internal:      return 0;
+    case dmg_gfx_memory_access_staging_read:            return VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    case dmg_gfx_memory_access_staging_write:           return VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    case dmg_gfx_memory_access_staging_read_and_write:  return VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    default: assert(0 && "Invalid dmg_gfx_memory_access!");
     } return 0;
 }
 
-static inline VkImageUsageFlags dgx_texture_usage_to_vk_image_usage(dgx_texture_usage usage) {
+static inline VkImageUsageFlags dmg_gfx_texture_usage_to_vk_image_usage(dmg_gfx_texture_usage usage) {
     switch (usage) {
-    case dgx_texture_usage_sampled:                     return VK_IMAGE_USAGE_SAMPLED_BIT;
-    case dgx_texture_usage_color_attachment:            return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    case dgx_texture_usage_depth_stencil_attachment:    return VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    case dgx_texture_usage_storage:                     return VK_IMAGE_USAGE_STORAGE_BIT;
-    default: assert(0 && "Invalid dgx_texture_usage!");
+    case dmg_gfx_texture_usage_sampled:                     return VK_IMAGE_USAGE_SAMPLED_BIT;
+    case dmg_gfx_texture_usage_color_attachment:            return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    case dmg_gfx_texture_usage_depth_stencil_attachment:    return VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    case dmg_gfx_texture_usage_storage:                     return VK_IMAGE_USAGE_STORAGE_BIT;
+    default: assert(0 && "Invalid dmg_gfx_texture_usage!");
     } return 0;
 }
 
-dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create_info* info) {
-    dgx_texture* texture = malloc(sizeof(dgx_texture));
-    *texture = (dgx_texture){
+dmg_gfx_texture* dmg_gfx_create_texture(dmg_gfx_hardware* hardware, const dmg_gfx_texture_create_info* info) {
+    dmg_gfx_texture* texture = malloc(sizeof(dmg_gfx_texture));
+    *texture = (dmg_gfx_texture){
         .owning_hardware = hardware, 
         .dimensions = info->dimensions,
         .mip_levels = info->mipmap_layers,
@@ -2030,16 +2030,16 @@ dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create
 
     if (vkCreateImage(hardware->logical_device, &(VkImageCreateInfo){
         .sType          = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType      = dgx_texture_type_to_vk_image_type(info->type),
+        .imageType      = dmg_gfx_texture_type_to_vk_image_type(info->type),
         .extent.width   = info->dimensions.width,
         .extent.height  = info->dimensions.height,
         .extent.depth   = info->dimensions.depth,
         .mipLevels      = info->mipmap_layers,
         .arrayLayers    = info->array_length,
-        .format         = dgx_to_vk_texture_format(info->format),
+        .format         = dmg_gfx_to_vk_texture_format(info->format),
         .tiling         = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage          = dgx_texture_usage_to_vk_image_usage(info->usage) | dgx_memory_access_to_vk_image_usage(info->memory_access),
+        .usage          = dmg_gfx_texture_usage_to_vk_image_usage(info->usage) | dmg_gfx_memory_access_to_vk_image_usage(info->memory_access),
         .sharingMode    = VK_SHARING_MODE_EXCLUSIVE,
         .samples        = VK_SAMPLE_COUNT_1_BIT,
         .flags          = 0,
@@ -2051,14 +2051,14 @@ dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create
     vkBindImageMemory(
         hardware->logical_device, texture->image, 
         texture->allocation.owning_pool->memory, 
-        dpr_partition_query_offset(texture->allocation.partition)
+        dmg_par_partition_query_offset(texture->allocation.partition)
     );
 
     if (vkCreateImageView(hardware->logical_device, &(VkImageViewCreateInfo){
         .sType                              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image                              = texture->image,
         .viewType                           = VK_IMAGE_VIEW_TYPE_2D,
-        .format                             = dgx_to_vk_texture_format(info->format),
+        .format                             = dmg_gfx_to_vk_texture_format(info->format),
         .subresourceRange.aspectMask        = VK_IMAGE_ASPECT_COLOR_BIT,
         .subresourceRange.baseMipLevel      = 0,
         .subresourceRange.levelCount        = 1,
@@ -2067,10 +2067,10 @@ dgx_texture* dgx_create_texture(dgx_hardware* hardware, const dgx_texture_create
     }, 0, &texture->view) != VK_SUCCESS) goto _fail;
 
     return texture;
-_fail: dgx_free_texture(texture); return NULL;
+_fail: dmg_gfx_free_texture(texture); return NULL;
 };
 
-void dgx_free_texture(dgx_texture* texture) {
+void dmg_gfx_free_texture(dmg_gfx_texture* texture) {
     if (!texture) return;
     shader_resource_unbind(texture->owning_hardware, &texture->bind_cache);
     vkDestroyImageView(texture->owning_hardware->logical_device, texture->view, NULL);
@@ -2079,65 +2079,65 @@ void dgx_free_texture(dgx_texture* texture) {
     free(texture);
 }
 
-dgx_texture_dimensions dgx_texture_query_dimensions(dgx_texture* texture) {
+dmg_gfx_texture_dimensions dmg_gfx_texture_query_dimensions(dmg_gfx_texture* texture) {
     return texture->dimensions;
 }
 
 // ===========================
 // Sampler
 
-static inline VkFilter dgx_to_vk_filter(dgx_sampler_filter filter) {
+static inline VkFilter dmg_gfx_to_vk_filter(dmg_gfx_sampler_filter filter) {
     switch (filter) {
-    case dgx_sampler_filter_nearest:    return VK_FILTER_NEAREST;
-    case dgx_sampler_filter_linear:     return VK_FILTER_LINEAR;
-    default: assert(0 && "Invalid dgx_sampler_filter!");
+    case dmg_gfx_sampler_filter_nearest:    return VK_FILTER_NEAREST;
+    case dmg_gfx_sampler_filter_linear:     return VK_FILTER_LINEAR;
+    default: assert(0 && "Invalid dmg_gfx_sampler_filter!");
     } return 0;
 }
 
-static inline VkSamplerMipmapMode dgx_to_vk_mipmap_mode(dgx_sampler_filter filter) {
+static inline VkSamplerMipmapMode dmg_gfx_to_vk_mipmap_mode(dmg_gfx_sampler_filter filter) {
     switch (filter) {
-    case dgx_sampler_filter_nearest:    return VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    case dgx_sampler_filter_linear:     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    default: assert(0 && "Invalid dgx_sampler_filter!");
+    case dmg_gfx_sampler_filter_nearest:    return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    case dmg_gfx_sampler_filter_linear:     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    default: assert(0 && "Invalid dmg_gfx_sampler_filter!");
     } return 0;
 }
 
-static inline VkSamplerAddressMode dgx_to_vk_sampler_wrapping(dgx_sampler_wrapping wrapping) {
+static inline VkSamplerAddressMode dmg_gfx_to_vk_sampler_wrapping(dmg_gfx_sampler_wrapping wrapping) {
     switch (wrapping) {
-        case dgx_sampler_wrapping_repeat:                   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        case dgx_sampler_wrapping_repeat_mirrored:          return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-        case dgx_sampler_wrapping_repeat_clamp_coordinates: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        case dgx_sampler_wrapping_repeat_clamp_texture:     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        default: assert(0 && "Invalid dgx_sampler_wrapping!");
+        case dmg_gfx_sampler_wrapping_repeat:                   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case dmg_gfx_sampler_wrapping_repeat_mirrored:          return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+        case dmg_gfx_sampler_wrapping_repeat_clamp_coordinates: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case dmg_gfx_sampler_wrapping_repeat_clamp_texture:     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        default: assert(0 && "Invalid dmg_gfx_sampler_wrapping!");
     } return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
-struct dgx_sampler {
-    dgx_hardware*       owning_hardware;
+struct dmg_gfx_sampler {
+    dmg_gfx_hardware*       owning_hardware;
     VkSampler           sampler;
     resource_bind_cache bind_cache;
 };
 
-VkSampler get_native_sampler_handle(dgx_sampler* sampler) {
+VkSampler get_native_sampler_handle(dmg_gfx_sampler* sampler) {
     return sampler->sampler;
 }
 
-resource_bind_cache* get_sampler_resource_bind_cache(dgx_sampler* sampler) {
+resource_bind_cache* get_sampler_resource_bind_cache(dmg_gfx_sampler* sampler) {
     return &sampler->bind_cache;
 }
 
-dgx_sampler* dgx_create_sampler(dgx_hardware* hardware, const dgx_sampler_create_info* info) {
-    dgx_sampler* sampler = malloc(sizeof(dgx_sampler)); if (!sampler) goto _fail;
-    *sampler = (dgx_sampler){.owning_hardware = hardware};
+dmg_gfx_sampler* dmg_gfx_create_sampler(dmg_gfx_hardware* hardware, const dmg_gfx_sampler_create_info* info) {
+    dmg_gfx_sampler* sampler = malloc(sizeof(dmg_gfx_sampler)); if (!sampler) goto _fail;
+    *sampler = (dmg_gfx_sampler){.owning_hardware = hardware};
 
     if (vkCreateSampler(hardware->logical_device, &(VkSamplerCreateInfo){
         .sType  = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter               = dgx_to_vk_filter(info->mag_filter),
-        .minFilter               = dgx_to_vk_filter(info->min_filter),
-        .mipmapMode              = dgx_to_vk_mipmap_mode(info->mipmap_filter),
-        .addressModeU            = dgx_to_vk_sampler_wrapping(info->x_coord_wrapping),
-        .addressModeV            = dgx_to_vk_sampler_wrapping(info->y_coord_wrapping),
-        .addressModeW            = dgx_to_vk_sampler_wrapping(info->z_coord_wrapping),
+        .magFilter               = dmg_gfx_to_vk_filter(info->mag_filter),
+        .minFilter               = dmg_gfx_to_vk_filter(info->min_filter),
+        .mipmapMode              = dmg_gfx_to_vk_mipmap_mode(info->mipmap_filter),
+        .addressModeU            = dmg_gfx_to_vk_sampler_wrapping(info->x_coord_wrapping),
+        .addressModeV            = dmg_gfx_to_vk_sampler_wrapping(info->y_coord_wrapping),
+        .addressModeW            = dmg_gfx_to_vk_sampler_wrapping(info->z_coord_wrapping),
         .mipLodBias              = info->mip_lod_bias,
         .anisotropyEnable        = VK_FALSE,    // todo!
         .maxAnisotropy           = hardware->physical_device_properties.limits.maxSamplerAnisotropy,
@@ -2150,10 +2150,10 @@ dgx_sampler* dgx_create_sampler(dgx_hardware* hardware, const dgx_sampler_create
     }, 0, &sampler->sampler) != VK_SUCCESS) goto _fail;
 
     return sampler;
-_fail: dgx_free_sampler(sampler); return NULL;
+_fail: dmg_gfx_free_sampler(sampler); return NULL;
 }
 
-void dgx_free_sampler(dgx_sampler* sampler) {
+void dmg_gfx_free_sampler(dmg_gfx_sampler* sampler) {
     if (!sampler) return;
     shader_resource_unbind(sampler->owning_hardware, &sampler->bind_cache);
     vkDestroySampler(sampler->owning_hardware->logical_device, sampler->sampler, 0);
@@ -2163,14 +2163,14 @@ void dgx_free_sampler(dgx_sampler* sampler) {
 // ===========================
 // Shader
 
-struct dgx_shader {
-    dgx_hardware*   owning_hardware;
+struct dmg_gfx_shader {
+    dmg_gfx_hardware*   owning_hardware;
     VkShaderModule  module;
 };
 
-dgx_shader* dgx_create_shader(dgx_hardware* hardware, const dgx_shader_create_info* info) {
-    dgx_shader* shader = calloc(1, sizeof(dgx_shader)); if (!shader) goto _fail;
-    *shader = (dgx_shader){.owning_hardware = hardware};
+dmg_gfx_shader* dmg_gfx_create_shader(dmg_gfx_hardware* hardware, const dmg_gfx_shader_create_info* info) {
+    dmg_gfx_shader* shader = calloc(1, sizeof(dmg_gfx_shader)); if (!shader) goto _fail;
+    *shader = (dmg_gfx_shader){.owning_hardware = hardware};
 
     if (vkCreateShaderModule(hardware->logical_device, &(VkShaderModuleCreateInfo){
         .sType      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -2181,10 +2181,10 @@ dgx_shader* dgx_create_shader(dgx_hardware* hardware, const dgx_shader_create_in
     }
 
     return shader;
-_fail: dgx_free_shader(shader); return NULL;
+_fail: dmg_gfx_free_shader(shader); return NULL;
 }
 
-void dgx_free_shader(dgx_shader* shader) {
+void dmg_gfx_free_shader(dmg_gfx_shader* shader) {
     if (shader == 0x0) return;
     vkDestroyShaderModule(shader->owning_hardware->logical_device, shader->module, 0);
     free(shader);
@@ -2193,107 +2193,107 @@ void dgx_free_shader(dgx_shader* shader) {
 // ===========================
 // Graphics Pipeline
 
-static inline VkShaderStageFlags dgx_to_vk_shader_stage(dgx_shader_stage stage) {
+static inline VkShaderStageFlags dmg_gfx_to_vk_shader_stage(dmg_gfx_shader_stage stage) {
     switch (stage) {
-    case dgx_shader_stage_vertex:   return VK_SHADER_STAGE_VERTEX_BIT;
-    case dgx_shader_stage_geometry: return VK_SHADER_STAGE_GEOMETRY_BIT;
-    case dgx_shader_stage_pixel:    return VK_SHADER_STAGE_FRAGMENT_BIT;
-    default: assert(0 && "Invalid dgx_shader_stage!");
+    case dmg_gfx_shader_stage_vertex:   return VK_SHADER_STAGE_VERTEX_BIT;
+    case dmg_gfx_shader_stage_geometry: return VK_SHADER_STAGE_GEOMETRY_BIT;
+    case dmg_gfx_shader_stage_pixel:    return VK_SHADER_STAGE_FRAGMENT_BIT;
+    default: assert(0 && "Invalid dmg_gfx_shader_stage!");
     } return VK_SHADER_STAGE_VERTEX_BIT;
 }
 
-static inline VkPrimitiveTopology dgx_to_vk_primitive_topology(dgx_primitive_topology topology) {
+static inline VkPrimitiveTopology dmg_gfx_to_vk_primitive_topology(dmg_gfx_primitive_topology topology) {
     switch (topology) {
-        case dgx_primitive_topology_point_list:     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-        case dgx_primitive_topology_line_list:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-        case dgx_primitive_topology_line_strip:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-        case dgx_primitive_topology_triangle_list:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        case dgx_primitive_topology_triangle_strip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-        default: assert(0 && "Invalid dgx_primitive_topology!");
+        case dmg_gfx_primitive_topology_point_list:     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+        case dmg_gfx_primitive_topology_line_list:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+        case dmg_gfx_primitive_topology_line_strip:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+        case dmg_gfx_primitive_topology_triangle_list:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        case dmg_gfx_primitive_topology_triangle_strip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        default: assert(0 && "Invalid dmg_gfx_primitive_topology!");
     } return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 }
 
-static inline VkCullModeFlags dgx_to_vk_cull_mode(dgx_cull_mode mode) {
+static inline VkCullModeFlags dmg_gfx_to_vk_cull_mode(dmg_gfx_cull_mode mode) {
     switch (mode) {
-        case dgx_cull_mode_none:            return VK_CULL_MODE_NONE;
-        case dgx_cull_mode_front:           return VK_CULL_MODE_FRONT_BIT;
-        case dgx_cull_mode_back:            return VK_CULL_MODE_BACK_BIT;
-        case dgx_cull_mode_front_and_back:  return VK_CULL_MODE_FRONT_AND_BACK;
-        default: assert(0 && "Invalid dgx_cull_mode!");
+        case dmg_gfx_cull_mode_none:            return VK_CULL_MODE_NONE;
+        case dmg_gfx_cull_mode_front:           return VK_CULL_MODE_FRONT_BIT;
+        case dmg_gfx_cull_mode_back:            return VK_CULL_MODE_BACK_BIT;
+        case dmg_gfx_cull_mode_front_and_back:  return VK_CULL_MODE_FRONT_AND_BACK;
+        default: assert(0 && "Invalid dmg_gfx_cull_mode!");
     } return VK_CULL_MODE_NONE;
 }
 
-static inline VkPolygonMode dgx_to_vk_fill_mode(dgx_fill_mode mode) {
+static inline VkPolygonMode dmg_gfx_to_vk_fill_mode(dmg_gfx_fill_mode mode) {
     switch (mode) {
-        case dgx_fill_mode_solid:       return VK_POLYGON_MODE_FILL;
-        case dgx_fill_mode_wireframe:   return VK_POLYGON_MODE_LINE;
-        default: assert(0 && "Invalid dgx_fill_mode!");
+        case dmg_gfx_fill_mode_solid:       return VK_POLYGON_MODE_FILL;
+        case dmg_gfx_fill_mode_wireframe:   return VK_POLYGON_MODE_LINE;
+        default: assert(0 && "Invalid dmg_gfx_fill_mode!");
     } return VK_POLYGON_MODE_FILL;
 }
 
-static inline VkBlendFactor dgx_to_vk_blend_factor(dgx_blend_factor factor) {
+static inline VkBlendFactor dmg_gfx_to_vk_blend_factor(dmg_gfx_blend_factor factor) {
     switch (factor) {
-        case dgx_blend_factor_zero:                     return VK_BLEND_FACTOR_ZERO;
-        case dgx_blend_factor_one:                      return VK_BLEND_FACTOR_ONE;
+        case dmg_gfx_blend_factor_zero:                     return VK_BLEND_FACTOR_ZERO;
+        case dmg_gfx_blend_factor_one:                      return VK_BLEND_FACTOR_ONE;
 
-        case dgx_blend_factor_src_color:                return VK_BLEND_FACTOR_SRC_COLOR;
-        case dgx_blend_factor_one_minus_src_color:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+        case dmg_gfx_blend_factor_src_color:                return VK_BLEND_FACTOR_SRC_COLOR;
+        case dmg_gfx_blend_factor_one_minus_src_color:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
 
-        case dgx_blend_factor_dst_color:                return VK_BLEND_FACTOR_DST_COLOR;
-        case dgx_blend_factor_one_minus_dst_color:      return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+        case dmg_gfx_blend_factor_dst_color:                return VK_BLEND_FACTOR_DST_COLOR;
+        case dmg_gfx_blend_factor_one_minus_dst_color:      return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
 
-        case dgx_blend_factor_src_alpha:                return VK_BLEND_FACTOR_SRC_ALPHA;
-        case dgx_blend_factor_one_minus_src_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        case dmg_gfx_blend_factor_src_alpha:                return VK_BLEND_FACTOR_SRC_ALPHA;
+        case dmg_gfx_blend_factor_one_minus_src_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 
-        case dgx_blend_factor_dst_alpha:                return VK_BLEND_FACTOR_DST_ALPHA;
-        case dgx_blend_factor_one_minus_dst_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+        case dmg_gfx_blend_factor_dst_alpha:                return VK_BLEND_FACTOR_DST_ALPHA;
+        case dmg_gfx_blend_factor_one_minus_dst_alpha:      return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
 
-        case dgx_blend_factor_constant_color:           return VK_BLEND_FACTOR_CONSTANT_COLOR;
-        case dgx_blend_factor_one_minus_constant_color: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
+        case dmg_gfx_blend_factor_constant_color:           return VK_BLEND_FACTOR_CONSTANT_COLOR;
+        case dmg_gfx_blend_factor_one_minus_constant_color: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
 
-        case dgx_blend_factor_constant_alpha:           return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-        case dgx_blend_factor_one_minus_constant_alpha: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
+        case dmg_gfx_blend_factor_constant_alpha:           return VK_BLEND_FACTOR_CONSTANT_ALPHA;
+        case dmg_gfx_blend_factor_one_minus_constant_alpha: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
 
-        case dgx_blend_factor_src_alpha_saturate:       return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
-        default: assert(0 && "Invalid dgx_blend_factor!");
+        case dmg_gfx_blend_factor_src_alpha_saturate:       return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+        default: assert(0 && "Invalid dmg_gfx_blend_factor!");
     } return VK_BLEND_FACTOR_ZERO;
 }
 
-static inline VkBlendOp dgx_to_vk_blend_op(dgx_blend_op op) {
+static inline VkBlendOp dmg_gfx_to_vk_blend_op(dmg_gfx_blend_op op) {
     switch (op) {
-        case dgx_blend_op_add:              return VK_BLEND_OP_ADD;
-        case dgx_blend_op_subtract:         return VK_BLEND_OP_SUBTRACT;
-        case dgx_blend_op_reverse_subtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
-        case dgx_blend_op_min:              return VK_BLEND_OP_MIN;
-        case dgx_blend_op_max:              return VK_BLEND_OP_MAX;
-        default: assert(0 && "Invalid dgx_blend_op!");
+        case dmg_gfx_blend_op_add:              return VK_BLEND_OP_ADD;
+        case dmg_gfx_blend_op_subtract:         return VK_BLEND_OP_SUBTRACT;
+        case dmg_gfx_blend_op_reverse_subtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
+        case dmg_gfx_blend_op_min:              return VK_BLEND_OP_MIN;
+        case dmg_gfx_blend_op_max:              return VK_BLEND_OP_MAX;
+        default: assert(0 && "Invalid dmg_gfx_blend_op!");
     } return VK_BLEND_OP_ADD;
 }
 
-struct dgx_pipeline {
-    dgx_hardware*       owning_hardware;
+struct dmg_gfx_pipeline {
+    dmg_gfx_hardware*       owning_hardware;
     VkPipeline          pipeline;
     VkPipelineLayout    layout;
-    uint32_t            constants_offset[dgx_shader_stage_count];
+    uint32_t            constants_offset[dmg_gfx_shader_stage_count];
 };
 
-dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_create_info* info) {
+dmg_gfx_pipeline* dmg_gfx_create_pipeline(dmg_gfx_hardware* hardware, const dmg_gfx_pipeline_create_info* info) {
     // For later, just initializing in case of _fail
     VkFormat*                            formats_aux_array = NULL;
     VkPipelineColorBlendAttachmentState* color_blend_attachments = NULL;
 
-    dgx_pipeline* pipeline = malloc(sizeof(dgx_pipeline));
-    if (!pipeline) goto _fail; *pipeline = (dgx_pipeline){.owning_hardware = hardware};
+    dmg_gfx_pipeline* pipeline = malloc(sizeof(dmg_gfx_pipeline));
+    if (!pipeline) goto _fail; *pipeline = (dmg_gfx_pipeline){.owning_hardware = hardware};
 
     // Constants ranges
 
     uint32_t            constants_ranges_count = 0;
-    VkPushConstantRange constants_ranges[dgx_shader_stage_count];
+    VkPushConstantRange constants_ranges[dmg_gfx_shader_stage_count];
     uint32_t            constants_offset = 0;
-    for (uint32_t stage = 0; stage < dgx_shader_stage_count; stage++) {
+    for (uint32_t stage = 0; stage < dmg_gfx_shader_stage_count; stage++) {
         if (!info->shader_stages.constants[stage]) continue;
         constants_ranges[constants_ranges_count++] = (VkPushConstantRange){
-            .stageFlags = dgx_to_vk_shader_stage(stage),
+            .stageFlags = dmg_gfx_to_vk_shader_stage(stage),
             .offset     = constants_offset,
             .size       = info->shader_stages.constants[stage],
         };
@@ -2322,13 +2322,13 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
     // Shader Stages
 
     uint32_t stages_count = 0;
-    VkPipelineShaderStageCreateInfo stages[dgx_shader_stage_count];
+    VkPipelineShaderStageCreateInfo stages[dmg_gfx_shader_stage_count];
 
-    for (uint32_t stage = 0; stage < dgx_shader_stage_count; stage++) {
+    for (uint32_t stage = 0; stage < dmg_gfx_shader_stage_count; stage++) {
         if (!info->shader_stages.shaders[stage]) continue;
         stages[stages_count++] = (VkPipelineShaderStageCreateInfo){
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage  = dgx_to_vk_shader_stage(stage),
+            .stage  = dmg_gfx_to_vk_shader_stage(stage),
             .module = info->shader_stages.shaders[stage]->module,
             .pName  = "main"
         };
@@ -2349,7 +2349,7 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology               = dgx_to_vk_primitive_topology(info->input_assembler_state.topology),
+        .topology               = dmg_gfx_to_vk_primitive_topology(info->input_assembler_state.topology),
         .primitiveRestartEnable = VK_FALSE
     };
 
@@ -2357,10 +2357,10 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = (info->rasterizer_state.fill_mode == dgx_fill_mode_wireframe)
+        .polygonMode = (info->rasterizer_state.fill_mode == dmg_gfx_fill_mode_wireframe)
             ? VK_POLYGON_MODE_LINE
             : VK_POLYGON_MODE_FILL,
-        .cullMode  = dgx_to_vk_cull_mode(info->rasterizer_state.cull_mode),
+        .cullMode  = dmg_gfx_to_vk_cull_mode(info->rasterizer_state.cull_mode),
         .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .lineWidth = 1.0f,
         .depthClampEnable = info->rasterizer_state.depth_clamp_enable,
@@ -2396,9 +2396,9 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
     for (uint32_t i = 0; i < info->attachment_state.color_attachments_count; i++) {
         color_blend_attachments[i] = (VkPipelineColorBlendAttachmentState){
             .blendEnable         = info->blend_state.blend_enable ? VK_TRUE : VK_FALSE,
-            .srcColorBlendFactor = dgx_to_vk_blend_factor(info->blend_state.src_factor),
-            .dstColorBlendFactor = dgx_to_vk_blend_factor(info->blend_state.dst_factor),
-            .colorBlendOp        = dgx_to_vk_blend_op(info->blend_state.blend_op),
+            .srcColorBlendFactor = dmg_gfx_to_vk_blend_factor(info->blend_state.src_factor),
+            .dstColorBlendFactor = dmg_gfx_to_vk_blend_factor(info->blend_state.dst_factor),
+            .colorBlendOp        = dmg_gfx_to_vk_blend_op(info->blend_state.blend_op),
             .colorWriteMask =
                 VK_COLOR_COMPONENT_R_BIT |
                 VK_COLOR_COMPONENT_G_BIT |
@@ -2418,11 +2418,11 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
     formats_aux_array = malloc(info->attachment_state.color_attachments_count * sizeof(VkFormat));
     if (!formats_aux_array) goto _fail;
     for (uint32_t i = 0; i < info->attachment_state.color_attachments_count; i++) {
-        formats_aux_array[i] = dgx_to_vk_texture_format(info->attachment_state.color_attachments_formats[i]);
+        formats_aux_array[i] = dmg_gfx_to_vk_texture_format(info->attachment_state.color_attachments_formats[i]);
     }
 
     VkFormat depth_format = info->attachment_state.depth_stencil_format ? 
-        dgx_to_vk_texture_format(*info->attachment_state.depth_stencil_format) : VK_FORMAT_UNDEFINED;
+        dmg_gfx_to_vk_texture_format(*info->attachment_state.depth_stencil_format) : VK_FORMAT_UNDEFINED;
 
     VkPipelineRenderingCreateInfoKHR render_target_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -2456,10 +2456,10 @@ dgx_pipeline* dgx_create_pipeline(dgx_hardware* hardware, const dgx_pipeline_cre
     free(formats_aux_array); free(color_blend_attachments);
     return pipeline;
 
-_fail: free(formats_aux_array); free(color_blend_attachments); dgx_free_pipeline(pipeline); return NULL;
+_fail: free(formats_aux_array); free(color_blend_attachments); dmg_gfx_free_pipeline(pipeline); return NULL;
 }
 
-void dgx_free_pipeline(dgx_pipeline* pipeline) {
+void dmg_gfx_free_pipeline(dmg_gfx_pipeline* pipeline) {
     if (!pipeline) return;
     vkDestroyPipeline(pipeline->owning_hardware->logical_device, pipeline->pipeline, NULL);
     vkDestroyPipelineLayout(pipeline->owning_hardware->logical_device, pipeline->layout, NULL);
@@ -2469,9 +2469,9 @@ void dgx_free_pipeline(dgx_pipeline* pipeline) {
 // ===========================
 // Transfer Commands
 
-void dgx_tcmd_copy_staging_memory_to_buffer(
-    dgx_staging_memory*     staging_memory,
-    dgx_buffer*             target_buffer,
+void dmg_gfx_tcmd_copy_staging_memory_to_buffer(
+    dmg_gfx_staging_memory*     staging_memory,
+    dmg_gfx_buffer*             target_buffer,
     uint64_t                staging_memory_region_offset,
     uint64_t                buffer_write_region_offset,
     uint64_t                buffer_write_region_size
@@ -2490,12 +2490,12 @@ void dgx_tcmd_copy_staging_memory_to_buffer(
     );
 }
 
-void dgx_tcmd_copy_staging_memory_to_texture(
-    dgx_staging_memory*     staging_memory,
-    dgx_texture*            target_texture,
+void dmg_gfx_tcmd_copy_staging_memory_to_texture(
+    dmg_gfx_staging_memory*     staging_memory,
+    dmg_gfx_texture*            target_texture,
     uint64_t                staging_memory_region_offset,
-    dgx_texture_dimensions  texture_write_region_offset,
-    dgx_texture_dimensions  texture_write_region_size
+    dmg_gfx_texture_dimensions  texture_write_region_offset,
+    dmg_gfx_texture_dimensions  texture_write_region_size
 ) {
     VkImageMemoryBarrier barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -2555,9 +2555,9 @@ void dgx_tcmd_copy_staging_memory_to_texture(
     );
 }
 
-void dgx_tcmd_copy_buffer_to_buffer(
-    dgx_buffer*             source_buffer,
-    dgx_buffer*             target_buffer,
+void dmg_gfx_tcmd_copy_buffer_to_buffer(
+    dmg_gfx_buffer*             source_buffer,
+    dmg_gfx_buffer*             target_buffer,
     uint64_t                source_region_offset,
     uint64_t                target_region_offset,
     uint64_t                target_region_size
@@ -2579,24 +2579,24 @@ void dgx_tcmd_copy_buffer_to_buffer(
 // ===========================
 // Graphics Commands
 
-static inline VkAttachmentLoadOp dgx_to_vk_load_op(dgx_load_op op) {
+static inline VkAttachmentLoadOp dmg_gfx_to_vk_load_op(dmg_gfx_load_op op) {
     switch (op) {
-        case dgx_load_op_load:       return VK_ATTACHMENT_LOAD_OP_LOAD;
-        case dgx_load_op_clear:      return VK_ATTACHMENT_LOAD_OP_CLEAR;
-        case dgx_load_op_dont_care:  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        default: assert(0 && "Invalid dgx_load_op!");
+        case dmg_gfx_load_op_load:       return VK_ATTACHMENT_LOAD_OP_LOAD;
+        case dmg_gfx_load_op_clear:      return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        case dmg_gfx_load_op_dont_care:  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        default: assert(0 && "Invalid dmg_gfx_load_op!");
     } return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 }
 
-static inline VkAttachmentStoreOp dgx_to_vk_store_op(dgx_store_op op) {
+static inline VkAttachmentStoreOp dmg_gfx_to_vk_store_op(dmg_gfx_store_op op) {
     switch (op) {
-        case dgx_store_op_store:     return VK_ATTACHMENT_STORE_OP_STORE;
-        case dgx_store_op_dont_care: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        default: assert(0 && "Invalid dgx_store_op!");
+        case dmg_gfx_store_op_store:     return VK_ATTACHMENT_STORE_OP_STORE;
+        case dmg_gfx_store_op_dont_care: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        default: assert(0 && "Invalid dmg_gfx_store_op!");
     } return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
-VkRenderingAttachmentInfo dgx_to_vk_rendering_attachment(dgx_gcmd_rendering_attachment_info* info, int depth) {
+VkRenderingAttachmentInfo dmg_gfx_to_vk_rendering_attachment(dmg_gfx_gcmd_rendering_attachment_info* info, int depth) {
     return (VkRenderingAttachmentInfo){
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .clearValue.color.float32[0] = info->clear_color.r,
@@ -2605,22 +2605,22 @@ VkRenderingAttachmentInfo dgx_to_vk_rendering_attachment(dgx_gcmd_rendering_atta
         .clearValue.color.float32[3] = info->clear_color.a,
         .imageLayout        = depth ? VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .imageView          = info->texture->view,
-        .loadOp             = dgx_to_vk_load_op(info->load_op),
-        .storeOp            = dgx_to_vk_store_op(info->store_op),
+        .loadOp             = dmg_gfx_to_vk_load_op(info->load_op),
+        .storeOp            = dmg_gfx_to_vk_store_op(info->store_op),
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .resolveImageView   = VK_NULL_HANDLE,
         .resolveMode        = 0
     };
 }
 
-void dgx_gcmd_begin_rendering(dgx_gcmd_rendering_info* info) {
+void dmg_gfx_gcmd_begin_rendering(dmg_gfx_gcmd_rendering_info* info) {
     VkRenderingAttachmentInfo* color_infos = malloc(info->color_attachments_count * sizeof(VkRenderingAttachmentInfo));
     if (!color_infos) return; for (uint32_t i = 0; i < info->color_attachments_count; i++) {
-        color_infos[i] = dgx_to_vk_rendering_attachment(&info->color_attachments[i], 0);
+        color_infos[i] = dmg_gfx_to_vk_rendering_attachment(&info->color_attachments[i], 0);
     }
     
     VkRenderingAttachmentInfo depth_info;
-    if (info->depth_stencil_attachment) depth_info = dgx_to_vk_rendering_attachment(info->depth_stencil_attachment, 1);
+    if (info->depth_stencil_attachment) depth_info = dmg_gfx_to_vk_rendering_attachment(info->depth_stencil_attachment, 1);
 
     recording_state_command_list->owning_hardware->vkCmdBeginRenderingKHR(
         recording_state_command_list->command_buffer, &(VkRenderingInfoKHR){
@@ -2636,15 +2636,17 @@ void dgx_gcmd_begin_rendering(dgx_gcmd_rendering_info* info) {
             }
         }
     );
+
+    free(color_infos);
 }
 
-void dgx_gcmd_finish_rendering() {
+void dmg_gfx_gcmd_finish_rendering() {
     recording_state_command_list->owning_hardware->vkCmdEndRenderingKHR(
         recording_state_command_list->command_buffer
     );
 }
 
-void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline) {
+void dmg_gfx_gcmd_bind_graphics_pipeline(dmg_gfx_pipeline* pipeline) {
     vkCmdBindPipeline(
         recording_state_command_list->command_buffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2660,9 +2662,9 @@ void dgx_gcmd_bind_graphics_pipeline(dgx_pipeline* pipeline) {
     );
 }
 
-void dgx_gcmd_write_constants(
-    dgx_pipeline*    pipeline, 
-    dgx_shader_stage stage, 
+void dmg_gfx_gcmd_write_constants(
+    dmg_gfx_pipeline*    pipeline, 
+    dmg_gfx_shader_stage stage, 
     uint32_t         offset,
     uint32_t         bytes, 
     void*            data
@@ -2670,12 +2672,12 @@ void dgx_gcmd_write_constants(
     vkCmdPushConstants(
         recording_state_command_list->command_buffer,
         pipeline->layout,
-        dgx_to_vk_shader_stage(stage),
+        dmg_gfx_to_vk_shader_stage(stage),
         pipeline->constants_offset[stage] + offset, bytes, data
     );
 }
 
-void dgx_gcmd_draw(
+void dmg_gfx_gcmd_draw(
     uint32_t vertices_base,
     uint32_t vertices_count,
     uint32_t instances_base,
@@ -2690,7 +2692,7 @@ void dgx_gcmd_draw(
     );
 }
 
-void dgx_gcmd_set_scissors(
+void dmg_gfx_gcmd_set_scissors(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 ) {
@@ -2700,7 +2702,7 @@ void dgx_gcmd_set_scissors(
     });
 }
 
-void dgx_gcmd_set_viewport(
+void dmg_gfx_gcmd_set_viewport(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 ) {
@@ -2755,19 +2757,19 @@ void free_swapchain_support_details(swapchain_support_details details) {
     free(details.formats);
 }
 
-int windowing_platform_init(dgx_library* library) {
-    glfwInit();
+int windowing_platform_init(dmg_gfx_library* library) {
+    return glfwInit() == GLFW_TRUE;
 }
 
-void windowing_platform_term(dgx_library* library) {
+void windowing_platform_term(dmg_gfx_library* library) {
     glfwTerminate();
 }
 
-int windowing_platform_get_required_extensions(dgx_library* library, uint32_t* count, const char*** names) {
-    *names = glfwGetRequiredInstanceExtensions(count);
+int windowing_platform_get_required_extensions(dmg_gfx_library* library, uint32_t* count, const char*** names) {
+    *names = glfwGetRequiredInstanceExtensions(count); return 1;
 }
 
-int windowing_platform_query_presentation_support(dgx_library* library, VkPhysicalDevice device) {
+int windowing_platform_query_presentation_support(dmg_gfx_library* library, VkPhysicalDevice device) {
     VkSurfaceKHR surface; void* other_data_storage; 
     if (!windowing_platform_create_test_surface(library, &surface, &other_data_storage)) return 0;
     swapchain_support_details details = get_swapchain_support_details(device, surface);
@@ -2782,7 +2784,7 @@ int windowing_platform_query_presentation_support(dgx_library* library, VkPhysic
     return result;
 }
 
-int windowing_platform_create_test_surface(dgx_library* library, VkSurfaceKHR* surface, void** other_data_storage) {
+int windowing_platform_create_test_surface(dmg_gfx_library* library, VkSurfaceKHR* surface, void** other_data_storage) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     GLFWwindow* test_window = glfwCreateWindow(100, 100, "Vulkan test window", NULL, NULL);
     if (!test_window) return 0;
@@ -2795,7 +2797,7 @@ int windowing_platform_create_test_surface(dgx_library* library, VkSurfaceKHR* s
     *other_data_storage = test_window;
 }
 
-void windowing_platform_free_test_surface(dgx_library* library, VkSurfaceKHR surface, void* other_data_return) {
+void windowing_platform_free_test_surface(dmg_gfx_library* library, VkSurfaceKHR surface, void* other_data_return) {
     vkDestroySurfaceKHR(library->instance, surface, 0); 
     glfwDestroyWindow((GLFWwindow*)other_data_return);
 }
@@ -2887,9 +2889,9 @@ typedef struct swapchain_pack {
     uint32_t            height;
     VkSwapchainKHR      swapchain;
     uint32_t            attachments_count;
-    dgx_texture*        attachments_array;
+    dmg_gfx_texture*        attachments_array;
     VkCommandBuffer*    transition;         // Transition i'th attachments format for presentation
-    dgx_texture_format  color_format;
+    dmg_gfx_texture_format  color_format;
 } swapchain_pack;
 
 typedef struct retired_swapchain {
@@ -2897,8 +2899,8 @@ typedef struct retired_swapchain {
     swapchain_pack      retired_pack;       // Retired swapchain, enqueued for deletion
 } retired_swapchain;
 
-struct dgx_window {
-    dgx_hardware*       owning_hardware;    // The hardware
+struct dmg_gfx_window {
+    dmg_gfx_hardware*       owning_hardware;    // The hardware
     GLFWwindow*         window;             // GLFW window handle
     VkSurfaceKHR        surface;            // Window surface object
     uint64_t            present_timepoint;  // Last present call present timeline signal
@@ -2918,27 +2920,27 @@ struct dgx_window {
 };
 
 // Returns non-zero at success, can recreate, retires current swapchai
-int  create_swapchain(dgx_window* window);
-void retire_swapchain(dgx_window* window);
-void safe_free_retired_swapchains(dgx_window* window);
+int  create_swapchain(dmg_gfx_window* window);
+void retire_swapchain(dmg_gfx_window* window);
+void safe_free_retired_swapchains(dmg_gfx_window* window);
 
 // Window-GLFW input callbacks
 
 void window_resized_callback(GLFWwindow* platform_window, int width, int height) {
-    dgx_window* window = glfwGetWindowUserPointer(platform_window);
-    //if (window->swapchain.width != (uint32_t)width || window->swapchain.height != (uint32_t)height) create_swapchain(window);
+    dmg_gfx_window* window = glfwGetWindowUserPointer(platform_window);
+    if (window->swapchain.width != (uint32_t)width || window->swapchain.height != (uint32_t)height) create_swapchain(window);
 }
 
 void window_scroll_callback(GLFWwindow* platform_window, double xoffset, double yoffset) {
-    dgx_window* window = glfwGetWindowUserPointer(platform_window);
+    dmg_gfx_window* window = glfwGetWindowUserPointer(platform_window);
     window->scroll_input = yoffset;
 }
 
 // Window Creation
 
-dgx_window* dgx_create_window(dgx_hardware* hardware, const dgx_window_create_info* info) {
-    dgx_window* window = malloc(sizeof(dgx_window)); if (!window) goto _fail;
-    *window = (dgx_window){.owning_hardware = hardware, .attachments = info->attachments};
+dmg_gfx_window* dmg_gfx_create_window(dmg_gfx_hardware* hardware, const dmg_gfx_window_create_info* info) {
+    dmg_gfx_window* window = malloc(sizeof(dmg_gfx_window)); if (!window) goto _fail;
+    *window = (dmg_gfx_window){.owning_hardware = hardware, .attachments = info->attachments};
 
     // Window
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);   // Ensure no-opengl context
@@ -2979,7 +2981,7 @@ dgx_window* dgx_create_window(dgx_hardware* hardware, const dgx_window_create_in
     // Command pool
     if (vkCreateCommandPool(hardware->logical_device, &(VkCommandPoolCreateInfo){
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .queueFamilyIndex = hardware->work_group_queue_family[dgx_command_domain_graphics],
+        .queueFamilyIndex = hardware->work_group_queue_family[dmg_gfx_command_domain_graphics],
         .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
     }, NULL, &window->transitions_pool) != VK_SUCCESS) goto _fail;
 
@@ -2987,10 +2989,10 @@ dgx_window* dgx_create_window(dgx_hardware* hardware, const dgx_window_create_in
     if (!create_swapchain(window)) goto _fail;
 
     return window;
-_fail: dgx_free_window(window); return NULL;
+_fail: dmg_gfx_free_window(window); return NULL;
 }
 
-void dgx_free_window(dgx_window* window) {
+void dmg_gfx_free_window(dmg_gfx_window* window) {
     if (!window) return;
     
     // Enqueue current swapchain for erase
@@ -3023,9 +3025,9 @@ void dgx_free_window(dgx_window* window) {
 // Their count can change in every swapchain, therefore we ensure their count
 // For simplicity we do full wait here - tolerable since, this operation is rather unlikely
 // Todo safety on this function
-void window_ensure_enough_semaphores_for_swapchain(dgx_window* window) {
+void window_ensure_enough_semaphores_for_swapchain(dmg_gfx_window* window) {
     if (window->semaphores_count >= window->swapchain.attachments_count) return;
-    dgx_hardware_wait_idle(window->owning_hardware);
+    dmg_gfx_hardware_wait_idle(window->owning_hardware);
     
     uint32_t     new_count   = window->swapchain.attachments_count;
     VkSemaphore* new_acquire = realloc(window->acquire_semaphores, new_count * sizeof(VkSemaphore));
@@ -3047,17 +3049,17 @@ void window_ensure_enough_semaphores_for_swapchain(dgx_window* window) {
 
 // Window Attachments
 
-dgx_texture* dgx_window_get_attachment_color(dgx_window* window, uint32_t target_index) {
+dmg_gfx_texture* dmg_gfx_window_get_attachment_color(dmg_gfx_window* window, uint32_t target_index) {
     return &window->swapchain.attachments_array[target_index];
 }
 
-dgx_texture_format dgx_window_get_attachment_format(dgx_window* window) {
+dmg_gfx_texture_format dmg_gfx_window_get_attachment_format(dmg_gfx_window* window) {
     return window->swapchain.color_format;
 }
 
 // Window Present
 
-int dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index) {
+int dmg_gfx_window_acquire_index (dmg_gfx_window* window, dmg_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index) {
     // Implicitly update input
     window->scroll_input = 0.0f;
     glfwPollEvents();
@@ -3073,7 +3075,7 @@ int dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timel
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         create_swapchain(window);
-        return dgx_window_acquire_index(window, can_render_timeline, can_render_signal, out_index);
+        return dmg_gfx_window_acquire_index(window, can_render_timeline, can_render_signal, out_index);
     } 
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         return 0; // failed to acquire swap chain image
@@ -3096,7 +3098,7 @@ int dgx_window_acquire_index (dgx_window* window, dgx_timeline* can_render_timel
     return 1;
 }
 
-void dgx_window_submit_present(dgx_window* window, uint32_t target_index, dgx_timeline* wait_timeline, uint64_t wait_signal) {
+void dmg_gfx_window_submit_present(dmg_gfx_window* window, uint32_t target_index, dmg_gfx_timeline* wait_timeline, uint64_t wait_signal) {
     window->present_timepoint++;
 
     // Once timeline signaled, signal present semaphore
@@ -3146,21 +3148,21 @@ void dgx_window_submit_present(dgx_window* window, uint32_t target_index, dgx_ti
 
 // Window Input
 
-int dgx_window_query_shall_close(dgx_window* window) {
+int dmg_gfx_window_query_shall_close(dmg_gfx_window* window) {
     return glfwWindowShouldClose(window->window);
 }
 
-void dgx_window_query_is_focused(dgx_window* window, int* is) {
+void dmg_gfx_window_query_is_focused(dmg_gfx_window* window, int* is) {
     if (is) *is = glfwGetWindowAttrib(window->window, GLFW_FOCUSED);
 }
 
-void dgx_window_query_cursor_pos(dgx_window* window, int* xpos, int* ypos) {
+void dmg_gfx_window_query_cursor_pos(dmg_gfx_window* window, int* xpos, int* ypos) {
     double x, y; glfwGetCursorPos(window->window, &x, &y);
     if (xpos) *xpos = (int)x;
     if (ypos) *ypos = (int)y;
 }
 
-void dgx_window_query_input(dgx_window* window, int* left_pressed, int* right_pressed, float* scroll) {
+void dmg_gfx_window_query_input(dmg_gfx_window* window, int* left_pressed, int* right_pressed, float* scroll) {
     GLFWwindow* w = (GLFWwindow*)window->window;
     if (left_pressed)   *left_pressed  = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     if (right_pressed)  *right_pressed = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
@@ -3169,34 +3171,34 @@ void dgx_window_query_input(dgx_window* window, int* left_pressed, int* right_pr
 
 // Window Queries
 
-void dgx_window_query_size(dgx_window* window, uint32_t* width, uint32_t* height) {
-    if (width)  *width  = window->swapchain.width;
-    if (height) *height = window->swapchain.height;
+void dmg_gfx_window_query_size(dmg_gfx_window* window, uint32_t* width, uint32_t* height) {
+    int iwidth, iheight; glfwGetFramebufferSize(window->window, &iwidth, &iheight);
+    if (width)  *width  = iwidth; if (height) *height = iheight;
 }
 
 // Swapchain
 
-static dgx_texture_format vk_to_dgx_texture_format(VkFormat format) {
+static dmg_gfx_texture_format vk_to_dmg_gfx_texture_format(VkFormat format) {
     switch (format) {
-    case VK_FORMAT_R8_UNORM:            return dgx_texture_format_r8_unorm;
-    case VK_FORMAT_R8G8_UNORM:          return dgx_texture_format_rg8_unorm;
-    case VK_FORMAT_R8G8B8A8_UNORM:      return dgx_texture_format_rgba8_unorm;
-    case VK_FORMAT_R8G8B8A8_SRGB:       return dgx_texture_format_rgba8_srgb;
-    case VK_FORMAT_B8G8R8A8_UNORM:      return dgx_texture_format_bgra8_unorm;
-    case VK_FORMAT_B8G8R8A8_SRGB:       return dgx_texture_format_bgra8_srgb;
-    case VK_FORMAT_R16_SFLOAT:          return dgx_texture_format_r16_float;
-    case VK_FORMAT_R16G16_SFLOAT:       return dgx_texture_format_rg16_float;
-    case VK_FORMAT_R16G16B16A16_SFLOAT: return dgx_texture_format_rgba16_float;
-    case VK_FORMAT_R32_SFLOAT:          return dgx_texture_format_r32_float;
-    case VK_FORMAT_R32G32_SFLOAT:       return dgx_texture_format_rg32_float;
-    case VK_FORMAT_R32G32B32A32_SFLOAT: return dgx_texture_format_rgba32_float;
-    case VK_FORMAT_D16_UNORM:           return dgx_texture_format_depth16_unorm;
-    case VK_FORMAT_D24_UNORM_S8_UINT:   return dgx_texture_format_depth24_unorm_stencil8;
-    case VK_FORMAT_D32_SFLOAT:          return dgx_texture_format_depth32_float;
-    } return dgx_texture_format_undefined;
+    case VK_FORMAT_R8_UNORM:            return dmg_gfx_texture_format_r8_unorm;
+    case VK_FORMAT_R8G8_UNORM:          return dmg_gfx_texture_format_rg8_unorm;
+    case VK_FORMAT_R8G8B8A8_UNORM:      return dmg_gfx_texture_format_rgba8_unorm;
+    case VK_FORMAT_R8G8B8A8_SRGB:       return dmg_gfx_texture_format_rgba8_srgb;
+    case VK_FORMAT_B8G8R8A8_UNORM:      return dmg_gfx_texture_format_bgra8_unorm;
+    case VK_FORMAT_B8G8R8A8_SRGB:       return dmg_gfx_texture_format_bgra8_srgb;
+    case VK_FORMAT_R16_SFLOAT:          return dmg_gfx_texture_format_r16_float;
+    case VK_FORMAT_R16G16_SFLOAT:       return dmg_gfx_texture_format_rg16_float;
+    case VK_FORMAT_R16G16B16A16_SFLOAT: return dmg_gfx_texture_format_rgba16_float;
+    case VK_FORMAT_R32_SFLOAT:          return dmg_gfx_texture_format_r32_float;
+    case VK_FORMAT_R32G32_SFLOAT:       return dmg_gfx_texture_format_rg32_float;
+    case VK_FORMAT_R32G32B32A32_SFLOAT: return dmg_gfx_texture_format_rgba32_float;
+    case VK_FORMAT_D16_UNORM:           return dmg_gfx_texture_format_depth16_unorm;
+    case VK_FORMAT_D24_UNORM_S8_UINT:   return dmg_gfx_texture_format_depth24_unorm_stencil8;
+    case VK_FORMAT_D32_SFLOAT:          return dmg_gfx_texture_format_depth32_float;
+    } return dmg_gfx_texture_format_undefined;
 }
 
-int create_swapchain(dgx_window* window) {
+int create_swapchain(dmg_gfx_window* window) {
     int framebuffer_width, framebuffer_height;
     glfwGetFramebufferSize(window->window, &framebuffer_width, &framebuffer_height);
 
@@ -3215,7 +3217,7 @@ int create_swapchain(dgx_window* window) {
 
     // Swapchain target queues
     uint32_t queue_families_indices[] = {
-        window->owning_hardware->work_group_queue_family[dgx_command_domain_graphics], 
+        window->owning_hardware->work_group_queue_family[dmg_gfx_command_domain_graphics], 
         window->owning_hardware->presentation_queue_family
     };
 
@@ -3292,11 +3294,11 @@ int create_swapchain(dgx_window* window) {
     }
 
     // Swapchain attachments
-    new_pack.attachments_array = calloc(new_pack.attachments_count, sizeof(dgx_texture)); if (!new_pack.attachments_array) goto _fail;
+    new_pack.attachments_array = calloc(new_pack.attachments_count, sizeof(dmg_gfx_texture)); if (!new_pack.attachments_array) goto _fail;
     for (uint32_t attachment = 0; attachment < new_pack.attachments_count; attachment++) {
-        new_pack.attachments_array[attachment] = (dgx_texture){
+        new_pack.attachments_array[attachment] = (dmg_gfx_texture){
             .owning_hardware = window->owning_hardware,
-            .dimensions      = (dgx_texture_dimensions){
+            .dimensions      = (dmg_gfx_texture_dimensions){
                 .width  = new_pack.width,
                 .height = new_pack.height,
                 .depth  = 1
@@ -3308,7 +3310,7 @@ int create_swapchain(dgx_window* window) {
     }
 
     // Attachment format
-    new_pack.color_format = vk_to_dgx_texture_format(swapchain_settings.format.format);
+    new_pack.color_format = vk_to_dmg_gfx_texture_format(swapchain_settings.format.format);
 
     // Record format transitions
     new_pack.transition = calloc(new_pack.attachments_count, sizeof(VkCommandBuffer)); if (!new_pack.transition) goto _fail;
@@ -3380,7 +3382,7 @@ _fail:
     return 0;
 }
 
-void retire_swapchain(dgx_window* window) {
+void retire_swapchain(dmg_gfx_window* window) {
 _begin: 
     if (window->swapchain.swapchain == VK_NULL_HANDLE) return; // nothing to retire
     
@@ -3414,7 +3416,7 @@ _begin:
     window->retired_count++;
 }
 
-void free_retired_swapchain(dgx_window* window, swapchain_pack pack) {
+void free_retired_swapchain(dmg_gfx_window* window, swapchain_pack pack) {
     for (uint32_t attachment = 0; attachment < pack.attachments_count; attachment++) {
         vkDestroyImageView(window->owning_hardware->logical_device, pack.attachments_array[attachment].view, NULL);
         vkFreeCommandBuffers(window->owning_hardware->logical_device, window->transitions_pool, 1, &pack.transition[attachment]);
@@ -3422,7 +3424,7 @@ void free_retired_swapchain(dgx_window* window, swapchain_pack pack) {
     vkDestroySwapchainKHR(window->owning_hardware->logical_device, pack.swapchain, NULL);
 }
 
-void safe_free_retired_swapchains(dgx_window* window) {
+void safe_free_retired_swapchains(dmg_gfx_window* window) {
     uint32_t itr = window->retired_first;
     uint64_t val; if (window->owning_hardware->vkGetSemaphoreCounterValueKHR(
         window->owning_hardware->logical_device, window->present_timeline, &val

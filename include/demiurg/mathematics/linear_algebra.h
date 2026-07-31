@@ -5,7 +5,7 @@ This file provides linear algebra types and operations
 
 ----------------------------------------------------------------
 Code info:
-- dla prefix
+- dmg_lia prefix
 - math.h and string.h dependant
 - matrices are column-major, so accessing element is data[col][row]
 
@@ -28,151 +28,155 @@ Notes:
 // ===========================
 // Scalar helpers
 
-#define DLA_PI 3.14159265358979323846f
-#define DLA_DEG2RAD(d) ((d) * (DLA_PI / 180.0f))
-#define DLA_RAD2DEG(r) ((r) * (180.0f / DLA_PI))
+#define DMG_LIA_PI 3.14159265358979323846f
+#define DMG_LIA_DEG2RAD(d) ((d) * (DMG_LIA_PI / 180.0f))
+#define DMG_LIA_RAD2DEG(r) ((r) * (180.0f / DMG_LIA_PI))
+
+static inline float dmg_lia_float_clamp(float v, float min, float max) {
+    return v < min ? min : (v > max ? max : v);
+}
 
 // ===========================
 // Types
 
-typedef struct { float x, y;       } dla_vec2;
-typedef struct { float x, y, z;    } dla_vec3;
-typedef struct { float x, y, z, w; } dla_vec4;
+typedef struct { float x, y;       } dmg_lia_vec2;
+typedef struct { float x, y, z;    } dmg_lia_vec3;
+typedef struct { float x, y, z, w; } dmg_lia_vec4;
 
 // Column-major: m[col][row]
-typedef struct { float m[2][2]; }   dla_mat2;
-typedef struct { float m[3][3]; }   dla_mat3;
-typedef struct { float m[4][4]; }   dla_mat4;
+typedef struct { float m[2][2]; }   dmg_lia_mat2;
+typedef struct { float m[3][3]; }   dmg_lia_mat3;
+typedef struct { float m[4][4]; }   dmg_lia_mat4;
 
 // ===========================
 // Vec2
 
-static inline dla_vec2 dla_vec2_add(dla_vec2 a, dla_vec2 b) { 
-    return (dla_vec2){ a.x + b.x, a.y + b.y }; 
+static inline dmg_lia_vec2 dmg_lia_vec2_add(dmg_lia_vec2 a, dmg_lia_vec2 b) { 
+    return (dmg_lia_vec2){ a.x + b.x, a.y + b.y }; 
 }
 
-static inline dla_vec2 dla_vec2_sub(dla_vec2 a, dla_vec2 b) {
-    return (dla_vec2){ a.x - b.x, a.y - b.y };
+static inline dmg_lia_vec2 dmg_lia_vec2_sub(dmg_lia_vec2 a, dmg_lia_vec2 b) {
+    return (dmg_lia_vec2){ a.x - b.x, a.y - b.y };
 }
 
-static inline dla_vec2 dla_vec2_scale(dla_vec2 a, float s) { 
-    return (dla_vec2){ a.x * s, a.y * s };
+static inline dmg_lia_vec2 dmg_lia_vec2_scale(dmg_lia_vec2 a, float s) { 
+    return (dmg_lia_vec2){ a.x * s, a.y * s };
 }
 
-static inline float dla_vec2_dot(dla_vec2 a, dla_vec2 b) { 
+static inline float dmg_lia_vec2_dot(dmg_lia_vec2 a, dmg_lia_vec2 b) { 
     return a.x * b.x + a.y * b.y; 
 }
-static inline float dla_vec2_len(dla_vec2 a) { 
-    return sqrtf(dla_vec2_dot(a, a)); 
+static inline float dmg_lia_vec2_len(dmg_lia_vec2 a) { 
+    return sqrtf(dmg_lia_vec2_dot(a, a)); 
 }
 
-static inline dla_vec2 dla_vec2_normalize(dla_vec2 a) {
-    float len = dla_vec2_len(a);
-    return len > 0.0f ? dla_vec2_scale(a, 1.0f / len) : a;
+static inline dmg_lia_vec2 dmg_lia_vec2_normalize(dmg_lia_vec2 a) {
+    float len = dmg_lia_vec2_len(a);
+    return len > 0.0f ? dmg_lia_vec2_scale(a, 1.0f / len) : a;
 }
 
 // ===========================
 // Vec3
 
-static inline dla_vec3 dla_vec3_add(dla_vec3 a, dla_vec3 b) { 
-    return (dla_vec3){ a.x + b.x, a.y + b.y, a.z + b.z }; 
+static inline dmg_lia_vec3 dmg_lia_vec3_add(dmg_lia_vec3 a, dmg_lia_vec3 b) { 
+    return (dmg_lia_vec3){ a.x + b.x, a.y + b.y, a.z + b.z }; 
 }
 
-static inline dla_vec3 dla_vec3_sub(dla_vec3 a, dla_vec3 b) { 
-    return (dla_vec3){ a.x - b.x, a.y - b.y, a.z - b.z }; 
+static inline dmg_lia_vec3 dmg_lia_vec3_sub(dmg_lia_vec3 a, dmg_lia_vec3 b) { 
+    return (dmg_lia_vec3){ a.x - b.x, a.y - b.y, a.z - b.z }; 
 }
 
-static inline dla_vec3 dla_vec3_scale(dla_vec3 a, float s) { 
-    return (dla_vec3){ a.x * s, a.y * s, a.z * s }; 
+static inline dmg_lia_vec3 dmg_lia_vec3_scale(dmg_lia_vec3 a, float s) { 
+    return (dmg_lia_vec3){ a.x * s, a.y * s, a.z * s }; 
 }
 
-static inline float dla_vec3_dot(dla_vec3 a, dla_vec3 b) { 
+static inline float dmg_lia_vec3_dot(dmg_lia_vec3 a, dmg_lia_vec3 b) { 
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-static inline dla_vec3 dla_vec3_cross(dla_vec3 a, dla_vec3 b) {
-    return (dla_vec3){
+static inline dmg_lia_vec3 dmg_lia_vec3_cross(dmg_lia_vec3 a, dmg_lia_vec3 b) {
+    return (dmg_lia_vec3){
         a.y * b.z - a.z * b.y,
         a.z * b.x - a.x * b.z,
         a.x * b.y - a.y * b.x
     };
 }
 
-static inline float dla_vec3_len(dla_vec3 a) { 
-    return sqrtf(dla_vec3_dot(a, a)); 
+static inline float dmg_lia_vec3_len(dmg_lia_vec3 a) { 
+    return sqrtf(dmg_lia_vec3_dot(a, a)); 
 }
 
-static inline dla_vec3 dla_vec3_normalize(dla_vec3 a) {
-    float len = dla_vec3_len(a);
-    return len > 0.0f ? dla_vec3_scale(a, 1.0f / len) : a;
+static inline dmg_lia_vec3 dmg_lia_vec3_normalize(dmg_lia_vec3 a) {
+    float len = dmg_lia_vec3_len(a);
+    return len > 0.0f ? dmg_lia_vec3_scale(a, 1.0f / len) : a;
 }
 
 // ===========================
 // Vec4
 
-static inline dla_vec4 dla_vec4_add(dla_vec4 a, dla_vec4 b) { 
-    return (dla_vec4){ a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w }; 
+static inline dmg_lia_vec4 dmg_lia_vec4_add(dmg_lia_vec4 a, dmg_lia_vec4 b) { 
+    return (dmg_lia_vec4){ a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w }; 
 }
 
-static inline dla_vec4 dla_vec4_sub(dla_vec4 a, dla_vec4 b) { 
-    return (dla_vec4){ a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w }; 
+static inline dmg_lia_vec4 dmg_lia_vec4_sub(dmg_lia_vec4 a, dmg_lia_vec4 b) { 
+    return (dmg_lia_vec4){ a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w }; 
 }
 
-static inline dla_vec4 dla_vec4_scale(dla_vec4 a, float s) {
-    return (dla_vec4){ a.x * s, a.y * s, a.z * s, a.w * s }; 
+static inline dmg_lia_vec4 dmg_lia_vec4_scale(dmg_lia_vec4 a, float s) {
+    return (dmg_lia_vec4){ a.x * s, a.y * s, a.z * s, a.w * s }; 
 }
 
-static inline float dla_vec4_dot(dla_vec4 a, dla_vec4 b) { 
+static inline float dmg_lia_vec4_dot(dmg_lia_vec4 a, dmg_lia_vec4 b) { 
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; 
 }
 
-static inline float dla_vec4_len(dla_vec4 a) { 
-    return sqrtf(dla_vec4_dot(a, a)); 
+static inline float dmg_lia_vec4_len(dmg_lia_vec4 a) { 
+    return sqrtf(dmg_lia_vec4_dot(a, a)); 
 }
 
-static inline dla_vec4 dla_vec4_normalize(dla_vec4 a) {
-    float len = dla_vec4_len(a);
-    return len > 0.0f ? dla_vec4_scale(a, 1.0f / len) : a;
+static inline dmg_lia_vec4 dmg_lia_vec4_normalize(dmg_lia_vec4 a) {
+    float len = dmg_lia_vec4_len(a);
+    return len > 0.0f ? dmg_lia_vec4_scale(a, 1.0f / len) : a;
 }
 
 // ===========================
 // Mat2
 
-static inline dla_mat2 dla_mat2_identity(void) {
-    dla_mat2 r; memset(&r, 0, sizeof(r));
+static inline dmg_lia_mat2 dmg_lia_mat2_identity(void) {
+    dmg_lia_mat2 r; memset(&r, 0, sizeof(r));
     r.m[0][0] = 1.0f; r.m[1][1] = 1.0f;
     return r;
 }
 
-static inline dla_mat2 dla_mat2_add(dla_mat2 a, dla_mat2 b) {
-    dla_mat2 r;
+static inline dmg_lia_mat2 dmg_lia_mat2_add(dmg_lia_mat2 a, dmg_lia_mat2 b) {
+    dmg_lia_mat2 r;
     for (int c = 0; c < 2; ++c)
         for (int rr = 0; rr < 2; ++rr)
             r.m[c][rr] = a.m[c][rr] + b.m[c][rr];
     return r;
 }
 
-static inline dla_mat2 dla_mat2_mul(dla_mat2 a, dla_mat2 b) {
-    dla_mat2 r;
+static inline dmg_lia_mat2 dmg_lia_mat2_mul(dmg_lia_mat2 a, dmg_lia_mat2 b) {
+    dmg_lia_mat2 r;
     for (int c = 0; c < 2; ++c)
         for (int rr = 0; rr < 2; ++rr)
             r.m[c][rr] = a.m[0][rr] * b.m[c][0] + a.m[1][rr] * b.m[c][1];
     return r;
 }
 
-static inline dla_vec2 dla_mat2_mul_vec2(dla_mat2 a, dla_vec2 v) {
-    return (dla_vec2){
+static inline dmg_lia_vec2 dmg_lia_mat2_mul_vec2(dmg_lia_mat2 a, dmg_lia_vec2 v) {
+    return (dmg_lia_vec2){
         a.m[0][0] * v.x + a.m[1][0] * v.y,
         a.m[0][1] * v.x + a.m[1][1] * v.y
     };
 }
 
-static inline float dla_mat2_det(dla_mat2 a) {
+static inline float dmg_lia_mat2_det(dmg_lia_mat2 a) {
     return a.m[0][0] * a.m[1][1] - a.m[1][0] * a.m[0][1];
 }
 
-static inline dla_mat2 dla_mat2_transpose(dla_mat2 a) {
-    dla_mat2 r;
+static inline dmg_lia_mat2 dmg_lia_mat2_transpose(dmg_lia_mat2 a) {
+    dmg_lia_mat2 r;
     for (int c = 0; c < 2; ++c)
         for (int rr = 0; rr < 2; ++rr)
             r.m[c][rr] = a.m[rr][c];
@@ -182,44 +186,44 @@ static inline dla_mat2 dla_mat2_transpose(dla_mat2 a) {
 // ===========================
 // Mat3
 
-static inline dla_mat3 dla_mat3_identity(void) {
-    dla_mat3 r; memset(&r, 0, sizeof(r));
+static inline dmg_lia_mat3 dmg_lia_mat3_identity(void) {
+    dmg_lia_mat3 r; memset(&r, 0, sizeof(r));
     r.m[0][0] = 1.0f; r.m[1][1] = 1.0f;
     r.m[2][2] = 1.0f; return r;
 }
 
-static inline dla_mat3 dla_mat3_add(dla_mat3 a, dla_mat3 b) {
-    dla_mat3 r;
+static inline dmg_lia_mat3 dmg_lia_mat3_add(dmg_lia_mat3 a, dmg_lia_mat3 b) {
+    dmg_lia_mat3 r;
     for (int c = 0; c < 3; ++c)
         for (int rr = 0; rr < 3; ++rr)
             r.m[c][rr] = a.m[c][rr] + b.m[c][rr];
     return r;
 }
 
-static inline dla_mat3 dla_mat3_mul(dla_mat3 a, dla_mat3 b) {
-    dla_mat3 r;
+static inline dmg_lia_mat3 dmg_lia_mat3_mul(dmg_lia_mat3 a, dmg_lia_mat3 b) {
+    dmg_lia_mat3 r;
     for (int c = 0; c < 3; ++c)
         for (int rr = 0; rr < 3; ++rr)
             r.m[c][rr] = a.m[0][rr] * b.m[c][0] + a.m[1][rr] * b.m[c][1] + a.m[2][rr] * b.m[c][2];
     return r;
 }
 
-static inline dla_vec3 dla_mat3_mul_vec3(dla_mat3 a, dla_vec3 v) {
-    return (dla_vec3){
+static inline dmg_lia_vec3 dmg_lia_mat3_mul_vec3(dmg_lia_mat3 a, dmg_lia_vec3 v) {
+    return (dmg_lia_vec3){
         a.m[0][0] * v.x + a.m[1][0] * v.y + a.m[2][0] * v.z,
         a.m[0][1] * v.x + a.m[1][1] * v.y + a.m[2][1] * v.z,
         a.m[0][2] * v.x + a.m[1][2] * v.y + a.m[2][2] * v.z
     };
 }
 
-static inline float dla_mat3_det(dla_mat3 a) {
+static inline float dmg_lia_mat3_det(dmg_lia_mat3 a) {
     return a.m[0][0] * (a.m[1][1] * a.m[2][2] - a.m[2][1] * a.m[1][2])
          - a.m[1][0] * (a.m[0][1] * a.m[2][2] - a.m[2][1] * a.m[0][2])
          + a.m[2][0] * (a.m[0][1] * a.m[1][2] - a.m[1][1] * a.m[0][2]);
 }
 
-static inline dla_mat3 dla_mat3_transpose(dla_mat3 a) {
-    dla_mat3 r;
+static inline dmg_lia_mat3 dmg_lia_mat3_transpose(dmg_lia_mat3 a) {
+    dmg_lia_mat3 r;
     for (int c = 0; c < 3; ++c)
         for (int rr = 0; rr < 3; ++rr)
             r.m[c][rr] = a.m[rr][c];
@@ -229,23 +233,23 @@ static inline dla_mat3 dla_mat3_transpose(dla_mat3 a) {
 // ===========================
 // Mat4
 
-static inline dla_mat4 dla_mat4_identity(void) {
-    dla_mat4 r; memset(&r, 0, sizeof(r));
+static inline dmg_lia_mat4 dmg_lia_mat4_identity(void) {
+    dmg_lia_mat4 r; memset(&r, 0, sizeof(r));
     r.m[0][0] = 1.0f; r.m[1][1] = 1.0f;
     r.m[2][2] = 1.0f; r.m[3][3] = 1.0f;
     return r;
 }
 
-static inline dla_mat4 dla_mat4_add(dla_mat4 a, dla_mat4 b) {
-    dla_mat4 r;
+static inline dmg_lia_mat4 dmg_lia_mat4_add(dmg_lia_mat4 a, dmg_lia_mat4 b) {
+    dmg_lia_mat4 r;
     for (int c = 0; c < 4; ++c)
         for (int rr = 0; rr < 4; ++rr)
             r.m[c][rr] = a.m[c][rr] + b.m[c][rr];
     return r;
 }
 
-static inline dla_mat4 dla_mat4_mul(dla_mat4 a, dla_mat4 b) {
-    dla_mat4 r;
+static inline dmg_lia_mat4 dmg_lia_mat4_mul(dmg_lia_mat4 a, dmg_lia_mat4 b) {
+    dmg_lia_mat4 r;
     for (int c = 0; c < 4; ++c)
         for (int rr = 0; rr < 4; ++rr)
             r.m[c][rr] = a.m[0][rr] * b.m[c][0] + a.m[1][rr] * b.m[c][1]
@@ -253,8 +257,8 @@ static inline dla_mat4 dla_mat4_mul(dla_mat4 a, dla_mat4 b) {
     return r;
 }
 
-static inline dla_vec4 dla_mat4_mul_vec4(dla_mat4 a, dla_vec4 v) {
-    return (dla_vec4){
+static inline dmg_lia_vec4 dmg_lia_mat4_mul_vec4(dmg_lia_mat4 a, dmg_lia_vec4 v) {
+    return (dmg_lia_vec4){
         a.m[0][0] * v.x + a.m[1][0] * v.y + a.m[2][0] * v.z + a.m[3][0] * v.w,
         a.m[0][1] * v.x + a.m[1][1] * v.y + a.m[2][1] * v.z + a.m[3][1] * v.w,
         a.m[0][2] * v.x + a.m[1][2] * v.y + a.m[2][2] * v.z + a.m[3][2] * v.w,
@@ -262,8 +266,8 @@ static inline dla_vec4 dla_mat4_mul_vec4(dla_mat4 a, dla_vec4 v) {
     };
 }
 
-static inline dla_mat4 dla_mat4_transpose(dla_mat4 a) {
-    dla_mat4 r;
+static inline dmg_lia_mat4 dmg_lia_mat4_transpose(dmg_lia_mat4 a) {
+    dmg_lia_mat4 r;
     for (int c = 0; c < 4; ++c)
         for (int rr = 0; rr < 4; ++rr)
             r.m[c][rr] = a.m[rr][c];
@@ -273,22 +277,22 @@ static inline dla_mat4 dla_mat4_transpose(dla_mat4 a) {
 // ===========================
 // Homogeneous transforms - mat3 (2D transforms, vec2 in homogeneous coords)
 
-static inline dla_mat3 dla_mat3_translate(float tx, float ty) {
-    dla_mat3 r = dla_mat3_identity();
+static inline dmg_lia_mat3 dmg_lia_mat3_translate(float tx, float ty) {
+    dmg_lia_mat3 r = dmg_lia_mat3_identity();
     r.m[2][0] = tx;
     r.m[2][1] = ty;
     return r;
 }
 
-static inline dla_mat3 dla_mat3_scale(float sx, float sy) {
-    dla_mat3 r = dla_mat3_identity();
+static inline dmg_lia_mat3 dmg_lia_mat3_scale(float sx, float sy) {
+    dmg_lia_mat3 r = dmg_lia_mat3_identity();
     r.m[0][0] = sx;
     r.m[1][1] = sy;
     return r;
 }
 
-static inline dla_mat3 dla_mat3_rotate(float radians) {
-    dla_mat3 r = dla_mat3_identity();
+static inline dmg_lia_mat3 dmg_lia_mat3_rotate(float radians) {
+    dmg_lia_mat3 r = dmg_lia_mat3_identity();
     float c = cosf(radians);
     float s = sinf(radians);
     r.m[0][0] = c;  r.m[1][0] = -s;
@@ -296,37 +300,37 @@ static inline dla_mat3 dla_mat3_rotate(float radians) {
     return r;
 }
 
-static inline dla_vec2 dla_mat3_transform_point(dla_mat3 a, dla_vec2 p) {
-    dla_vec3 h = dla_mat3_mul_vec3(a, (dla_vec3){ p.x, p.y, 1.0f });
-    return (dla_vec2){ h.x, h.y };
+static inline dmg_lia_vec2 dmg_lia_mat3_transform_point(dmg_lia_mat3 a, dmg_lia_vec2 p) {
+    dmg_lia_vec3 h = dmg_lia_mat3_mul_vec3(a, (dmg_lia_vec3){ p.x, p.y, 1.0f });
+    return (dmg_lia_vec2){ h.x, h.y };
 }
 
-static inline dla_vec2 dla_mat3_transform_dir(dla_mat3 a, dla_vec2 d) {
-    dla_vec3 h = dla_mat3_mul_vec3(a, (dla_vec3){ d.x, d.y, 0.0f });
-    return (dla_vec2){ h.x, h.y };
+static inline dmg_lia_vec2 dmg_lia_mat3_transform_dir(dmg_lia_mat3 a, dmg_lia_vec2 d) {
+    dmg_lia_vec3 h = dmg_lia_mat3_mul_vec3(a, (dmg_lia_vec3){ d.x, d.y, 0.0f });
+    return (dmg_lia_vec2){ h.x, h.y };
 }
 
 // ===========================
 // Homogeneous transforms - mat4 (3D transforms, vec3 in homogeneous coords)
 
-static inline dla_mat4 dla_mat4_translate(float tx, float ty, float tz) {
-    dla_mat4 r = dla_mat4_identity();
+static inline dmg_lia_mat4 dmg_lia_mat4_translate(float tx, float ty, float tz) {
+    dmg_lia_mat4 r = dmg_lia_mat4_identity();
     r.m[3][0] = tx;
     r.m[3][1] = ty;
     r.m[3][2] = tz;
     return r;
 }
 
-static inline dla_mat4 dla_mat4_scale(float sx, float sy, float sz) {
-    dla_mat4 r = dla_mat4_identity();
+static inline dmg_lia_mat4 dmg_lia_mat4_scale(float sx, float sy, float sz) {
+    dmg_lia_mat4 r = dmg_lia_mat4_identity();
     r.m[0][0] = sx;
     r.m[1][1] = sy;
     r.m[2][2] = sz;
     return r;
 }
 
-static inline dla_mat4 dla_mat4_rotate_x(float radians) {
-    dla_mat4 r = dla_mat4_identity();
+static inline dmg_lia_mat4 dmg_lia_mat4_rotate_x(float radians) {
+    dmg_lia_mat4 r = dmg_lia_mat4_identity();
     float c = cosf(radians);
     float s = sinf(radians);
     r.m[1][1] = c;  r.m[2][1] = -s;
@@ -334,8 +338,8 @@ static inline dla_mat4 dla_mat4_rotate_x(float radians) {
     return r;
 }
 
-static inline dla_mat4 dla_mat4_rotate_y(float radians) {
-    dla_mat4 r = dla_mat4_identity();
+static inline dmg_lia_mat4 dmg_lia_mat4_rotate_y(float radians) {
+    dmg_lia_mat4 r = dmg_lia_mat4_identity();
     float c = cosf(radians);
     float s = sinf(radians);
     r.m[0][0] = c;   r.m[2][0] = s;
@@ -343,8 +347,8 @@ static inline dla_mat4 dla_mat4_rotate_y(float radians) {
     return r;
 }
 
-static inline dla_mat4 dla_mat4_rotate_z(float radians) {
-    dla_mat4 r = dla_mat4_identity();
+static inline dmg_lia_mat4 dmg_lia_mat4_rotate_z(float radians) {
+    dmg_lia_mat4 r = dmg_lia_mat4_identity();
     float c = cosf(radians);
     float s = sinf(radians);
     r.m[0][0] = c;  r.m[1][0] = -s;
@@ -352,14 +356,14 @@ static inline dla_mat4 dla_mat4_rotate_z(float radians) {
     return r;
 }
 
-static inline dla_vec3 dla_mat4_transform_point(dla_mat4 a, dla_vec3 p) {
-    dla_vec4 h = dla_mat4_mul_vec4(a, (dla_vec4){ p.x, p.y, p.z, 1.0f });
-    return (dla_vec3){ h.x, h.y, h.z };
+static inline dmg_lia_vec3 dmg_lia_mat4_transform_point(dmg_lia_mat4 a, dmg_lia_vec3 p) {
+    dmg_lia_vec4 h = dmg_lia_mat4_mul_vec4(a, (dmg_lia_vec4){ p.x, p.y, p.z, 1.0f });
+    return (dmg_lia_vec3){ h.x, h.y, h.z };
 }
 
-static inline dla_vec3 dla_mat4_transform_dir(dla_mat4 a, dla_vec3 d) {
-    dla_vec4 h = dla_mat4_mul_vec4(a, (dla_vec4){ d.x, d.y, d.z, 0.0f });
-    return (dla_vec3){ h.x, h.y, h.z };
+static inline dmg_lia_vec3 dmg_lia_mat4_transform_dir(dmg_lia_mat4 a, dmg_lia_vec3 d) {
+    dmg_lia_vec4 h = dmg_lia_mat4_mul_vec4(a, (dmg_lia_vec4){ d.x, d.y, d.z, 0.0f });
+    return (dmg_lia_vec3){ h.x, h.y, h.z };
 }
 
 // ===========================
@@ -369,11 +373,11 @@ static inline dla_vec3 dla_mat4_transform_dir(dla_mat4 a, dla_vec3 d) {
 // These carry no math ops of their own - pack a real matrix into them
 // to store or upload, and unpack back into a real matrix to compute with.
 
-typedef struct { float m[3][2]; } dla_affine2; // packed dla_mat3
-typedef struct { float m[4][3]; } dla_affine3; // packed dla_mat4
+typedef struct { float m[3][2]; } dmg_lia_affine2; // packed dmg_lia_mat3
+typedef struct { float m[4][3]; } dmg_lia_affine3; // packed dmg_lia_mat4
 
-static inline dla_affine2 dla_affine2_pack(dla_mat3 a) {
-    dla_affine2 r;
+static inline dmg_lia_affine2 dmg_lia_affine2_pack(dmg_lia_mat3 a) {
+    dmg_lia_affine2 r;
     for (int c = 0; c < 3; ++c) {
         r.m[c][0] = a.m[c][0];
         r.m[c][1] = a.m[c][1];
@@ -381,8 +385,8 @@ static inline dla_affine2 dla_affine2_pack(dla_mat3 a) {
     return r;
 }
 
-static inline dla_mat3 dla_affine2_unpack(dla_affine2 a) {
-    dla_mat3 r;
+static inline dmg_lia_mat3 dmg_lia_affine2_unpack(dmg_lia_affine2 a) {
+    dmg_lia_mat3 r;
     for (int c = 0; c < 3; ++c) {
         r.m[c][0] = a.m[c][0];
         r.m[c][1] = a.m[c][1];
@@ -391,8 +395,8 @@ static inline dla_mat3 dla_affine2_unpack(dla_affine2 a) {
     return r;
 }
 
-static inline dla_affine3 dla_affine3_pack(dla_mat4 a) {
-    dla_affine3 r;
+static inline dmg_lia_affine3 dmg_lia_affine3_pack(dmg_lia_mat4 a) {
+    dmg_lia_affine3 r;
     for (int c = 0; c < 4; ++c) {
         r.m[c][0] = a.m[c][0];
         r.m[c][1] = a.m[c][1];
@@ -401,8 +405,8 @@ static inline dla_affine3 dla_affine3_pack(dla_mat4 a) {
     return r;
 }
 
-static inline dla_mat4 dla_affine3_unpack(dla_affine3 a) {
-    dla_mat4 r;
+static inline dmg_lia_mat4 dmg_lia_affine3_unpack(dmg_lia_affine3 a) {
+    dmg_lia_mat4 r;
     for (int c = 0; c < 4; ++c) {
         r.m[c][0] = a.m[c][0];
         r.m[c][1] = a.m[c][1];

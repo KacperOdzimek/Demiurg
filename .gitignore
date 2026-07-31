@@ -14,14 +14,8 @@
 !include/demiurg/
 !include/demiurg/**
 
-!utility
-!utility/**
-
 !shaders
 !shaders/**
-
-!examples
-!examples/**
 
 !documentation
 !documentation/**
