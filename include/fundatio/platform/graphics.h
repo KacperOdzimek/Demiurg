@@ -444,8 +444,12 @@ void fnd_gfx_window_query_input(fnd_gfx_window*, int* left_pressed, int* right_p
 void fnd_gfx_window_query_size    (fnd_gfx_window*, uint32_t* width, uint32_t* height);
 
 // non-zero at success
-int  fnd_gfx_window_acquire_index (fnd_gfx_window* window, fnd_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index);
-void fnd_gfx_window_submit_present(fnd_gfx_window* window, uint32_t target_index, fnd_gfx_timeline* wait_timeline, uint64_t wait_signal);
+int fnd_gfx_window_acquire_index (
+    fnd_gfx_window* window, fnd_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index
+);
+void fnd_gfx_window_submit_present(
+    fnd_gfx_window* window, uint32_t target_index, uint32_t wait_timeline_count, fnd_gfx_timeline** wait_timelines, uint64_t* wait_signals
+);
 
 fnd_gfx_texture*        fnd_gfx_window_get_attachment_color(fnd_gfx_window*, uint32_t target_index);
 fnd_gfx_texture_format  fnd_gfx_window_get_attachment_format(fnd_gfx_window*);
@@ -3098,26 +3102,39 @@ int fnd_gfx_window_acquire_index (fnd_gfx_window* window, fnd_gfx_timeline* can_
     return 1;
 }
 
-void fnd_gfx_window_submit_present(fnd_gfx_window* window, uint32_t target_index, fnd_gfx_timeline* wait_timeline, uint64_t wait_signal) {
+void fnd_gfx_window_submit_present(
+    fnd_gfx_window* window, uint32_t target_index, uint32_t wait_timeline_count, fnd_gfx_timeline** wait_timelines, uint64_t* wait_signals
+) {
     window->present_timepoint++;
 
-    // Once timeline signaled, signal present semaphore
+    // Build wait semaphore / value arrays from the timeline list
+    VkSemaphore* wait_semaphores = alloca(sizeof(VkSemaphore) * wait_timeline_count);
+    VkPipelineStageFlags* wait_stages = alloca(sizeof(VkPipelineStageFlags) * wait_timeline_count);
+    uint64_t* wait_values = alloca(sizeof(uint64_t) * wait_timeline_count);
+
+    for (uint32_t i = 0; i < wait_timeline_count; ++i) {
+        wait_semaphores[i] = wait_timelines[i]->timeline_semaphore;
+        wait_stages[i]     = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        wait_values[i]     = wait_signals[i];
+    }
+
+    // Once timeline(s) signaled, signal present semaphore
     VkSubmitInfo submit_info = {
         .sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount     = 1,
         .pCommandBuffers        = &window->swapchain.transition[target_index],
-        .waitSemaphoreCount     = wait_timeline ? 1 : 0,
-        .pWaitSemaphores        = &wait_timeline->timeline_semaphore,
+        .waitSemaphoreCount     = wait_timeline_count,
+        .pWaitSemaphores        = wait_semaphores,
         .signalSemaphoreCount   = 2,
         .pSignalSemaphores      = (VkSemaphore[]){
             window->present_semaphores[window->semaphores_iter],
             window->present_timeline
         },
-        .pWaitDstStageMask      = (VkPipelineStageFlags[]){VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
+        .pWaitDstStageMask      = wait_stages,
         .pNext                  = &(VkTimelineSemaphoreSubmitInfoKHR){
             .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount    = wait_timeline ? 1 : 0,
-            .pWaitSemaphoreValues       = &wait_signal,
+            .waitSemaphoreValueCount    = wait_timeline_count,
+            .pWaitSemaphoreValues       = wait_values,
             .signalSemaphoreValueCount  = 2,
             .pSignalSemaphoreValues     = (uint64_t[]){
                 0, window->present_timepoint
@@ -3125,7 +3142,7 @@ void fnd_gfx_window_submit_present(fnd_gfx_window* window, uint32_t target_index
         },
     };
     vkQueueSubmit(window->owning_hardware->presentation_queue, 1, &submit_info, VK_NULL_HANDLE);
-    
+
     // Once present semaphore signaled present
     vkQueuePresentKHR(
         window->owning_hardware->presentation_queue,
