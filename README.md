@@ -1,7 +1,7 @@
-# Demiurg
+# Fundatio
 
-**Demiurg** is a minimalistic set of C99 libraries for application development, aiming to provide stable, cross-platform foundation in following areas:
-- Graphics — Demiurg provides an RHI that enables performant cross-platform rendering.
+**Fundatio** is a minimalistic set of C99 libraries for application development, aiming to provide stable, cross-platform foundation in following areas:
+- Graphics — Fundatio provides an RHI that enables performant cross-platform rendering.
 - Threading - Cross platform threading library included
 - Input - Allows reading input from mouse, keyboard and multiple gamepads
 - And much more in less-emphasized areas.
@@ -32,7 +32,7 @@
 
 # Platform Support
 
-Demiurg libraries in include/platform have platform-specific backends. Their current support status is listed below.
+Fundatio libraries in include/platform have platform-specific backends. Their current support status is listed below.
 
 > **Note:** Platform support is actively expanding. Additional operating systems and graphics backends will be implemented over time.
 

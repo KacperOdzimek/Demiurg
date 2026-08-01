@@ -5,64 +5,64 @@ This file provides segmenter object, allowing segmentation of multiple uploads, 
 
 ----------------------------------------------------------------
 Code info:
-- dmg_seg prefix
-- DEMIURG_SEGMENTER_IMPL macro to build
+- fnd_seg prefix
+- FUNDATIO_SEGMENTER_IMPL macro to build
 
 ----------------------------------------------------------------
 Usage
 - Create segmenter object
-- Request uploads with dmg_seg_segmenter_push_upload
-- Get upload segmented upload jobs with dmg_seg_segmenter_continue
-- Loop till dmg_seg_segmenter_query_empty
+- Request uploads with fnd_seg_segmenter_push_upload
+- Get upload segmented upload jobs with fnd_seg_segmenter_continue
+- Loop till fnd_seg_segmenter_query_empty
 */
 
-#ifndef DEMIURG_SEGMENTER_H
-#define DEMIURG_SEGMENTER_H
+#ifndef FUNDATIO_SEGMENTER_H
+#define FUNDATIO_SEGMENTER_H
 
 #include <stdint.h>
 
 // Upload Request
 
-typedef struct dmg_seg_upload_request {
+typedef struct fnd_seg_upload_request {
     uint64_t target;
     uint64_t offset;
     void*    source;
     uint64_t bytes;
-} dmg_seg_upload_request;
+} fnd_seg_upload_request;
 
 // Segmenter
 
-typedef struct dmg_seg_segmenter dmg_seg_segmenter;
-typedef struct dmg_seg_segmenter_create_info {
+typedef struct fnd_seg_segmenter fnd_seg_segmenter;
+typedef struct fnd_seg_segmenter_create_info {
     uint64_t        bandwidth;  // Upload bandwidth
-    dmg_seg_segmenter*  parent;     // Reuse resources
-} dmg_seg_segmenter_create_info;
+    fnd_seg_segmenter*  parent;     // Reuse resources
+} fnd_seg_segmenter_create_info;
 
-dmg_seg_segmenter* dmg_seg_create_segmenter(dmg_seg_segmenter_create_info* info);
-void dmg_seg_free_segmenter(dmg_seg_segmenter*);
+fnd_seg_segmenter* fnd_seg_create_segmenter(fnd_seg_segmenter_create_info* info);
+void fnd_seg_free_segmenter(fnd_seg_segmenter*);
 
-int  dmg_seg_segmenter_upload(dmg_seg_segmenter*, dmg_seg_upload_request upload); // non-zero at success
-void dmg_seg_segmenter_continue(dmg_seg_segmenter*, uint64_t* out_uploads_count, dmg_seg_upload_request** out_first_upload);
-int  dmg_seg_segmenter_query_empty(dmg_seg_segmenter*);
+int  fnd_seg_segmenter_upload(fnd_seg_segmenter*, fnd_seg_upload_request upload); // non-zero at success
+void fnd_seg_segmenter_continue(fnd_seg_segmenter*, uint64_t* out_uploads_count, fnd_seg_upload_request** out_first_upload);
+int  fnd_seg_segmenter_query_empty(fnd_seg_segmenter*);
 
 #endif
 
-#ifdef DEMIURG_SEGMENTER_IMPL
+#ifdef FUNDATIO_SEGMENTER_IMPL
 #include <stdlib.h>
  
-struct dmg_seg_segmenter {
+struct fnd_seg_segmenter {
     uint64_t            bandwidth;              // Upload bandwidth
-    dmg_seg_upload_request* uploads;                // Uploads circular buffer 
+    fnd_seg_upload_request* uploads;                // Uploads circular buffer 
     uint64_t            uploads_capacity;       // Buffer capacity
     uint64_t            uploads_first;          // First element index in buffer
     uint64_t            uploads_count;          // Uploads count in buffer
     uint64_t            first_trimmed;          // Part of the first upload we trimmed last time, so user can read
-    dmg_seg_upload_request* out_buffer;             // Scratch array copied uploads are handed to the caller through
+    fnd_seg_upload_request* out_buffer;             // Scratch array copied uploads are handed to the caller through
     uint64_t            out_buffer_capacity;    // Capacity of out_buffer
 };
  
-dmg_seg_segmenter* dmg_seg_create_segmenter(dmg_seg_segmenter_create_info* info) {
-    if (info->bandwidth == 0) {dmg_seg_free_segmenter(info->parent); return NULL;}
+fnd_seg_segmenter* fnd_seg_create_segmenter(fnd_seg_segmenter_create_info* info) {
+    if (info->bandwidth == 0) {fnd_seg_free_segmenter(info->parent); return NULL;}
     if (info->parent) {
         info->parent->uploads_count = 0;
         info->parent->uploads_first = 0;
@@ -70,20 +70,20 @@ dmg_seg_segmenter* dmg_seg_create_segmenter(dmg_seg_segmenter_create_info* info)
         info->parent->first_trimmed = 0;
         return info->parent;
     }
-    dmg_seg_segmenter* segmenter = malloc(sizeof(dmg_seg_segmenter));
+    fnd_seg_segmenter* segmenter = malloc(sizeof(fnd_seg_segmenter));
     if (!segmenter) return NULL;
-    *segmenter = (dmg_seg_segmenter){.bandwidth = info->bandwidth};
+    *segmenter = (fnd_seg_segmenter){.bandwidth = info->bandwidth};
     return segmenter;
 }
  
-void dmg_seg_free_segmenter(dmg_seg_segmenter* segmenter) {
+void fnd_seg_free_segmenter(fnd_seg_segmenter* segmenter) {
     if (!segmenter) return;
     free(segmenter->uploads);
     free(segmenter->out_buffer);
     free(segmenter);
 }
  
-int dmg_seg_segmenter_upload(dmg_seg_segmenter* segmenter, dmg_seg_upload_request upload) {
+int fnd_seg_segmenter_upload(fnd_seg_segmenter* segmenter, fnd_seg_upload_request upload) {
     if (upload.bytes == 0) return 1;
     if (segmenter->uploads_count == segmenter->uploads_capacity) {
         uint64_t new_caps[2] = {
@@ -92,7 +92,7 @@ int dmg_seg_segmenter_upload(dmg_seg_segmenter* segmenter, dmg_seg_upload_reques
         };
         for (int i = 0; i < 2; i++) {
             uint64_t            new_cap = new_caps[i];
-            dmg_seg_upload_request* new_upl = malloc(new_cap * sizeof(dmg_seg_upload_request));
+            fnd_seg_upload_request* new_upl = malloc(new_cap * sizeof(fnd_seg_upload_request));
             if (!new_upl) continue;
             for (uint64_t j = 0; j < segmenter->uploads_count; j++) {
                 uint64_t pos = (segmenter->uploads_first + j) % segmenter->uploads_capacity;
@@ -111,13 +111,13 @@ _set:
     segmenter->uploads[pos] = upload; segmenter->uploads_count++; return 1;
 } 
  
-void dmg_seg_segmenter_continue(dmg_seg_segmenter* segmenter, uint64_t* out_uploads_count, dmg_seg_upload_request** out_first_upload) {
-    if (dmg_seg_segmenter_query_empty(segmenter)) {*out_uploads_count = 0; return;}
+void fnd_seg_segmenter_continue(fnd_seg_segmenter* segmenter, uint64_t* out_uploads_count, fnd_seg_upload_request** out_first_upload) {
+    if (fnd_seg_segmenter_query_empty(segmenter)) {*out_uploads_count = 0; return;}
     uint64_t bytes_budget = segmenter->bandwidth;
  
     // Apply any trim left over from the previous call to the first upload
     if (segmenter->first_trimmed) {
-        dmg_seg_upload_request* first = &segmenter->uploads[segmenter->uploads_first];
+        fnd_seg_upload_request* first = &segmenter->uploads[segmenter->uploads_first];
         first->source += first->bytes;              // previously uploaded
         first->offset += first->bytes;              // advance
         first->bytes   = segmenter->first_trimmed;  // left to be uploaded
@@ -128,11 +128,11 @@ void dmg_seg_segmenter_continue(dmg_seg_segmenter* segmenter, uint64_t* out_uplo
     segmenter->first_trimmed = 0;
     while (bytes_budget && itr < segmenter->uploads_count) {
         uint64_t pos = (segmenter->uploads_first + itr) % segmenter->uploads_capacity;
-        dmg_seg_upload_request* upload = &segmenter->uploads[pos];
+        fnd_seg_upload_request* upload = &segmenter->uploads[pos];
  
         if (copy_count >= segmenter->out_buffer_capacity) {
             uint64_t new_cap = segmenter->out_buffer_capacity ? segmenter->out_buffer_capacity * 2 : 16;
-            dmg_seg_upload_request* new_buf = realloc(segmenter->out_buffer, new_cap * sizeof(dmg_seg_upload_request));
+            fnd_seg_upload_request* new_buf = realloc(segmenter->out_buffer, new_cap * sizeof(fnd_seg_upload_request));
             if (!new_buf) break; // cannot grow further; give back what we have 
             segmenter->out_buffer          = new_buf;
             segmenter->out_buffer_capacity = new_cap;
@@ -157,7 +157,7 @@ void dmg_seg_segmenter_continue(dmg_seg_segmenter* segmenter, uint64_t* out_uplo
     *out_first_upload  = segmenter->out_buffer;
 }
  
-int dmg_seg_segmenter_query_empty(dmg_seg_segmenter* segmenter) {
+int fnd_seg_segmenter_query_empty(fnd_seg_segmenter* segmenter) {
     return segmenter->uploads_count == 0;
 }
  

@@ -6,18 +6,18 @@ Also provides portable cross platform mmap wrapper.
 
 ----------------------------------------------------------------
 Code info:
-- dmg_vfs prefix
-- DEMIURG_VIRTUAL_FILESYSTEM_IMPL macro to build
+- fnd_vfs prefix
+- FUNDATIO_VIRTUAL_FILESYSTEM_IMPL macro to build
 - User must pick target OS system by using of the macros below:
-    - DEMIURG_VIRTUAL_FILESYSTEM_LINUX
-    - DEMIURG_VIRTUAL_FILESYSTEM_WINDOWS
+    - FUNDATIO_VIRTUAL_FILESYSTEM_LINUX
+    - FUNDATIO_VIRTUAL_FILESYSTEM_WINDOWS
 
 ----------------------------------------------------------------
 Usage:
-- Create virtual filesystem with dmg_vfs_create_filesystem. Provide info mappings, virtual mounting slot to system path.
-- Check filesystem files status via dmg_vfs_filesystem_check
-- Translate filesystem paths to system path via dmg_vfs_filesystem_system, do file operations with standard stdio
-- Pool file changes with dmg_vfs_filesystem_update
+- Create virtual filesystem with fnd_vfs_create_filesystem. Provide info mappings, virtual mounting slot to system path.
+- Check filesystem files status via fnd_vfs_filesystem_check
+- Translate filesystem paths to system path via fnd_vfs_filesystem_system, do file operations with standard stdio
+- Pool file changes with fnd_vfs_filesystem_update
 
 ----------------------------------------------------------------
 Virtual Paths:
@@ -29,14 +29,14 @@ Virtual Paths:
 ----------------------------------------------------------------
 Depedencies:
 - each OS have own compilation requirements:
-    - DEMIURG_VIRTUAL_FILESYSTEM_LINUX
+    - FUNDATIO_VIRTUAL_FILESYSTEM_LINUX
         - none beyond libc (inotify, mmap, dirent are all libc/syscall wrappers, no extra -l needed)
-    - DEMIURG_VIRTUAL_FILESYSTEM_WINDOWS
+    - FUNDATIO_VIRTUAL_FILESYSTEM_WINDOWS
         - kernel32 (linked by default on Windows, no extra libs to add)
 */
 
-#ifndef DEMIURG_VIRTUAL_FILESYSTEM_H
-#define DEMIURG_VIRTUAL_FILESYSTEM_H
+#ifndef FUNDATIO_VIRTUAL_FILESYSTEM_H
+#define FUNDATIO_VIRTUAL_FILESYSTEM_H
 
 // ===========================
 // Header Depedency
@@ -47,72 +47,72 @@ Depedencies:
 // ===========================
 // Typedefs
 
-typedef enum dmg_vfs_status {          // Errors returned in declaration order
-    dmg_vfs_status_okay = 0,           // File can be read
-    dmg_vfs_status_bad_filepath,       // Given filepath is incorrect (bad mount, bad syntax, etc)
-    dmg_vfs_status_not_accessible,     // The file is outside mounted filesystem (for safety shall not be read)
-    dmg_vfs_status_not_existent,       // File does not exists
-    dmg_vfs_status_directory,          // Given filepath points to directory and not file
-} dmg_vfs_status;
+typedef enum fnd_vfs_status {          // Errors returned in declaration order
+    fnd_vfs_status_okay = 0,           // File can be read
+    fnd_vfs_status_bad_filepath,       // Given filepath is incorrect (bad mount, bad syntax, etc)
+    fnd_vfs_status_not_accessible,     // The file is outside mounted filesystem (for safety shall not be read)
+    fnd_vfs_status_not_existent,       // File does not exists
+    fnd_vfs_status_directory,          // Given filepath points to directory and not file
+} fnd_vfs_status;
 
-typedef enum dmg_vfs_change {
-    dmg_vfs_change_created,            // File was just created
-    dmg_vfs_change_removed,            // File was just removed
-    dmg_vfs_change_modified            // File was modified
-} dmg_vfs_change;
+typedef enum fnd_vfs_change {
+    fnd_vfs_change_created,            // File was just created
+    fnd_vfs_change_removed,            // File was just removed
+    fnd_vfs_change_modified            // File was modified
+} fnd_vfs_change;
 
-typedef struct dmg_vfs_mount_info {
+typedef struct fnd_vfs_mount_info {
     int         watch_changes;      // Whethet to watch over changes in directory
     const char* mount_name;         // Shall be single word like "assets" or "temp"
     const char* system_path;        // System path like "/home/program/assets" or "C:/temp"
-} dmg_vfs_mount_info;
+} fnd_vfs_mount_info;
 
-typedef struct dmg_vfs_change_info {
-    dmg_vfs_change change;             // Change type
+typedef struct fnd_vfs_change_info {
+    fnd_vfs_change change;             // Change type
     const char* filepath;           // Filepath inside virtual filesystem
-} dmg_vfs_change_info;
+} fnd_vfs_change_info;
 
 // ===========================
 // Filesystem
 
-typedef struct dmg_vfs_filesystem_create_info {
+typedef struct fnd_vfs_filesystem_create_info {
     uint32_t            mounted_directories_count;
-    dmg_vfs_mount_info*  mounted_directories;
-} dmg_vfs_filesystem_create_info;
+    fnd_vfs_mount_info*  mounted_directories;
+} fnd_vfs_filesystem_create_info;
 
-typedef struct dmg_vfs_filesystem dmg_vfs_filesystem;
-dmg_vfs_filesystem* dmg_vfs_create_filesystem(const dmg_vfs_filesystem_create_info*);
-void dmg_vfs_free_filesystem(dmg_vfs_filesystem*);
+typedef struct fnd_vfs_filesystem fnd_vfs_filesystem;
+fnd_vfs_filesystem* fnd_vfs_create_filesystem(const fnd_vfs_filesystem_create_info*);
+void fnd_vfs_free_filesystem(fnd_vfs_filesystem*);
 
-dmg_vfs_status dmg_vfs_filesystem_check(  // Check file status in filesystem
-    dmg_vfs_filesystem*, const char* filepath
+fnd_vfs_status fnd_vfs_filesystem_check(  // Check file status in filesystem
+    fnd_vfs_filesystem*, const char* filepath
 );
 
-int dmg_vfs_filesystem_system( // Translates virtual to system path, saves to given buffer, returns non-zero if path fitted (with terminating zero)
-    dmg_vfs_filesystem*, const char* filepath, size_t system_path_buffer_bytes, char* system_path_buffer
+int fnd_vfs_filesystem_system( // Translates virtual to system path, saves to given buffer, returns non-zero if path fitted (with terminating zero)
+    fnd_vfs_filesystem*, const char* filepath, size_t system_path_buffer_bytes, char* system_path_buffer
 );
 
-void dmg_vfs_filesystem_update( // Pools changes on watched mount directories, out_infos are filesystem owned, valid till next update
-    dmg_vfs_filesystem*, uint32_t* out_count, const dmg_vfs_change_info** out_infos
+void fnd_vfs_filesystem_update( // Pools changes on watched mount directories, out_infos are filesystem owned, valid till next update
+    fnd_vfs_filesystem*, uint32_t* out_count, const fnd_vfs_change_info** out_infos
 );
 
 // ===========================
 // File Map
 
-typedef struct dmg_vfs_file_mmap_registry dmg_vfs_file_mmap_registry;
-dmg_vfs_file_mmap_registry* dmg_vfs_create_file_mmap_registry();
-void dmg_vfs_free_file_mmap_registry(dmg_vfs_file_mmap_registry*);
+typedef struct fnd_vfs_file_mmap_registry fnd_vfs_file_mmap_registry;
+fnd_vfs_file_mmap_registry* fnd_vfs_create_file_mmap_registry();
+void fnd_vfs_free_file_mmap_registry(fnd_vfs_file_mmap_registry*);
 
-int dmg_vfs_file_mmap_registry_map( // Maps file to addressing space, allowing zero-copy read from file, non-zero at success
-    dmg_vfs_file_mmap_registry*, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped
+int fnd_vfs_file_mmap_registry_map( // Maps file to addressing space, allowing zero-copy read from file, non-zero at success
+    fnd_vfs_file_mmap_registry*, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped
 );
 
-void dmg_vfs_file_mmap_registry_unmap( // Unmaps mapped file from addresing space, must be given out_mapped from dmg_vfs_file_mmap
-    dmg_vfs_file_mmap_registry*, const char* mapped
+void fnd_vfs_file_mmap_registry_unmap( // Unmaps mapped file from addresing space, must be given out_mapped from fnd_vfs_file_mmap
+    fnd_vfs_file_mmap_registry*, const char* mapped
 );
 
-#endif // DEMIURG_VIRTUAL_FILESYSTEM_H
-#ifdef DEMIURG_VIRTUAL_FILESYSTEM_IMPL
+#endif // FUNDATIO_VIRTUAL_FILESYSTEM_H
+#ifdef FUNDATIO_VIRTUAL_FILESYSTEM_IMPL
 
 /*
 Implementation notes:
@@ -126,7 +126,7 @@ Implementation notes:
       its own worker thread per mount) is enough.
 */
 
-#ifdef DEMIURG_VIRTUAL_FILESYSTEM_LINUX
+#ifdef FUNDATIO_VIRTUAL_FILESYSTEM_LINUX
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,14 +160,14 @@ typedef struct watch_node {
     struct watch_node*  next;
 } watch_node;
 
-struct dmg_vfs_filesystem {
+struct fnd_vfs_filesystem {
     mount*              mounts;
     uint32_t            mount_count;
 
     int                 inotify_fd;
     watch_node*         watches;
 
-    dmg_vfs_change_info* change_buffer;
+    fnd_vfs_change_info* change_buffer;
     char**              change_buffer_strings;
     uint32_t            change_buffer_count;
     uint32_t            change_buffer_cap;
@@ -176,7 +176,7 @@ struct dmg_vfs_filesystem {
 // ===========================
 // Path helpers
 
-static mount* find_mount(dmg_vfs_filesystem* fs, const char* filepath, const char** out_rest) {
+static mount* find_mount(fnd_vfs_filesystem* fs, const char* filepath, const char** out_rest) {
     const char* slash = strchr(filepath, '/');
     size_t name_len = slash ? (size_t)(slash - filepath) : strlen(filepath);
 
@@ -209,7 +209,7 @@ static int build_system_path(mount* m, const char* rest, char* buf, size_t buf_s
 // ===========================
 // Recursive watch setup
 
-static void add_watch_recursive(dmg_vfs_filesystem* fs, uint32_t mount_index, const char* rel_path) {
+static void add_watch_recursive(fnd_vfs_filesystem* fs, uint32_t mount_index, const char* rel_path) {
     if (fs->inotify_fd < 0) return;
 
     mount* m = &fs->mounts[mount_index];
@@ -251,14 +251,14 @@ static void add_watch_recursive(dmg_vfs_filesystem* fs, uint32_t mount_index, co
     closedir(dir);
 }
 
-static watch_node* find_watch(dmg_vfs_filesystem* fs, int wd) {
+static watch_node* find_watch(fnd_vfs_filesystem* fs, int wd) {
     for (watch_node* n = fs->watches; n; n = n->next) {
         if (n->wd == wd) return n;
     }
     return NULL;
 }
 
-static void remove_watch_node(dmg_vfs_filesystem* fs, int wd) {
+static void remove_watch_node(fnd_vfs_filesystem* fs, int wd) {
     watch_node** pp = &fs->watches;
     while (*pp) {
         if ((*pp)->wd == wd) {
@@ -271,10 +271,10 @@ static void remove_watch_node(dmg_vfs_filesystem* fs, int wd) {
     }
 }
 
-static void push_change(dmg_vfs_filesystem* fs, dmg_vfs_change change, const char* filepath) {
+static void push_change(fnd_vfs_filesystem* fs, fnd_vfs_change change, const char* filepath) {
     if (fs->change_buffer_count == fs->change_buffer_cap) {
         uint32_t new_cap = fs->change_buffer_cap ? fs->change_buffer_cap * 2 : 16;
-        fs->change_buffer = (dmg_vfs_change_info*)realloc(fs->change_buffer, new_cap * sizeof(dmg_vfs_change_info));
+        fs->change_buffer = (fnd_vfs_change_info*)realloc(fs->change_buffer, new_cap * sizeof(fnd_vfs_change_info));
         fs->change_buffer_strings = (char**)realloc(fs->change_buffer_strings, new_cap * sizeof(char*));
         fs->change_buffer_cap = new_cap;
     }
@@ -289,8 +289,8 @@ static void push_change(dmg_vfs_filesystem* fs, dmg_vfs_change change, const cha
 // ===========================
 // Filesystem API
 
-dmg_vfs_filesystem* dmg_vfs_create_filesystem(const dmg_vfs_filesystem_create_info* info) {
-    dmg_vfs_filesystem* fs = (dmg_vfs_filesystem*)calloc(1, sizeof(dmg_vfs_filesystem));
+fnd_vfs_filesystem* fnd_vfs_create_filesystem(const fnd_vfs_filesystem_create_info* info) {
+    fnd_vfs_filesystem* fs = (fnd_vfs_filesystem*)calloc(1, sizeof(fnd_vfs_filesystem));
 
     fs->mount_count = info->mounted_directories_count;
     fs->mounts = (mount*)calloc(fs->mount_count, sizeof(mount));
@@ -311,7 +311,7 @@ dmg_vfs_filesystem* dmg_vfs_create_filesystem(const dmg_vfs_filesystem_create_in
     return fs;
 }
 
-void dmg_vfs_free_filesystem(dmg_vfs_filesystem* fs) {
+void fnd_vfs_free_filesystem(fnd_vfs_filesystem* fs) {
     if (!fs) return;
 
     watch_node* node = fs->watches;
@@ -331,26 +331,26 @@ void dmg_vfs_free_filesystem(dmg_vfs_filesystem* fs) {
     free(fs);
 }
 
-dmg_vfs_status dmg_vfs_filesystem_check(dmg_vfs_filesystem* fs, const char* filepath) {
+fnd_vfs_status fnd_vfs_filesystem_check(fnd_vfs_filesystem* fs, const char* filepath) {
     const char* rest;
     mount* m = find_mount(fs, filepath, &rest);
-    if (!m) return dmg_vfs_status_bad_filepath;
-    if (!path_is_safe(rest)) return dmg_vfs_status_not_accessible;
+    if (!m) return fnd_vfs_status_bad_filepath;
+    if (!path_is_safe(rest)) return fnd_vfs_status_not_accessible;
 
     char sys_path[PATH_MAX];
     int n = build_system_path(m, rest, sys_path, sizeof(sys_path));
-    if (n < 0 || (size_t)n >= sizeof(sys_path)) return dmg_vfs_status_bad_filepath;
+    if (n < 0 || (size_t)n >= sizeof(sys_path)) return fnd_vfs_status_bad_filepath;
 
     struct stat st;
     if (stat(sys_path, &st) != 0) {
-        if (errno == ENOENT || errno == ENOTDIR) return dmg_vfs_status_not_existent;
-        return dmg_vfs_status_bad_filepath;
+        if (errno == ENOENT || errno == ENOTDIR) return fnd_vfs_status_not_existent;
+        return fnd_vfs_status_bad_filepath;
     }
-    if (S_ISDIR(st.st_mode)) return dmg_vfs_status_directory;
-    return dmg_vfs_status_okay;
+    if (S_ISDIR(st.st_mode)) return fnd_vfs_status_directory;
+    return fnd_vfs_status_okay;
 }
 
-int dmg_vfs_filesystem_system(dmg_vfs_filesystem* fs, const char* filepath, size_t system_path_buffer_bytes, char* system_path_buffer) {
+int fnd_vfs_filesystem_system(fnd_vfs_filesystem* fs, const char* filepath, size_t system_path_buffer_bytes, char* system_path_buffer) {
     const char* rest;
     mount* m = find_mount(fs, filepath, &rest);
     if (!m || !path_is_safe(rest)) return 0;
@@ -359,7 +359,7 @@ int dmg_vfs_filesystem_system(dmg_vfs_filesystem* fs, const char* filepath, size
     return (n >= 0 && (size_t)n < system_path_buffer_bytes);
 }
 
-void dmg_vfs_filesystem_update(dmg_vfs_filesystem* fs, uint32_t* out_count, const dmg_vfs_change_info** out_infos) {
+void fnd_vfs_filesystem_update(fnd_vfs_filesystem* fs, uint32_t* out_count, const fnd_vfs_change_info** out_infos) {
     for (uint32_t i = 0; i < fs->change_buffer_count; ++i) free(fs->change_buffer_strings[i]);
     fs->change_buffer_count = 0;
 
@@ -393,7 +393,7 @@ void dmg_vfs_filesystem_update(dmg_vfs_filesystem* fs, uint32_t* out_count, cons
                 }
 
                 if (ev->mask & (IN_CREATE | IN_MOVED_TO)) {
-                    push_change(fs, dmg_vfs_change_created, virtual_path);
+                    push_change(fs, fnd_vfs_change_created, virtual_path);
 
                     if ((ev->mask & IN_ISDIR) && ev->len > 0) {
                         char child_rel[PATH_MAX];
@@ -402,9 +402,9 @@ void dmg_vfs_filesystem_update(dmg_vfs_filesystem* fs, uint32_t* out_count, cons
                         add_watch_recursive(fs, node->mount_index, child_rel); // start watching the new subdirectory too
                     }
                 } else if (ev->mask & (IN_DELETE | IN_MOVED_FROM)) {
-                    push_change(fs, dmg_vfs_change_removed, virtual_path);
+                    push_change(fs, fnd_vfs_change_removed, virtual_path);
                 } else if (ev->mask & (IN_MODIFY | IN_CLOSE_WRITE)) {
-                    push_change(fs, dmg_vfs_change_modified, virtual_path);
+                    push_change(fs, fnd_vfs_change_modified, virtual_path);
                 }
 
                 if (ev->mask & (IN_DELETE_SELF | IN_IGNORED)) {
@@ -430,7 +430,7 @@ typedef struct mmap_node {
     struct mmap_node* next;
 } mmap_node;
 
-struct dmg_vfs_file_mmap_registry {
+struct fnd_vfs_file_mmap_registry {
     mmap_node** buckets;
     size_t bucket_count;
 };
@@ -441,14 +441,14 @@ static size_t hash_ptr(const void* p, size_t bucket_count) {
     return (size_t)(v % bucket_count);
 }
 
-dmg_vfs_file_mmap_registry* dmg_vfs_create_file_mmap_registry() {
-    dmg_vfs_file_mmap_registry* reg = (dmg_vfs_file_mmap_registry*)malloc(sizeof(dmg_vfs_file_mmap_registry));
+fnd_vfs_file_mmap_registry* fnd_vfs_create_file_mmap_registry() {
+    fnd_vfs_file_mmap_registry* reg = (fnd_vfs_file_mmap_registry*)malloc(sizeof(fnd_vfs_file_mmap_registry));
     reg->bucket_count = 61;
     reg->buckets = (mmap_node**)calloc(reg->bucket_count, sizeof(mmap_node*));
     return reg;
 }
 
-void dmg_vfs_free_file_mmap_registry(dmg_vfs_file_mmap_registry* reg) {
+void fnd_vfs_free_file_mmap_registry(fnd_vfs_file_mmap_registry* reg) {
     if (!reg) return;
 
     for (size_t i = 0; i < reg->bucket_count; ++i) {
@@ -466,7 +466,7 @@ void dmg_vfs_free_file_mmap_registry(dmg_vfs_file_mmap_registry* reg) {
     free(reg);
 }
 
-int dmg_vfs_file_mmap_registry_map(dmg_vfs_file_mmap_registry* reg, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped) {
+int fnd_vfs_file_mmap_registry_map(fnd_vfs_file_mmap_registry* reg, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped) {
     if (!reg) return 0;
 
     int fd = open(system_filepath, O_RDONLY);
@@ -492,7 +492,7 @@ int dmg_vfs_file_mmap_registry_map(dmg_vfs_file_mmap_registry* reg, const char* 
     return 1;
 }
 
-void dmg_vfs_file_mmap_registry_unmap(dmg_vfs_file_mmap_registry* reg, const char* mapped) {
+void fnd_vfs_file_mmap_registry_unmap(fnd_vfs_file_mmap_registry* reg, const char* mapped) {
     if (!reg) return;
 
     size_t bucket = hash_ptr(mapped, reg->bucket_count);
@@ -511,9 +511,9 @@ void dmg_vfs_file_mmap_registry_unmap(dmg_vfs_file_mmap_registry* reg, const cha
     }
 }
 
-#endif // DEMIURG_VIRTUAL_FILESYSTEM_LINUX
+#endif // FUNDATIO_VIRTUAL_FILESYSTEM_LINUX
 
-#ifdef DEMIURG_VIRTUAL_FILESYSTEM_WINDOWS
+#ifdef FUNDATIO_VIRTUAL_FILESYSTEM_WINDOWS
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -533,7 +533,7 @@ typedef struct mount {
 } mount;
 
 typedef struct change_node {
-    dmg_vfs_change change;
+    fnd_vfs_change change;
     char* filepath;
     struct change_node* next;
 } change_node;
@@ -542,11 +542,11 @@ typedef struct watcher {
     HANDLE dir_handle;
     HANDLE stop_event;
     HANDLE thread_handle;
-    struct dmg_vfs_filesystem* fs;
+    struct fnd_vfs_filesystem* fs;
     uint32_t mount_index;
 } watcher;
 
-struct dmg_vfs_filesystem {
+struct fnd_vfs_filesystem {
     mount*              mounts;
     uint32_t            mount_count;
 
@@ -557,7 +557,7 @@ struct dmg_vfs_filesystem {
     change_node*        queue_head;
     change_node*        queue_tail;
 
-    dmg_vfs_change_info* out_buffer;
+    fnd_vfs_change_info* out_buffer;
     char**              out_strings;
     uint32_t            out_count;
     uint32_t            out_cap;
@@ -566,7 +566,7 @@ struct dmg_vfs_filesystem {
 // ===========================
 // Path helpers
 
-static mount* find_mount(dmg_vfs_filesystem* fs, const char* filepath, const char** out_rest) {
+static mount* find_mount(fnd_vfs_filesystem* fs, const char* filepath, const char** out_rest) {
     const char* slash = strchr(filepath, '/');
     size_t name_len = slash ? (size_t)(slash - filepath) : strlen(filepath);
 
@@ -602,7 +602,7 @@ static int build_system_path(mount* m, const char* rest, char* buf, size_t buf_s
 
 static DWORD WINAPI watch_thread_proc(LPVOID param) {
     watcher* w = (watcher*)param;
-    dmg_vfs_filesystem* fs = w->fs;
+    fnd_vfs_filesystem* fs = w->fs;
     mount* m = &fs->mounts[w->mount_index];
 
     BYTE buffer[64 * 1024];
@@ -652,18 +652,18 @@ static DWORD WINAPI watch_thread_proc(LPVOID param) {
             char virtual_path[MAX_PATH * 2];
             snprintf(virtual_path, sizeof(virtual_path), "%s/%s", m->mount_name, narrow_name);
 
-            dmg_vfs_change change;
+            fnd_vfs_change change;
             switch (info->Action) {
                 case FILE_ACTION_ADDED:
                 case FILE_ACTION_RENAMED_NEW_NAME:
-                    change = dmg_vfs_change_created;
+                    change = fnd_vfs_change_created;
                     break;
                 case FILE_ACTION_REMOVED:
                 case FILE_ACTION_RENAMED_OLD_NAME:
-                    change = dmg_vfs_change_removed;
+                    change = fnd_vfs_change_removed;
                     break;
                 default: // FILE_ACTION_MODIFIED
-                    change = dmg_vfs_change_modified;
+                    change = fnd_vfs_change_modified;
                     break;
             }
 
@@ -691,8 +691,8 @@ static DWORD WINAPI watch_thread_proc(LPVOID param) {
 // ===========================
 // Filesystem API
 
-dmg_vfs_filesystem* dmg_vfs_create_filesystem(const dmg_vfs_filesystem_create_info* info) {
-    dmg_vfs_filesystem* fs = (dmg_vfs_filesystem*)calloc(1, sizeof(dmg_vfs_filesystem));
+fnd_vfs_filesystem* fnd_vfs_create_filesystem(const fnd_vfs_filesystem_create_info* info) {
+    fnd_vfs_filesystem* fs = (fnd_vfs_filesystem*)calloc(1, sizeof(fnd_vfs_filesystem));
 
     fs->mount_count = info->mounted_directories_count;
     fs->mounts = (mount*)calloc(fs->mount_count, sizeof(mount));
@@ -736,7 +736,7 @@ dmg_vfs_filesystem* dmg_vfs_create_filesystem(const dmg_vfs_filesystem_create_in
     return fs;
 }
 
-void dmg_vfs_free_filesystem(dmg_vfs_filesystem* fs) {
+void fnd_vfs_free_filesystem(fnd_vfs_filesystem* fs) {
     if (!fs) return;
 
     for (uint32_t i = 0; i < fs->watcher_count; ++i) {
@@ -766,23 +766,23 @@ void dmg_vfs_free_filesystem(dmg_vfs_filesystem* fs) {
     free(fs);
 }
 
-dmg_vfs_status dmg_vfs_filesystem_check(dmg_vfs_filesystem* fs, const char* filepath) {
+fnd_vfs_status fnd_vfs_filesystem_check(fnd_vfs_filesystem* fs, const char* filepath) {
     const char* rest;
     mount* m = find_mount(fs, filepath, &rest);
-    if (!m) return dmg_vfs_status_bad_filepath;
-    if (!path_is_safe(rest)) return dmg_vfs_status_not_accessible;
+    if (!m) return fnd_vfs_status_bad_filepath;
+    if (!path_is_safe(rest)) return fnd_vfs_status_not_accessible;
 
     char sys_path[MAX_PATH];
     int n = build_system_path(m, rest, sys_path, sizeof(sys_path));
-    if (n < 0 || (size_t)n >= sizeof(sys_path)) return dmg_vfs_status_bad_filepath;
+    if (n < 0 || (size_t)n >= sizeof(sys_path)) return fnd_vfs_status_bad_filepath;
 
     DWORD attrs = GetFileAttributesA(sys_path);
-    if (attrs == INVALID_FILE_ATTRIBUTES) return dmg_vfs_status_not_existent;
-    if (attrs & FILE_ATTRIBUTE_DIRECTORY) return dmg_vfs_status_directory;
-    return dmg_vfs_status_okay;
+    if (attrs == INVALID_FILE_ATTRIBUTES) return fnd_vfs_status_not_existent;
+    if (attrs & FILE_ATTRIBUTE_DIRECTORY) return fnd_vfs_status_directory;
+    return fnd_vfs_status_okay;
 }
 
-int dmg_vfs_filesystem_system(dmg_vfs_filesystem* fs, const char* filepath, size_t system_path_buffer_bytes, char* system_path_buffer) {
+int fnd_vfs_filesystem_system(fnd_vfs_filesystem* fs, const char* filepath, size_t system_path_buffer_bytes, char* system_path_buffer) {
     const char* rest;
     mount* m = find_mount(fs, filepath, &rest);
     if (!m || !path_is_safe(rest)) return 0;
@@ -791,7 +791,7 @@ int dmg_vfs_filesystem_system(dmg_vfs_filesystem* fs, const char* filepath, size
     return (n >= 0 && (size_t)n < system_path_buffer_bytes);
 }
 
-void dmg_vfs_filesystem_update(dmg_vfs_filesystem* fs, uint32_t* out_count, const dmg_vfs_change_info** out_infos) {
+void fnd_vfs_filesystem_update(fnd_vfs_filesystem* fs, uint32_t* out_count, const fnd_vfs_change_info** out_infos) {
     for (uint32_t i = 0; i < fs->out_count; ++i) free(fs->out_strings[i]);
     fs->out_count = 0;
 
@@ -803,7 +803,7 @@ void dmg_vfs_filesystem_update(dmg_vfs_filesystem* fs, uint32_t* out_count, cons
     while (n) {
         if (fs->out_count == fs->out_cap) {
             uint32_t new_cap = fs->out_cap ? fs->out_cap * 2 : 16;
-            fs->out_buffer = (dmg_vfs_change_info*)realloc(fs->out_buffer, new_cap * sizeof(dmg_vfs_change_info));
+            fs->out_buffer = (fnd_vfs_change_info*)realloc(fs->out_buffer, new_cap * sizeof(fnd_vfs_change_info));
             fs->out_strings = (char**)realloc(fs->out_strings, new_cap * sizeof(char*));
             fs->out_cap = new_cap;
         }
@@ -833,7 +833,7 @@ typedef struct mmap_node {
     struct mmap_node* next;
 } mmap_node;
 
-struct dmg_vfs_file_mmap_registry {
+struct fnd_vfs_file_mmap_registry {
     mmap_node** buckets;
     size_t bucket_count;
 };
@@ -844,14 +844,14 @@ static size_t hash_ptr(const void* p, size_t bucket_count) {
     return (size_t)(v % bucket_count);
 }
 
-dmg_vfs_file_mmap_registry* dmg_vfs_create_file_mmap_registry() {
-    dmg_vfs_file_mmap_registry* reg = (dmg_vfs_file_mmap_registry*)malloc(sizeof(dmg_vfs_file_mmap_registry));
+fnd_vfs_file_mmap_registry* fnd_vfs_create_file_mmap_registry() {
+    fnd_vfs_file_mmap_registry* reg = (fnd_vfs_file_mmap_registry*)malloc(sizeof(fnd_vfs_file_mmap_registry));
     reg->bucket_count = 61;
     reg->buckets = (mmap_node**)calloc(reg->bucket_count, sizeof(mmap_node*));
     return reg;
 }
 
-void dmg_vfs_free_file_mmap_registry(dmg_vfs_file_mmap_registry* reg) {
+void fnd_vfs_free_file_mmap_registry(fnd_vfs_file_mmap_registry* reg) {
     if (!reg) return;
 
     for (size_t i = 0; i < reg->bucket_count; ++i) {
@@ -870,7 +870,7 @@ void dmg_vfs_free_file_mmap_registry(dmg_vfs_file_mmap_registry* reg) {
     free(reg);
 }
 
-int dmg_vfs_file_mmap_registry_map(dmg_vfs_file_mmap_registry* reg, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped) {
+int fnd_vfs_file_mmap_registry_map(fnd_vfs_file_mmap_registry* reg, const char* system_filepath, uint64_t* out_bytes, const unsigned char** out_mapped) {
     if (!reg) return 0;
 
     HANDLE file_handle = CreateFileA(system_filepath, GENERIC_READ, FILE_SHARE_READ,
@@ -911,7 +911,7 @@ int dmg_vfs_file_mmap_registry_map(dmg_vfs_file_mmap_registry* reg, const char* 
     return 1;
 }
 
-void dmg_vfs_file_mmap_registry_unmap(dmg_vfs_file_mmap_registry* reg, const char* mapped) {
+void fnd_vfs_file_mmap_registry_unmap(fnd_vfs_file_mmap_registry* reg, const char* mapped) {
     if (!reg) return;
 
     size_t bucket = hash_ptr(mapped, reg->bucket_count);
@@ -931,5 +931,5 @@ void dmg_vfs_file_mmap_registry_unmap(dmg_vfs_file_mmap_registry* reg, const cha
     }
 }
 
-#endif // DEMIURG_VIRTUAL_FILESYSTEM_WINDOWS
-#endif // DEMIURG_VIRTUAL_FILESYSTEM_IMPL
+#endif // FUNDATIO_VIRTUAL_FILESYSTEM_WINDOWS
+#endif // FUNDATIO_VIRTUAL_FILESYSTEM_IMPL

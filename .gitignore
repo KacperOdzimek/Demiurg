@@ -11,8 +11,8 @@
 !depedency/**
 
 !include/
-!include/demiurg/
-!include/demiurg/**
+!include/fundatio/
+!include/fundatio/**
 
 !shaders
 !shaders/**
