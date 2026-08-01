@@ -6,13 +6,13 @@ read-write lock, semaphore, and barrier objects. Each primitive wraps the native
 
 ----------------------------------------------------------------
 Code info:
-- dmg_thr prefix
-- DEMIURG_THREADS_IMPL macro to build
+- fnd_thr prefix
+- FUNDATIO_THREADS_IMPL macro to build
 
 ----------------------------------------------------------------
 Usage:
 - Fill the matching create info struct, create the object, use it, then free it
-- dmg_thr_create_thread begins execution immediately, before the call returns
+- fnd_thr_create_thread begins execution immediately, before the call returns
 - Wait/lock operations are O(1); all objects are individually heap-allocated
 
 ----------------------------------------------------------------
@@ -22,8 +22,8 @@ Notes:
 - timeout_ms of 0 in a *_wait_for call polls once and returns immediately
 */
 
-#ifndef DEMIURG_THREADS_H
-#define DEMIURG_THREADS_H
+#ifndef FUNDATIO_THREADS_H
+#define FUNDATIO_THREADS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -32,112 +32,112 @@ Notes:
 // Thread-Local Storage
 
 #if defined(_MSC_VER)
-    #define dmg_thr_thread_local __declspec(thread)
+    #define fnd_thr_thread_local __declspec(thread)
 #elif defined(__GNUC__) || defined(__clang__)
-    #define dmg_thr_thread_local __thread
+    #define fnd_thr_thread_local __thread
 #else
-    #define dmg_thr_thread_local _Thread_local // C11 fallback
+    #define fnd_thr_thread_local _Thread_local // C11 fallback
 #endif
 
 // ===========================
 // Thread
 
-typedef int (*dmg_thr_entry_point)(void* user_data);
+typedef int (*fnd_thr_entry_point)(void* user_data);
 
-typedef struct dmg_thr_thread_create_info {
-    dmg_thr_entry_point entry_point;
+typedef struct fnd_thr_thread_create_info {
+    fnd_thr_entry_point entry_point;
     void*           user_data;
     size_t          stack_size_bytes;   // 0 = platform default
     const char*     debug_name;         // optional, may be NULL
-} dmg_thr_thread_create_info;
+} fnd_thr_thread_create_info;
 
-typedef struct dmg_thr_thread dmg_thr_thread;
-dmg_thr_thread* dmg_thr_create_thread(const dmg_thr_thread_create_info*);
-void dmg_thr_free_thread  (dmg_thr_thread*);
+typedef struct fnd_thr_thread fnd_thr_thread;
+fnd_thr_thread* fnd_thr_create_thread(const fnd_thr_thread_create_info*);
+void fnd_thr_free_thread  (fnd_thr_thread*);
 
-int  dmg_thr_join_thread  (dmg_thr_thread*, int* out_exit_code); // 0 = success
-void dmg_thr_detach_thread(dmg_thr_thread*);
-uint64_t dmg_thr_get_thread_id(const dmg_thr_thread*);
+int  fnd_thr_join_thread  (fnd_thr_thread*, int* out_exit_code); // 0 = success
+void fnd_thr_detach_thread(fnd_thr_thread*);
+uint64_t fnd_thr_get_thread_id(const fnd_thr_thread*);
 
 // ===========================
 // Mutex
 
-typedef struct dmg_thr_mutex_create_info {
+typedef struct fnd_thr_mutex_create_info {
     int recursive; // non-zero = recursive mutex
-} dmg_thr_mutex_create_info;
+} fnd_thr_mutex_create_info;
 
-typedef struct dmg_thr_mutex dmg_thr_mutex;
-dmg_thr_mutex* dmg_thr_create_mutex(const dmg_thr_mutex_create_info*);
-void dmg_thr_free_mutex(dmg_thr_mutex*);
+typedef struct fnd_thr_mutex fnd_thr_mutex;
+fnd_thr_mutex* fnd_thr_create_mutex(const fnd_thr_mutex_create_info*);
+void fnd_thr_free_mutex(fnd_thr_mutex*);
 
-void dmg_thr_mutex_lock(dmg_thr_mutex*);
-int  dmg_thr_mutex_trylock(dmg_thr_mutex*); // 1 = acquired
-void dmg_thr_mutex_unlock(dmg_thr_mutex*);
+void fnd_thr_mutex_lock(fnd_thr_mutex*);
+int  fnd_thr_mutex_trylock(fnd_thr_mutex*); // 1 = acquired
+void fnd_thr_mutex_unlock(fnd_thr_mutex*);
 
 // ===========================
 // Condition Variable
 
-typedef struct dmg_thr_cond dmg_thr_cond;
-dmg_thr_cond* dmg_thr_create_cond(void);
-void dmg_thr_free_cond(dmg_thr_cond*);
+typedef struct fnd_thr_cond fnd_thr_cond;
+fnd_thr_cond* fnd_thr_create_cond(void);
+void fnd_thr_free_cond(fnd_thr_cond*);
 
-void dmg_thr_cond_wait (dmg_thr_cond*, dmg_thr_mutex*);
-int  dmg_thr_cond_wait_for(dmg_thr_cond*, dmg_thr_mutex*, uint64_t timeout_ms); // 0 = signaled, 1 = timed out
-void dmg_thr_cond_signal (dmg_thr_cond*);
-void dmg_thr_cond_broadcast(dmg_thr_cond*);
+void fnd_thr_cond_wait (fnd_thr_cond*, fnd_thr_mutex*);
+int  fnd_thr_cond_wait_for(fnd_thr_cond*, fnd_thr_mutex*, uint64_t timeout_ms); // 0 = signaled, 1 = timed out
+void fnd_thr_cond_signal (fnd_thr_cond*);
+void fnd_thr_cond_broadcast(fnd_thr_cond*);
 
 // ===========================
 // Read-Write Lock
 
-typedef struct dmg_thr_rwlock dmg_thr_rwlock;
-dmg_thr_rwlock* dmg_thr_create_rwlock(void);
-void dmg_thr_free_rwlock(dmg_thr_rwlock*);
+typedef struct fnd_thr_rwlock fnd_thr_rwlock;
+fnd_thr_rwlock* fnd_thr_create_rwlock(void);
+void fnd_thr_free_rwlock(fnd_thr_rwlock*);
 
-void dmg_thr_rwlock_lock_read(dmg_thr_rwlock*);
-void dmg_thr_rwlock_lock_write(dmg_thr_rwlock*);
-void dmg_thr_rwlock_unlock_read(dmg_thr_rwlock*);
-void dmg_thr_rwlock_unlock_write(dmg_thr_rwlock*);
+void fnd_thr_rwlock_lock_read(fnd_thr_rwlock*);
+void fnd_thr_rwlock_lock_write(fnd_thr_rwlock*);
+void fnd_thr_rwlock_unlock_read(fnd_thr_rwlock*);
+void fnd_thr_rwlock_unlock_write(fnd_thr_rwlock*);
 
 // ===========================
 // Semaphore
 
-typedef struct dmg_thr_semaphore_create_info {
+typedef struct fnd_thr_semaphore_create_info {
     uint32_t initial_count;
     uint32_t max_count; // 0 = unbounded (implementation defined ceiling)
-} dmg_thr_semaphore_create_info;
+} fnd_thr_semaphore_create_info;
 
-typedef struct dmg_thr_semaphore dmg_thr_semaphore;
-dmg_thr_semaphore* dmg_thr_create_semaphore(const dmg_thr_semaphore_create_info*);
-void dmg_thr_free_semaphore(dmg_thr_semaphore*);
+typedef struct fnd_thr_semaphore fnd_thr_semaphore;
+fnd_thr_semaphore* fnd_thr_create_semaphore(const fnd_thr_semaphore_create_info*);
+void fnd_thr_free_semaphore(fnd_thr_semaphore*);
 
-void dmg_thr_semaphore_wait(dmg_thr_semaphore*);
-int  dmg_thr_semaphore_wait_for(dmg_thr_semaphore*, uint64_t timeout_ms); // 0 = acquired, 1 = timed out
-void dmg_thr_semaphore_signal(dmg_thr_semaphore*, uint32_t count);
+void fnd_thr_semaphore_wait(fnd_thr_semaphore*);
+int  fnd_thr_semaphore_wait_for(fnd_thr_semaphore*, uint64_t timeout_ms); // 0 = acquired, 1 = timed out
+void fnd_thr_semaphore_signal(fnd_thr_semaphore*, uint32_t count);
 
 // ===========================
 // Barrier
 
-typedef struct dmg_thr_barrier_create_info {
+typedef struct fnd_thr_barrier_create_info {
     uint32_t participant_count;
-} dmg_thr_barrier_create_info;
-typedef struct dmg_thr_barrier dmg_thr_barrier;
+} fnd_thr_barrier_create_info;
+typedef struct fnd_thr_barrier fnd_thr_barrier;
 
-dmg_thr_barrier* dmg_thr_create_barrier(const dmg_thr_barrier_create_info*);
-void dmg_thr_free_barrier(dmg_thr_barrier*);
+fnd_thr_barrier* fnd_thr_create_barrier(const fnd_thr_barrier_create_info*);
+void fnd_thr_free_barrier(fnd_thr_barrier*);
 
-int dmg_thr_barrier_wait(dmg_thr_barrier*); // non-zero for exactly one participant (the serial thread)
+int fnd_thr_barrier_wait(fnd_thr_barrier*); // non-zero for exactly one participant (the serial thread)
 
 // ===========================
 // Misc
 
-void dmg_thr_sleep_ms(uint64_t milliseconds);
-void dmg_thr_yield(void);
-uint64_t dmg_thr_current_thread_id(void);
-uint32_t dmg_thr_hardware_concurrency(void);
+void fnd_thr_sleep_ms(uint64_t milliseconds);
+void fnd_thr_yield(void);
+uint64_t fnd_thr_current_thread_id(void);
+uint32_t fnd_thr_hardware_concurrency(void);
 
-#endif // DEMIURG_THREADS_H
+#endif // FUNDATIO_THREADS_H
 
-#ifdef DEMIURG_THREADS_IMPL
+#ifdef FUNDATIO_THREADS_IMPL
 
 #include <stdlib.h>
 #include <string.h>
@@ -157,35 +157,35 @@ uint32_t dmg_thr_hardware_concurrency(void);
 // ===========================
 // Thread
 
-struct dmg_thr_thread {
+struct fnd_thr_thread {
 #if defined(_WIN32)
     HANDLE   handle;
     uint64_t id;
 #else
     pthread_t handle;
 #endif
-    dmg_thr_entry_point entry_point;
+    fnd_thr_entry_point entry_point;
     void*               user_data;
     int                 exit_code;
     int                 joined_or_detached;
 };
 
 #if defined(_WIN32)
-static unsigned __stdcall dmg_thr_win32_trampoline(void* param) {
-    dmg_thr_thread* thread = (dmg_thr_thread*)param;
+static unsigned __stdcall fnd_thr_win32_trampoline(void* param) {
+    fnd_thr_thread* thread = (fnd_thr_thread*)param;
     thread->exit_code = thread->entry_point(thread->user_data);
     return (unsigned)thread->exit_code;
 }
 #else
-static void* dmg_thr_posix_trampoline(void* param) {
-    dmg_thr_thread* thread = (dmg_thr_thread*)param;
+static void* fnd_thr_posix_trampoline(void* param) {
+    fnd_thr_thread* thread = (fnd_thr_thread*)param;
     thread->exit_code = thread->entry_point(thread->user_data);
     return NULL;
 }
 #endif
 
-dmg_thr_thread* dmg_thr_create_thread(const dmg_thr_thread_create_info* info) {
-    dmg_thr_thread* thread = calloc(1, sizeof(dmg_thr_thread));
+fnd_thr_thread* fnd_thr_create_thread(const fnd_thr_thread_create_info* info) {
+    fnd_thr_thread* thread = calloc(1, sizeof(fnd_thr_thread));
     if (!thread) return NULL;
 
     thread->entry_point = info->entry_point;
@@ -196,7 +196,7 @@ dmg_thr_thread* dmg_thr_create_thread(const dmg_thr_thread_create_info* info) {
     thread->handle = (HANDLE)_beginthreadex(
         NULL,
         (unsigned int)info->stack_size_bytes,
-        dmg_thr_win32_trampoline,
+        fnd_thr_win32_trampoline,
         thread,
         0,
         &win32_id
@@ -208,7 +208,7 @@ dmg_thr_thread* dmg_thr_create_thread(const dmg_thr_thread_create_info* info) {
     pthread_attr_init(&attr);
     if (info->stack_size_bytes > 0) pthread_attr_setstacksize(&attr, info->stack_size_bytes);
 
-    int result = pthread_create(&thread->handle, &attr, dmg_thr_posix_trampoline, thread);
+    int result = pthread_create(&thread->handle, &attr, fnd_thr_posix_trampoline, thread);
     pthread_attr_destroy(&attr);
     if (result != 0) goto _fail;
 #endif
@@ -221,13 +221,13 @@ _fail:
     return NULL;
 }
 
-void dmg_thr_free_thread(dmg_thr_thread* thread) {
+void fnd_thr_free_thread(fnd_thr_thread* thread) {
     if (thread == NULL) return;
-    if (!thread->joined_or_detached) dmg_thr_join_thread(thread, NULL); // see Notes
+    if (!thread->joined_or_detached) fnd_thr_join_thread(thread, NULL); // see Notes
     free(thread);
 }
 
-int dmg_thr_join_thread(dmg_thr_thread* thread, int* out_exit_code) {
+int fnd_thr_join_thread(fnd_thr_thread* thread, int* out_exit_code) {
 #if defined(_WIN32)
     if (WaitForSingleObject(thread->handle, INFINITE) != WAIT_OBJECT_0) return 1;
     CloseHandle(thread->handle);
@@ -240,7 +240,7 @@ int dmg_thr_join_thread(dmg_thr_thread* thread, int* out_exit_code) {
     return 0;
 }
 
-void dmg_thr_detach_thread(dmg_thr_thread* thread) {
+void fnd_thr_detach_thread(fnd_thr_thread* thread) {
 #if defined(_WIN32)
     CloseHandle(thread->handle);
     thread->handle = NULL;
@@ -250,7 +250,7 @@ void dmg_thr_detach_thread(dmg_thr_thread* thread) {
     thread->joined_or_detached = 1;
 }
 
-uint64_t dmg_thr_get_thread_id(const dmg_thr_thread* thread) {
+uint64_t fnd_thr_get_thread_id(const fnd_thr_thread* thread) {
 #if defined(_WIN32)
     return thread->id;
 #else
@@ -261,7 +261,7 @@ uint64_t dmg_thr_get_thread_id(const dmg_thr_thread* thread) {
 // ===========================
 // Mutex
 
-struct dmg_thr_mutex {
+struct fnd_thr_mutex {
 #if defined(_WIN32)
     CRITICAL_SECTION handle;
 #else
@@ -269,8 +269,8 @@ struct dmg_thr_mutex {
 #endif
 };
 
-dmg_thr_mutex* dmg_thr_create_mutex(const dmg_thr_mutex_create_info* info) {
-    dmg_thr_mutex* mutex = calloc(1, sizeof(dmg_thr_mutex));
+fnd_thr_mutex* fnd_thr_create_mutex(const fnd_thr_mutex_create_info* info) {
+    fnd_thr_mutex* mutex = calloc(1, sizeof(fnd_thr_mutex));
     if (!mutex) return NULL;
 
 #if defined(_WIN32)
@@ -293,7 +293,7 @@ _fail:
 #endif
 }
 
-void dmg_thr_free_mutex(dmg_thr_mutex* mutex) {
+void fnd_thr_free_mutex(fnd_thr_mutex* mutex) {
     if (mutex == NULL) return;
 #if defined(_WIN32)
     DeleteCriticalSection(&mutex->handle);
@@ -303,7 +303,7 @@ void dmg_thr_free_mutex(dmg_thr_mutex* mutex) {
     free(mutex);
 }
 
-void dmg_thr_mutex_lock(dmg_thr_mutex* mutex) {
+void fnd_thr_mutex_lock(fnd_thr_mutex* mutex) {
 #if defined(_WIN32)
     EnterCriticalSection(&mutex->handle);
 #else
@@ -311,7 +311,7 @@ void dmg_thr_mutex_lock(dmg_thr_mutex* mutex) {
 #endif
 }
 
-int dmg_thr_mutex_trylock(dmg_thr_mutex* mutex) {
+int fnd_thr_mutex_trylock(fnd_thr_mutex* mutex) {
 #if defined(_WIN32)
     return TryEnterCriticalSection(&mutex->handle) != 0;
 #else
@@ -319,7 +319,7 @@ int dmg_thr_mutex_trylock(dmg_thr_mutex* mutex) {
 #endif
 }
 
-void dmg_thr_mutex_unlock(dmg_thr_mutex* mutex) {
+void fnd_thr_mutex_unlock(fnd_thr_mutex* mutex) {
 #if defined(_WIN32)
     LeaveCriticalSection(&mutex->handle);
 #else
@@ -330,7 +330,7 @@ void dmg_thr_mutex_unlock(dmg_thr_mutex* mutex) {
 // ===========================
 // Condition Variable
 
-struct dmg_thr_cond {
+struct fnd_thr_cond {
 #if defined(_WIN32)
     CONDITION_VARIABLE handle;
 #else
@@ -338,8 +338,8 @@ struct dmg_thr_cond {
 #endif
 };
 
-dmg_thr_cond* dmg_thr_create_cond(void) {
-    dmg_thr_cond* cond = calloc(1, sizeof(dmg_thr_cond));
+fnd_thr_cond* fnd_thr_create_cond(void) {
+    fnd_thr_cond* cond = calloc(1, sizeof(fnd_thr_cond));
     if (!cond) return NULL;
 
 #if defined(_WIN32)
@@ -351,7 +351,7 @@ dmg_thr_cond* dmg_thr_create_cond(void) {
     return cond;
 }
 
-void dmg_thr_free_cond(dmg_thr_cond* cond) {
+void fnd_thr_free_cond(fnd_thr_cond* cond) {
     if (cond == NULL) return;
 #if !defined(_WIN32)
     pthread_cond_destroy(&cond->handle);
@@ -359,7 +359,7 @@ void dmg_thr_free_cond(dmg_thr_cond* cond) {
     free(cond);
 }
 
-void dmg_thr_cond_wait(dmg_thr_cond* cond, dmg_thr_mutex* mutex) {
+void fnd_thr_cond_wait(fnd_thr_cond* cond, fnd_thr_mutex* mutex) {
 #if defined(_WIN32)
     SleepConditionVariableCS(&cond->handle, &mutex->handle, INFINITE);
 #else
@@ -367,7 +367,7 @@ void dmg_thr_cond_wait(dmg_thr_cond* cond, dmg_thr_mutex* mutex) {
 #endif
 }
 
-int dmg_thr_cond_wait_for(dmg_thr_cond* cond, dmg_thr_mutex* mutex, uint64_t timeout_ms) {
+int fnd_thr_cond_wait_for(fnd_thr_cond* cond, fnd_thr_mutex* mutex, uint64_t timeout_ms) {
 #if defined(_WIN32)
     return SleepConditionVariableCS(&cond->handle, &mutex->handle, (DWORD)timeout_ms) ? 0 : 1;
 #else
@@ -381,7 +381,7 @@ int dmg_thr_cond_wait_for(dmg_thr_cond* cond, dmg_thr_mutex* mutex, uint64_t tim
 #endif
 }
 
-void dmg_thr_cond_signal(dmg_thr_cond* cond) {
+void fnd_thr_cond_signal(fnd_thr_cond* cond) {
 #if defined(_WIN32)
     WakeConditionVariable(&cond->handle);
 #else
@@ -389,7 +389,7 @@ void dmg_thr_cond_signal(dmg_thr_cond* cond) {
 #endif
 }
 
-void dmg_thr_cond_broadcast(dmg_thr_cond* cond) {
+void fnd_thr_cond_broadcast(fnd_thr_cond* cond) {
 #if defined(_WIN32)
     WakeAllConditionVariable(&cond->handle);
 #else
@@ -400,7 +400,7 @@ void dmg_thr_cond_broadcast(dmg_thr_cond* cond) {
 // ===========================
 // Read-Write Lock
 
-struct dmg_thr_rwlock {
+struct fnd_thr_rwlock {
 #if defined(_WIN32)
     SRWLOCK handle;
 #else
@@ -408,8 +408,8 @@ struct dmg_thr_rwlock {
 #endif
 };
 
-dmg_thr_rwlock* dmg_thr_create_rwlock(void) {
-    dmg_thr_rwlock* rwlock = calloc(1, sizeof(dmg_thr_rwlock));
+fnd_thr_rwlock* fnd_thr_create_rwlock(void) {
+    fnd_thr_rwlock* rwlock = calloc(1, sizeof(fnd_thr_rwlock));
     if (!rwlock) return NULL;
 
 #if defined(_WIN32)
@@ -421,7 +421,7 @@ dmg_thr_rwlock* dmg_thr_create_rwlock(void) {
     return rwlock;
 }
 
-void dmg_thr_free_rwlock(dmg_thr_rwlock* rwlock) {
+void fnd_thr_free_rwlock(fnd_thr_rwlock* rwlock) {
     if (rwlock == NULL) return;
 #if !defined(_WIN32)
     pthread_rwlock_destroy(&rwlock->handle);
@@ -429,7 +429,7 @@ void dmg_thr_free_rwlock(dmg_thr_rwlock* rwlock) {
     free(rwlock);
 }
 
-void dmg_thr_rwlock_lock_read(dmg_thr_rwlock* rwlock) {
+void fnd_thr_rwlock_lock_read(fnd_thr_rwlock* rwlock) {
 #if defined(_WIN32)
     AcquireSRWLockShared(&rwlock->handle);
 #else
@@ -437,7 +437,7 @@ void dmg_thr_rwlock_lock_read(dmg_thr_rwlock* rwlock) {
 #endif
 }
 
-void dmg_thr_rwlock_lock_write(dmg_thr_rwlock* rwlock) {
+void fnd_thr_rwlock_lock_write(fnd_thr_rwlock* rwlock) {
 #if defined(_WIN32)
     AcquireSRWLockExclusive(&rwlock->handle);
 #else
@@ -445,7 +445,7 @@ void dmg_thr_rwlock_lock_write(dmg_thr_rwlock* rwlock) {
 #endif
 }
 
-void dmg_thr_rwlock_unlock_read(dmg_thr_rwlock* rwlock) {
+void fnd_thr_rwlock_unlock_read(fnd_thr_rwlock* rwlock) {
 #if defined(_WIN32)
     ReleaseSRWLockShared(&rwlock->handle);
 #else
@@ -453,7 +453,7 @@ void dmg_thr_rwlock_unlock_read(dmg_thr_rwlock* rwlock) {
 #endif
 }
 
-void dmg_thr_rwlock_unlock_write(dmg_thr_rwlock* rwlock) {
+void fnd_thr_rwlock_unlock_write(fnd_thr_rwlock* rwlock) {
 #if defined(_WIN32)
     ReleaseSRWLockExclusive(&rwlock->handle);
 #else
@@ -466,7 +466,7 @@ void dmg_thr_rwlock_unlock_write(dmg_thr_rwlock* rwlock) {
 // win32 uses the native kernel semaphore; posix uses a mutex+cond counter,
 // since unnamed sem_t timed-waits are not reliably portable (notably on macOS)
 
-struct dmg_thr_semaphore {
+struct fnd_thr_semaphore {
 #if defined(_WIN32)
     HANDLE handle;
 #else
@@ -477,8 +477,8 @@ struct dmg_thr_semaphore {
 #endif
 };
 
-dmg_thr_semaphore* dmg_thr_create_semaphore(const dmg_thr_semaphore_create_info* info) {
-    dmg_thr_semaphore* semaphore = calloc(1, sizeof(dmg_thr_semaphore));
+fnd_thr_semaphore* fnd_thr_create_semaphore(const fnd_thr_semaphore_create_info* info) {
+    fnd_thr_semaphore* semaphore = calloc(1, sizeof(fnd_thr_semaphore));
     if (!semaphore) return NULL;
 
 #if defined(_WIN32)
@@ -498,7 +498,7 @@ _fail:
     return NULL;
 }
 
-void dmg_thr_free_semaphore(dmg_thr_semaphore* semaphore) {
+void fnd_thr_free_semaphore(fnd_thr_semaphore* semaphore) {
     if (semaphore == NULL) return;
 #if defined(_WIN32)
     CloseHandle(semaphore->handle);
@@ -509,7 +509,7 @@ void dmg_thr_free_semaphore(dmg_thr_semaphore* semaphore) {
     free(semaphore);
 }
 
-void dmg_thr_semaphore_wait(dmg_thr_semaphore* semaphore) {
+void fnd_thr_semaphore_wait(fnd_thr_semaphore* semaphore) {
 #if defined(_WIN32)
     WaitForSingleObject(semaphore->handle, INFINITE);
 #else
@@ -520,7 +520,7 @@ void dmg_thr_semaphore_wait(dmg_thr_semaphore* semaphore) {
 #endif
 }
 
-int dmg_thr_semaphore_wait_for(dmg_thr_semaphore* semaphore, uint64_t timeout_ms) {
+int fnd_thr_semaphore_wait_for(fnd_thr_semaphore* semaphore, uint64_t timeout_ms) {
 #if defined(_WIN32)
     return (WaitForSingleObject(semaphore->handle, (DWORD)timeout_ms) == WAIT_OBJECT_0) ? 0 : 1;
 #else
@@ -541,7 +541,7 @@ int dmg_thr_semaphore_wait_for(dmg_thr_semaphore* semaphore, uint64_t timeout_ms
 #endif
 }
 
-void dmg_thr_semaphore_signal(dmg_thr_semaphore* semaphore, uint32_t count) {
+void fnd_thr_semaphore_signal(fnd_thr_semaphore* semaphore, uint32_t count) {
 #if defined(_WIN32)
     ReleaseSemaphore(semaphore->handle, (LONG)count, NULL);
 #else
@@ -559,7 +559,7 @@ void dmg_thr_semaphore_signal(dmg_thr_semaphore* semaphore, uint32_t count) {
 // win32 uses the native SYNCHRONIZATION_BARRIER; posix uses a sense-reversing
 // mutex+cond barrier, since pthread_barrier_t is absent on some posix targets (e.g. macOS)
 
-struct dmg_thr_barrier {
+struct fnd_thr_barrier {
 #if defined(_WIN32)
     SYNCHRONIZATION_BARRIER handle;
 #else
@@ -571,8 +571,8 @@ struct dmg_thr_barrier {
 #endif
 };
 
-dmg_thr_barrier* dmg_thr_create_barrier(const dmg_thr_barrier_create_info* info) {
-    dmg_thr_barrier* barrier = calloc(1, sizeof(dmg_thr_barrier));
+fnd_thr_barrier* fnd_thr_create_barrier(const fnd_thr_barrier_create_info* info) {
+    fnd_thr_barrier* barrier = calloc(1, sizeof(fnd_thr_barrier));
     if (!barrier) return NULL;
 
 #if defined(_WIN32)
@@ -589,7 +589,7 @@ _fail:
     return NULL;
 }
 
-void dmg_thr_free_barrier(dmg_thr_barrier* barrier) {
+void fnd_thr_free_barrier(fnd_thr_barrier* barrier) {
     if (barrier == NULL) return;
 #if defined(_WIN32)
     DeleteSynchronizationBarrier(&barrier->handle);
@@ -600,7 +600,7 @@ void dmg_thr_free_barrier(dmg_thr_barrier* barrier) {
     free(barrier);
 }
 
-int dmg_thr_barrier_wait(dmg_thr_barrier* barrier) {
+int fnd_thr_barrier_wait(fnd_thr_barrier* barrier) {
 #if defined(_WIN32)
     return EnterSynchronizationBarrier(&barrier->handle, SYNCHRONIZATION_BARRIER_FLAGS_NO_DELETE) ? 1 : 0;
 #else
@@ -627,7 +627,7 @@ int dmg_thr_barrier_wait(dmg_thr_barrier* barrier) {
 // ===========================
 // Misc
 
-void dmg_thr_sleep_ms(uint64_t milliseconds) {
+void fnd_thr_sleep_ms(uint64_t milliseconds) {
 #if defined(_WIN32)
     Sleep((DWORD)milliseconds);
 #else
@@ -638,7 +638,7 @@ void dmg_thr_sleep_ms(uint64_t milliseconds) {
 #endif
 }
 
-void dmg_thr_yield(void) {
+void fnd_thr_yield(void) {
 #if defined(_WIN32)
     SwitchToThread();
 #else
@@ -646,7 +646,7 @@ void dmg_thr_yield(void) {
 #endif
 }
 
-uint64_t dmg_thr_current_thread_id(void) {
+uint64_t fnd_thr_current_thread_id(void) {
 #if defined(_WIN32)
     return (uint64_t)GetCurrentThreadId();
 #else
@@ -654,7 +654,7 @@ uint64_t dmg_thr_current_thread_id(void) {
 #endif
 }
 
-uint32_t dmg_thr_hardware_concurrency(void) {
+uint32_t fnd_thr_hardware_concurrency(void) {
 #if defined(_WIN32)
     SYSTEM_INFO info;
     GetSystemInfo(&info);
@@ -665,4 +665,4 @@ uint32_t dmg_thr_hardware_concurrency(void) {
 #endif
 }
 
-#endif // DEMIURG_THREADS_IMPL
+#endif // FUNDATIO_THREADS_IMPL
