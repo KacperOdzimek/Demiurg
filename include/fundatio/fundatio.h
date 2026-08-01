@@ -29,4 +29,13 @@ Code info:
 #define FUNDATIO_SEGMENTER_IMPL
 #include "fundatio/algorithm/segmenter.h"
 
+#else
+
+#include "fundatio/platform/graphics.h"
+#include "fundatio/platform/threads.h"
+#include "fundatio/platform/filesystem.h"
+#include "fundatio/platform/inputs.h"
+#include "fundatio/algorithm/partitioner.h"
+#include "fundatio/algorithm/segmenter.h"
+
 #endif
