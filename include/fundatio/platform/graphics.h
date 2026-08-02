@@ -3108,9 +3108,9 @@ void fnd_gfx_window_submit_present(
     window->present_timepoint++;
 
     // Build wait semaphore / value arrays from the timeline list
-    VkSemaphore* wait_semaphores = alloca(sizeof(VkSemaphore) * wait_timeline_count);
-    VkPipelineStageFlags* wait_stages = alloca(sizeof(VkPipelineStageFlags) * wait_timeline_count);
-    uint64_t* wait_values = alloca(sizeof(uint64_t) * wait_timeline_count);
+    VkSemaphore*            wait_semaphores = malloc(sizeof(VkSemaphore) * wait_timeline_count);
+    VkPipelineStageFlags*   wait_stages     = malloc(sizeof(VkPipelineStageFlags) * wait_timeline_count);
+    uint64_t*               wait_values     = malloc(sizeof(uint64_t) * wait_timeline_count);
 
     for (uint32_t i = 0; i < wait_timeline_count; ++i) {
         wait_semaphores[i] = wait_timelines[i]->timeline_semaphore;
@@ -3142,6 +3142,7 @@ void fnd_gfx_window_submit_present(
         },
     };
     vkQueueSubmit(window->owning_hardware->presentation_queue, 1, &submit_info, VK_NULL_HANDLE);
+    free(wait_semaphores); free(wait_stages); free(wait_values);
 
     // Once present semaphore signaled present
     vkQueuePresentKHR(
