@@ -141,18 +141,18 @@ typedef struct fnd_gfx_submit_info {
 void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, const fnd_gfx_submit_info* info);
 
 // ==========================
-// Staging Memory
+// Staging
 
-typedef struct fnd_gfx_staging_memory_create_info {
+typedef struct fnd_gfx_staging_create_info {
     uint64_t bytes;
-} fnd_gfx_staging_memory_create_info;
+} fnd_gfx_staging_create_info;
 
-typedef struct fnd_gfx_staging_memory fnd_gfx_staging_memory;
-fnd_gfx_staging_memory* fnd_gfx_create_staging_memory(fnd_gfx_hardware*, const fnd_gfx_staging_memory_create_info*);
-void fnd_gfx_free_staging_memory(fnd_gfx_staging_memory*);
+typedef struct fnd_gfx_staging fnd_gfx_staging;
+fnd_gfx_staging* fnd_gfx_create_staging(fnd_gfx_hardware*, const fnd_gfx_staging_create_info*);
+void fnd_gfx_free_staging(fnd_gfx_staging*);
 
-void* fnd_gfx_staging_memory_map(fnd_gfx_staging_memory*, uint64_t region_offset, uint64_t region_size);
-void fnd_gfx_staging_memory_unmap(fnd_gfx_staging_memory*);
+void* fnd_gfx_staging_map(fnd_gfx_staging*, uint64_t region_offset, uint64_t region_size);
+void fnd_gfx_staging_unmap(fnd_gfx_staging*);
 
 // ===========================
 // Buffer
@@ -471,28 +471,28 @@ fnd_gfx_texture_format  fnd_gfx_window_get_attachment_format(fnd_gfx_window*);
 // Can only be called inside 
 // command list recorder callback
 
-void fnd_gfx_tcmd_copy_staging_memory_to_buffer(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_buffer(
+    fnd_gfx_staging*            staging,
     fnd_gfx_buffer*             target_buffer,
-    uint64_t                staging_memory_region_offset,
-    uint64_t                buffer_write_region_offset,
-    uint64_t                buffer_write_region_size
+    uint64_t                    staging_region_offset,
+    uint64_t                    buffer_write_region_offset,
+    uint64_t                    buffer_write_region_size
 );
 
-void fnd_gfx_tcmd_copy_staging_memory_to_texture(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_texture(
+    fnd_gfx_staging*            staging,
     fnd_gfx_texture*            target_texture,
-    uint64_t                staging_memory_region_offset,
+    uint64_t                    staging_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_size
 );
 
 void fnd_gfx_tcmd_copy_buffer_to_buffer(
-    fnd_gfx_buffer*             source_buffer,
-    fnd_gfx_buffer*             target_buffer,
-    uint64_t                source_region_offset,
-    uint64_t                target_region_offset,
-    uint64_t                target_region_size
+    fnd_gfx_buffer* source_buffer,
+    fnd_gfx_buffer* target_buffer,
+    uint64_t        source_region_offset,
+    uint64_t        target_region_offset,
+    uint64_t        target_region_size
 );
 
 // ===========================
@@ -1808,19 +1808,19 @@ void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, c
 }
 
 // ===========================
-// Staging Memory
+// Staging
 
-struct fnd_gfx_staging_memory {
+struct fnd_gfx_staging {
     fnd_gfx_hardware*       owning_hardware;
     memory_allocation   allocation;
     VkBuffer            buffer;
 };
 
-fnd_gfx_staging_memory* fnd_gfx_create_staging_memory(fnd_gfx_hardware* hardware, const fnd_gfx_staging_memory_create_info* info) {
-    fnd_gfx_staging_memory* staging_memory = calloc(1, sizeof(fnd_gfx_staging_memory));
-    if (!staging_memory) goto _fail;
+fnd_gfx_staging* fnd_gfx_create_staging(fnd_gfx_hardware* hardware, const fnd_gfx_staging_create_info* info) {
+    fnd_gfx_staging* staging = calloc(1, sizeof(fnd_gfx_staging));
+    if (!staging) goto _fail;
 
-    *staging_memory = (fnd_gfx_staging_memory){
+    *staging = (fnd_gfx_staging){
         .owning_hardware = hardware
     };
 
@@ -1829,34 +1829,34 @@ fnd_gfx_staging_memory* fnd_gfx_create_staging_memory(fnd_gfx_hardware* hardware
         .size        = info->bytes,
         .usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE
-    }, 0, &staging_memory->buffer) != VK_SUCCESS) goto _fail;
+    }, 0, &staging->buffer) != VK_SUCCESS) goto _fail;
 
     VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(hardware->logical_device, staging_memory->buffer, &memory_requirements);
+    vkGetBufferMemoryRequirements(hardware->logical_device, staging->buffer, &memory_requirements);
 
     if (!hardware_get_memory(
-        hardware, memory_requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_memory->allocation
+        hardware, memory_requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging->allocation
     )) goto _fail;
 
     if (vkBindBufferMemory(
-        hardware->logical_device, staging_memory->buffer,
-        staging_memory->allocation.owning_pool->memory,
-        fnd_par_partition_query_offset(staging_memory->allocation.partition)
+        hardware->logical_device, staging->buffer,
+        staging->allocation.owning_pool->memory,
+        fnd_par_partition_query_offset(staging->allocation.partition)
     ) != VK_SUCCESS) goto _fail;
 
-    return staging_memory;
+    return staging;
 
-_fail: fnd_gfx_free_staging_memory(staging_memory); return NULL;
+_fail: fnd_gfx_free_staging(staging); return NULL;
 }
 
-void fnd_gfx_free_staging_memory(fnd_gfx_staging_memory* staging_memory) {
-    if (!staging_memory) return;
-    vkDestroyBuffer(staging_memory->owning_hardware->logical_device, staging_memory->buffer, 0);
-    hardware_free_memory(staging_memory->owning_hardware, staging_memory->allocation);
-    free(staging_memory);
+void fnd_gfx_free_staging(fnd_gfx_staging* staging) {
+    if (!staging) return;
+    vkDestroyBuffer(staging->owning_hardware->logical_device, staging->buffer, 0);
+    hardware_free_memory(staging->owning_hardware, staging->allocation);
+    free(staging);
 }
 
-void* fnd_gfx_staging_memory_map(fnd_gfx_staging_memory* memory, uint64_t region_offset, uint64_t region_size) {
+void* fnd_gfx_staging_map(fnd_gfx_staging* memory, uint64_t region_offset, uint64_t region_size) {
     void* data; if (vkMapMemory(
         memory->owning_hardware->logical_device, 
         memory->allocation.owning_pool->memory, region_offset, region_size, 0, &data
@@ -1864,7 +1864,7 @@ void* fnd_gfx_staging_memory_map(fnd_gfx_staging_memory* memory, uint64_t region
     return data;
 }
 
-void fnd_gfx_staging_memory_unmap(fnd_gfx_staging_memory* memory) {
+void fnd_gfx_staging_unmap(fnd_gfx_staging* memory) {
     vkUnmapMemory(memory->owning_hardware->logical_device, memory->allocation.owning_pool->memory);
 }
 
@@ -2473,31 +2473,31 @@ void fnd_gfx_free_pipeline(fnd_gfx_pipeline* pipeline) {
 // ===========================
 // Transfer Commands
 
-void fnd_gfx_tcmd_copy_staging_memory_to_buffer(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_buffer(
+    fnd_gfx_staging*     staging,
     fnd_gfx_buffer*             target_buffer,
-    uint64_t                staging_memory_region_offset,
+    uint64_t                staging_region_offset,
     uint64_t                buffer_write_region_offset,
     uint64_t                buffer_write_region_size
 ) {
     VkBufferCopy copy_region = {
-        .srcOffset  = staging_memory_region_offset,
+        .srcOffset  = staging_region_offset,
         .size       = buffer_write_region_size,
         .dstOffset  = buffer_write_region_offset
     };
 
     vkCmdCopyBuffer(
         recording_state_command_list->command_buffer, 
-        staging_memory->buffer, 
+        staging->buffer, 
         target_buffer->buffer, 
         1, &copy_region
     );
 }
 
-void fnd_gfx_tcmd_copy_staging_memory_to_texture(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_texture(
+    fnd_gfx_staging*     staging,
     fnd_gfx_texture*            target_texture,
-    uint64_t                staging_memory_region_offset,
+    uint64_t                staging_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_size
 ) {
@@ -2528,7 +2528,7 @@ void fnd_gfx_tcmd_copy_staging_memory_to_texture(
     );
 
     VkBufferImageCopy region = {
-        .bufferOffset       = staging_memory_region_offset,
+        .bufferOffset       = staging_region_offset,
         .bufferRowLength    = 0,
         .bufferImageHeight  = 0,
 
@@ -2552,7 +2552,7 @@ void fnd_gfx_tcmd_copy_staging_memory_to_texture(
 
     vkCmdCopyBufferToImage(
         recording_state_command_list->command_buffer,
-        staging_memory->buffer,
+        staging->buffer,
         target_texture->image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1, &region
