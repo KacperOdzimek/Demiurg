@@ -112,19 +112,19 @@ uint64_t fnd_gfx_timeline_get_value  (fnd_gfx_timeline*);                   // Q
 // ===========================
 // Command List
 
-typedef void (*fnd_gfx_command_list_recorder_func)(void* params);
-typedef struct fnd_gfx_command_list fnd_gfx_command_list;
+typedef void (*fnd_gfx_commands_recorder_func)(void* params);
+typedef struct fnd_gfx_commands fnd_gfx_commands;
 
-typedef struct fnd_gfx_command_list_create_info {
-    fnd_gfx_command_domain              domain; // allowed command types for this command list
+typedef struct fnd_gfx_commands_create_info {
+    fnd_gfx_command_domain          domain; // allowed command types for this command list
     uint8_t                         aindex; // selects allocator; create/free on the same (domain, aindex) must be externally synchronized
-    fnd_gfx_command_list*               parent; // previous version of list, from same group, consumed here to save resources (do not free later)
-    fnd_gfx_command_list_recorder_func  record; // recorder callback function pointer
+    fnd_gfx_commands*               parent; // previous version of list, from same group, consumed here to save resources (do not free later)
+    fnd_gfx_commands_recorder_func  record; // recorder callback function pointer
     void*                           params; // recorder callback parameters pointer
-} fnd_gfx_command_list_create_info;
+} fnd_gfx_commands_create_info;
 
-fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware*, const fnd_gfx_command_list_create_info* info);
-void fnd_gfx_free_command_list(fnd_gfx_command_list*);
+fnd_gfx_commands* fnd_gfx_create_commands(fnd_gfx_hardware*, const fnd_gfx_commands_create_info* info);
+void fnd_gfx_free_commands(fnd_gfx_commands*);
 
 typedef struct fnd_gfx_submit_info {
     uint8_t          domain_work_group;   // target work group
@@ -138,7 +138,7 @@ typedef struct fnd_gfx_submit_info {
     uint64_t*        signal_values;
 } fnd_gfx_submit_info;
 
-void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, const fnd_gfx_submit_info* info);
+void fnd_gfx_commands_submit(uint32_t count, fnd_gfx_commands** lists, const fnd_gfx_submit_info* info);
 
 // ==========================
 // Staging
@@ -1674,9 +1674,9 @@ uint64_t fnd_gfx_timeline_get_value(fnd_gfx_timeline* timeline) {
 // Command List
 
 // Command list recording target
-static fnd_thr_thread_local fnd_gfx_command_list* recording_state_command_list = NULL;
+static fnd_thr_thread_local fnd_gfx_commands* recording_state_commands = NULL;
 
-struct fnd_gfx_command_list {
+struct fnd_gfx_commands {
     fnd_gfx_hardware*       owning_hardware;
     VkCommandPool       owning_pool;
     uint8_t             allocator_index;
@@ -1684,12 +1684,12 @@ struct fnd_gfx_command_list {
     VkCommandBuffer     command_buffer;
 };
 
-fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware* hardware, const fnd_gfx_command_list_create_info* info) {
-    fnd_gfx_command_list* list = NULL;
+fnd_gfx_commands* fnd_gfx_create_commands(fnd_gfx_hardware* hardware, const fnd_gfx_commands_create_info* info) {
+    fnd_gfx_commands* list = NULL;
 
     // If no parent to reuse, create new list
     if (!info->parent) {
-        list = calloc(1, sizeof(fnd_gfx_command_list));
+        list = calloc(1, sizeof(fnd_gfx_commands));
         if (!list) return NULL;
 
         VkCommandPool pool = hardware_get_command_pool(hardware, info->domain, info->aindex);
@@ -1708,7 +1708,7 @@ fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware* hardware, co
             free(list); return NULL;
         }
 
-        *list = (fnd_gfx_command_list){
+        *list = (fnd_gfx_commands){
             .owning_hardware = hardware,
             .owning_pool     = pool,
             .allocator_index = info->aindex,
@@ -1732,17 +1732,17 @@ fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware* hardware, co
         .pInheritanceInfo   = 0
     }) != VK_SUCCESS) goto _fail; // failed to begin recording command buffer
 
-    recording_state_command_list = list;
+    recording_state_commands = list;
     info->record(info->params);
-    recording_state_command_list = NULL;
+    recording_state_commands = NULL;
 
     if (vkEndCommandBuffer(list->command_buffer) != VK_SUCCESS) goto _fail; // failed to record command buffer
     return list;    // Return List
 
-_fail: fnd_gfx_free_command_list(list); return NULL;
+_fail: fnd_gfx_free_commands(list); return NULL;
 }
 
-void fnd_gfx_free_command_list(fnd_gfx_command_list* list) {
+void fnd_gfx_free_commands(fnd_gfx_commands* list) {
     if (!list) return;
     vkFreeCommandBuffers(
         list->owning_hardware->logical_device,
@@ -1751,7 +1751,7 @@ void fnd_gfx_free_command_list(fnd_gfx_command_list* list) {
     free(list);
 }
 
-void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, const fnd_gfx_submit_info* info) {
+void fnd_gfx_commands_submit(uint32_t count, fnd_gfx_commands** lists, const fnd_gfx_submit_info* info) {
     if (count == 0) return;
 
     VkQueue queue = lists[0]->owning_hardware->work_group_queue[lists[0]->command_domain][info->domain_work_group];
@@ -2487,7 +2487,7 @@ void fnd_gfx_tcmd_copy_staging_to_buffer(
     };
 
     vkCmdCopyBuffer(
-        recording_state_command_list->command_buffer, 
+        recording_state_commands->command_buffer, 
         staging->buffer, 
         target_buffer->buffer, 
         1, &copy_region
@@ -2520,7 +2520,7 @@ void fnd_gfx_tcmd_copy_staging_to_texture(
     };
 
     vkCmdPipelineBarrier(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, NULL, 0, NULL,
@@ -2551,7 +2551,7 @@ void fnd_gfx_tcmd_copy_staging_to_texture(
     };
 
     vkCmdCopyBufferToImage(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         staging->buffer,
         target_texture->image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -2573,7 +2573,7 @@ void fnd_gfx_tcmd_copy_buffer_to_buffer(
     };
 
     vkCmdCopyBuffer(
-        recording_state_command_list->command_buffer, 
+        recording_state_commands->command_buffer, 
         source_buffer->buffer, 
         target_buffer->buffer, 
         1, &copy_region
@@ -2626,8 +2626,8 @@ void fnd_gfx_gcmd_begin_rendering(fnd_gfx_gcmd_rendering_info* info) {
     VkRenderingAttachmentInfo depth_info;
     if (info->depth_stencil_attachment) depth_info = fnd_gfx_to_vk_rendering_attachment(info->depth_stencil_attachment, 1);
 
-    recording_state_command_list->owning_hardware->vkCmdBeginRenderingKHR(
-        recording_state_command_list->command_buffer, &(VkRenderingInfoKHR){
+    recording_state_commands->owning_hardware->vkCmdBeginRenderingKHR(
+        recording_state_commands->command_buffer, &(VkRenderingInfoKHR){
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .layerCount             = 1,
             .colorAttachmentCount   = info->color_attachments_count,
@@ -2645,20 +2645,20 @@ void fnd_gfx_gcmd_begin_rendering(fnd_gfx_gcmd_rendering_info* info) {
 }
 
 void fnd_gfx_gcmd_finish_rendering() {
-    recording_state_command_list->owning_hardware->vkCmdEndRenderingKHR(
-        recording_state_command_list->command_buffer
+    recording_state_commands->owning_hardware->vkCmdEndRenderingKHR(
+        recording_state_commands->command_buffer
     );
 }
 
 void fnd_gfx_gcmd_bind_graphics_pipeline(fnd_gfx_pipeline* pipeline) {
     vkCmdBindPipeline(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipeline->pipeline
     );
     
     vkCmdBindDescriptorSets(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipeline->layout,
         0, 1, &pipeline->owning_hardware->bindless_descriptor,
@@ -2674,7 +2674,7 @@ void fnd_gfx_gcmd_write_constants(
     void*            data
 ) {
     vkCmdPushConstants(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         pipeline->layout,
         fnd_gfx_to_vk_shader_stage(stage),
         pipeline->constants_offset[stage] + offset, bytes, data
@@ -2688,7 +2688,7 @@ void fnd_gfx_gcmd_draw(
     uint32_t instances_count
 ) {
     vkCmdDraw(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         (uint32_t)vertices_count,
         (uint32_t)instances_count,
         (uint32_t)vertices_base,
@@ -2700,7 +2700,7 @@ void fnd_gfx_gcmd_set_scissors(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 ) {
-    vkCmdSetScissor(recording_state_command_list->command_buffer, 0, 1, &(VkRect2D){
+    vkCmdSetScissor(recording_state_commands->command_buffer, 0, 1, &(VkRect2D){
         .offset = {root_x, root_y},
         .extent = {width, height}
     });
@@ -2710,7 +2710,7 @@ void fnd_gfx_gcmd_set_viewport(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 ) {
-    vkCmdSetViewport(recording_state_command_list->command_buffer, 0, 1, &(VkViewport){
+    vkCmdSetViewport(recording_state_commands->command_buffer, 0, 1, &(VkViewport){
         .x        = (float)root_x,
         .y        = (float)root_y,
         .width    = (float)width,
