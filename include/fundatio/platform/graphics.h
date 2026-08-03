@@ -229,9 +229,9 @@ typedef struct fnd_gfx_texture_create_info {
     fnd_gfx_texture_usage       usage;
     fnd_gfx_texture_format      format;
     fnd_gfx_texture_dimensions  dimensions;
-    uint32_t                array_length;
-    uint32_t                sample_count;
-    uint32_t                mipmap_layers;
+    uint32_t                    array_length;
+    uint32_t                    sample_count;
+    uint32_t                    mipmap_layers;
     fnd_gfx_memory_access       memory_access;
 } fnd_gfx_texture_create_info;
 
@@ -240,6 +240,7 @@ fnd_gfx_texture* fnd_gfx_create_texture(fnd_gfx_hardware*, const fnd_gfx_texture
 void fnd_gfx_free_texture(fnd_gfx_texture* texture);
 
 fnd_gfx_texture_dimensions fnd_gfx_texture_query_dimensions(fnd_gfx_texture*);
+fnd_gfx_texture_format     fnd_gfx_texture_query_format(fnd_gfx_texture*);
 
 // ==========================
 // Sampler
@@ -264,10 +265,10 @@ typedef struct fnd_gfx_sampler_create_info {
     fnd_gfx_sampler_wrapping    x_coord_wrapping;
     fnd_gfx_sampler_wrapping    y_coord_wrapping;
     fnd_gfx_sampler_wrapping    z_coord_wrapping;
-    int                     unnormalized_coordinates;
+    int                         unnormalized_coordinates;
 
-    float                   min_lod, max_lod;
-    float                   mip_lod_bias;
+    float                       min_lod, max_lod;
+    float                       mip_lod_bias;
 } fnd_gfx_sampler_create_info;
 
 typedef struct fnd_gfx_sampler fnd_gfx_sampler;
@@ -303,7 +304,7 @@ uint32_t fnd_gfx_shader_resource_bind(fnd_gfx_hardware* hardware, fnd_gfx_resour
 // Shader Stages
 
 typedef struct fnd_gfx_pipeline_shader_stages {
-    fnd_gfx_shader*     shaders  [fnd_gfx_shader_stage_count];  // shader per stage
+    fnd_gfx_shader* shaders  [fnd_gfx_shader_stage_count];  // shader per stage
     uint32_t        constants[fnd_gfx_shader_stage_count];  // size of constants range per stage
 } fnd_gfx_pipeline_shader_stages;
 
@@ -523,9 +524,9 @@ void fnd_gfx_gcmd_bind_graphics_pipeline(fnd_gfx_pipeline* pipeline);
 void fnd_gfx_gcmd_write_constants(
     fnd_gfx_pipeline*    pipeline, 
     fnd_gfx_shader_stage stage, 
-    uint32_t         offset,
-    uint32_t         bytes, 
-    void*            data
+    uint32_t             offset,
+    uint32_t             bytes, 
+    void*                data
 );
 
 void fnd_gfx_gcmd_draw(
@@ -544,6 +545,31 @@ void fnd_gfx_gcmd_set_viewport(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 );
+
+
+// ===========================
+// Helpers
+
+static inline uint64_t fnd_gfx_texture_format_get_pixel_bytes(fnd_gfx_texture_format format) {
+    switch (format) {
+        case fnd_gfx_texture_format_undefined:              return 0;
+        case fnd_gfx_texture_format_r8_unorm:               return 1;
+        case fnd_gfx_texture_format_rg8_unorm:              return 2;
+        case fnd_gfx_texture_format_rgba8_unorm:            return 4;
+        case fnd_gfx_texture_format_rgba8_srgb:             return 4;
+        case fnd_gfx_texture_format_bgra8_unorm:            return 4;
+        case fnd_gfx_texture_format_bgra8_srgb:             return 4;
+        case fnd_gfx_texture_format_r16_float:              return 2;
+        case fnd_gfx_texture_format_rg16_float:             return 4;
+        case fnd_gfx_texture_format_rgba16_float:           return 8;
+        case fnd_gfx_texture_format_r32_float:              return 4;
+        case fnd_gfx_texture_format_rg32_float:             return 8;
+        case fnd_gfx_texture_format_rgba32_float:           return 16;
+        case fnd_gfx_texture_format_depth16_unorm:          return 2;
+        case fnd_gfx_texture_format_depth24_unorm_stencil8: return 4;
+        case fnd_gfx_texture_format_depth32_float:          return 4;
+    } return 0;
+}
 
 #endif
 
@@ -1949,13 +1975,14 @@ uint64_t fnd_gfx_buffer_query_bytes(fnd_gfx_buffer* buffer) {
 
 struct fnd_gfx_texture {
     fnd_gfx_hardware*           owning_hardware;
-    memory_allocation       allocation;
+    memory_allocation           allocation;
     fnd_gfx_texture_dimensions  dimensions;
-    uint32_t                mip_levels;
-    uint32_t                layers;
-    VkImage                 image;
-    VkImageView             view;
-    resource_bind_cache     bind_cache;
+    fnd_gfx_texture_format      format;
+    uint32_t                    mip_levels;
+    uint32_t                    layers;
+    VkImage                     image;
+    VkImageView                 view;
+    resource_bind_cache         bind_cache;
 };
 
 VkImageView get_native_texture_handle(fnd_gfx_texture* texture) {
@@ -2029,7 +2056,8 @@ fnd_gfx_texture* fnd_gfx_create_texture(fnd_gfx_hardware* hardware, const fnd_gf
         .owning_hardware = hardware, 
         .dimensions = info->dimensions,
         .mip_levels = info->mipmap_layers,
-        .layers     = info->array_length
+        .layers     = info->array_length,
+        .format     = info->format
     };
 
     if (vkCreateImage(hardware->logical_device, &(VkImageCreateInfo){
@@ -2085,6 +2113,10 @@ void fnd_gfx_free_texture(fnd_gfx_texture* texture) {
 
 fnd_gfx_texture_dimensions fnd_gfx_texture_query_dimensions(fnd_gfx_texture* texture) {
     return texture->dimensions;
+}
+
+fnd_gfx_texture_format fnd_gfx_texture_query_format(fnd_gfx_texture* texture) {
+    return texture->format;
 }
 
 // ===========================
