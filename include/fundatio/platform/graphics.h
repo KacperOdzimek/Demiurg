@@ -112,19 +112,19 @@ uint64_t fnd_gfx_timeline_get_value  (fnd_gfx_timeline*);                   // Q
 // ===========================
 // Command List
 
-typedef void (*fnd_gfx_command_list_recorder_func)(void* params);
-typedef struct fnd_gfx_command_list fnd_gfx_command_list;
+typedef void (*fnd_gfx_commands_recorder_func)(void* params);
+typedef struct fnd_gfx_commands fnd_gfx_commands;
 
-typedef struct fnd_gfx_command_list_create_info {
-    fnd_gfx_command_domain              domain; // allowed command types for this command list
+typedef struct fnd_gfx_commands_create_info {
+    fnd_gfx_command_domain          domain; // allowed command types for this command list
     uint8_t                         aindex; // selects allocator; create/free on the same (domain, aindex) must be externally synchronized
-    fnd_gfx_command_list*               parent; // previous version of list, from same group, consumed here to save resources (do not free later)
-    fnd_gfx_command_list_recorder_func  record; // recorder callback function pointer
+    fnd_gfx_commands*               parent; // previous version of list, from same group, consumed here to save resources (do not free later)
+    fnd_gfx_commands_recorder_func  record; // recorder callback function pointer
     void*                           params; // recorder callback parameters pointer
-} fnd_gfx_command_list_create_info;
+} fnd_gfx_commands_create_info;
 
-fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware*, const fnd_gfx_command_list_create_info* info);
-void fnd_gfx_free_command_list(fnd_gfx_command_list*);
+fnd_gfx_commands* fnd_gfx_create_commands(fnd_gfx_hardware*, const fnd_gfx_commands_create_info* info);
+void fnd_gfx_free_commands(fnd_gfx_commands*);
 
 typedef struct fnd_gfx_submit_info {
     uint8_t          domain_work_group;   // target work group
@@ -138,21 +138,21 @@ typedef struct fnd_gfx_submit_info {
     uint64_t*        signal_values;
 } fnd_gfx_submit_info;
 
-void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, const fnd_gfx_submit_info* info);
+void fnd_gfx_commands_submit(uint32_t count, fnd_gfx_commands** lists, const fnd_gfx_submit_info* info);
 
 // ==========================
-// Staging Memory
+// Staging
 
-typedef struct fnd_gfx_staging_memory_create_info {
+typedef struct fnd_gfx_staging_create_info {
     uint64_t bytes;
-} fnd_gfx_staging_memory_create_info;
+} fnd_gfx_staging_create_info;
 
-typedef struct fnd_gfx_staging_memory fnd_gfx_staging_memory;
-fnd_gfx_staging_memory* fnd_gfx_create_staging_memory(fnd_gfx_hardware*, const fnd_gfx_staging_memory_create_info*);
-void fnd_gfx_free_staging_memory(fnd_gfx_staging_memory*);
+typedef struct fnd_gfx_staging fnd_gfx_staging;
+fnd_gfx_staging* fnd_gfx_create_staging(fnd_gfx_hardware*, const fnd_gfx_staging_create_info*);
+void fnd_gfx_free_staging(fnd_gfx_staging*);
 
-void* fnd_gfx_staging_memory_map(fnd_gfx_staging_memory*, uint64_t region_offset, uint64_t region_size);
-void fnd_gfx_staging_memory_unmap(fnd_gfx_staging_memory*);
+void* fnd_gfx_staging_map(fnd_gfx_staging*, uint64_t region_offset, uint64_t region_size);
+void fnd_gfx_staging_unmap(fnd_gfx_staging*);
 
 // ===========================
 // Buffer
@@ -229,9 +229,9 @@ typedef struct fnd_gfx_texture_create_info {
     fnd_gfx_texture_usage       usage;
     fnd_gfx_texture_format      format;
     fnd_gfx_texture_dimensions  dimensions;
-    uint32_t                array_length;
-    uint32_t                sample_count;
-    uint32_t                mipmap_layers;
+    uint32_t                    array_length;
+    uint32_t                    sample_count;
+    uint32_t                    mipmap_layers;
     fnd_gfx_memory_access       memory_access;
 } fnd_gfx_texture_create_info;
 
@@ -240,6 +240,7 @@ fnd_gfx_texture* fnd_gfx_create_texture(fnd_gfx_hardware*, const fnd_gfx_texture
 void fnd_gfx_free_texture(fnd_gfx_texture* texture);
 
 fnd_gfx_texture_dimensions fnd_gfx_texture_query_dimensions(fnd_gfx_texture*);
+fnd_gfx_texture_format     fnd_gfx_texture_query_format(fnd_gfx_texture*);
 
 // ==========================
 // Sampler
@@ -264,10 +265,10 @@ typedef struct fnd_gfx_sampler_create_info {
     fnd_gfx_sampler_wrapping    x_coord_wrapping;
     fnd_gfx_sampler_wrapping    y_coord_wrapping;
     fnd_gfx_sampler_wrapping    z_coord_wrapping;
-    int                     unnormalized_coordinates;
+    int                         unnormalized_coordinates;
 
-    float                   min_lod, max_lod;
-    float                   mip_lod_bias;
+    float                       min_lod, max_lod;
+    float                       mip_lod_bias;
 } fnd_gfx_sampler_create_info;
 
 typedef struct fnd_gfx_sampler fnd_gfx_sampler;
@@ -303,7 +304,7 @@ uint32_t fnd_gfx_shader_resource_bind(fnd_gfx_hardware* hardware, fnd_gfx_resour
 // Shader Stages
 
 typedef struct fnd_gfx_pipeline_shader_stages {
-    fnd_gfx_shader*     shaders  [fnd_gfx_shader_stage_count];  // shader per stage
+    fnd_gfx_shader* shaders  [fnd_gfx_shader_stage_count];  // shader per stage
     uint32_t        constants[fnd_gfx_shader_stage_count];  // size of constants range per stage
 } fnd_gfx_pipeline_shader_stages;
 
@@ -471,28 +472,28 @@ fnd_gfx_texture_format  fnd_gfx_window_get_attachment_format(fnd_gfx_window*);
 // Can only be called inside 
 // command list recorder callback
 
-void fnd_gfx_tcmd_copy_staging_memory_to_buffer(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_buffer(
+    fnd_gfx_staging*            staging,
     fnd_gfx_buffer*             target_buffer,
-    uint64_t                staging_memory_region_offset,
-    uint64_t                buffer_write_region_offset,
-    uint64_t                buffer_write_region_size
+    uint64_t                    staging_region_offset,
+    uint64_t                    buffer_write_region_offset,
+    uint64_t                    buffer_write_region_size
 );
 
-void fnd_gfx_tcmd_copy_staging_memory_to_texture(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_texture(
+    fnd_gfx_staging*            staging,
     fnd_gfx_texture*            target_texture,
-    uint64_t                staging_memory_region_offset,
+    uint64_t                    staging_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_size
 );
 
 void fnd_gfx_tcmd_copy_buffer_to_buffer(
-    fnd_gfx_buffer*             source_buffer,
-    fnd_gfx_buffer*             target_buffer,
-    uint64_t                source_region_offset,
-    uint64_t                target_region_offset,
-    uint64_t                target_region_size
+    fnd_gfx_buffer* source_buffer,
+    fnd_gfx_buffer* target_buffer,
+    uint64_t        source_region_offset,
+    uint64_t        target_region_offset,
+    uint64_t        target_region_size
 );
 
 // ===========================
@@ -523,9 +524,9 @@ void fnd_gfx_gcmd_bind_graphics_pipeline(fnd_gfx_pipeline* pipeline);
 void fnd_gfx_gcmd_write_constants(
     fnd_gfx_pipeline*    pipeline, 
     fnd_gfx_shader_stage stage, 
-    uint32_t         offset,
-    uint32_t         bytes, 
-    void*            data
+    uint32_t             offset,
+    uint32_t             bytes, 
+    void*                data
 );
 
 void fnd_gfx_gcmd_draw(
@@ -544,6 +545,31 @@ void fnd_gfx_gcmd_set_viewport(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 );
+
+
+// ===========================
+// Helpers
+
+static inline uint64_t fnd_gfx_texture_format_get_pixel_bytes(fnd_gfx_texture_format format) {
+    switch (format) {
+        case fnd_gfx_texture_format_undefined:              return 0;
+        case fnd_gfx_texture_format_r8_unorm:               return 1;
+        case fnd_gfx_texture_format_rg8_unorm:              return 2;
+        case fnd_gfx_texture_format_rgba8_unorm:            return 4;
+        case fnd_gfx_texture_format_rgba8_srgb:             return 4;
+        case fnd_gfx_texture_format_bgra8_unorm:            return 4;
+        case fnd_gfx_texture_format_bgra8_srgb:             return 4;
+        case fnd_gfx_texture_format_r16_float:              return 2;
+        case fnd_gfx_texture_format_rg16_float:             return 4;
+        case fnd_gfx_texture_format_rgba16_float:           return 8;
+        case fnd_gfx_texture_format_r32_float:              return 4;
+        case fnd_gfx_texture_format_rg32_float:             return 8;
+        case fnd_gfx_texture_format_rgba32_float:           return 16;
+        case fnd_gfx_texture_format_depth16_unorm:          return 2;
+        case fnd_gfx_texture_format_depth24_unorm_stencil8: return 4;
+        case fnd_gfx_texture_format_depth32_float:          return 4;
+    } return 0;
+}
 
 #endif
 
@@ -1674,9 +1700,9 @@ uint64_t fnd_gfx_timeline_get_value(fnd_gfx_timeline* timeline) {
 // Command List
 
 // Command list recording target
-static fnd_thr_thread_local fnd_gfx_command_list* recording_state_command_list = NULL;
+static fnd_thr_thread_local fnd_gfx_commands* recording_state_commands = NULL;
 
-struct fnd_gfx_command_list {
+struct fnd_gfx_commands {
     fnd_gfx_hardware*       owning_hardware;
     VkCommandPool       owning_pool;
     uint8_t             allocator_index;
@@ -1684,12 +1710,12 @@ struct fnd_gfx_command_list {
     VkCommandBuffer     command_buffer;
 };
 
-fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware* hardware, const fnd_gfx_command_list_create_info* info) {
-    fnd_gfx_command_list* list = NULL;
+fnd_gfx_commands* fnd_gfx_create_commands(fnd_gfx_hardware* hardware, const fnd_gfx_commands_create_info* info) {
+    fnd_gfx_commands* list = NULL;
 
     // If no parent to reuse, create new list
     if (!info->parent) {
-        list = calloc(1, sizeof(fnd_gfx_command_list));
+        list = calloc(1, sizeof(fnd_gfx_commands));
         if (!list) return NULL;
 
         VkCommandPool pool = hardware_get_command_pool(hardware, info->domain, info->aindex);
@@ -1708,7 +1734,7 @@ fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware* hardware, co
             free(list); return NULL;
         }
 
-        *list = (fnd_gfx_command_list){
+        *list = (fnd_gfx_commands){
             .owning_hardware = hardware,
             .owning_pool     = pool,
             .allocator_index = info->aindex,
@@ -1732,17 +1758,17 @@ fnd_gfx_command_list* fnd_gfx_create_command_list(fnd_gfx_hardware* hardware, co
         .pInheritanceInfo   = 0
     }) != VK_SUCCESS) goto _fail; // failed to begin recording command buffer
 
-    recording_state_command_list = list;
+    recording_state_commands = list;
     info->record(info->params);
-    recording_state_command_list = NULL;
+    recording_state_commands = NULL;
 
     if (vkEndCommandBuffer(list->command_buffer) != VK_SUCCESS) goto _fail; // failed to record command buffer
     return list;    // Return List
 
-_fail: fnd_gfx_free_command_list(list); return NULL;
+_fail: fnd_gfx_free_commands(list); return NULL;
 }
 
-void fnd_gfx_free_command_list(fnd_gfx_command_list* list) {
+void fnd_gfx_free_commands(fnd_gfx_commands* list) {
     if (!list) return;
     vkFreeCommandBuffers(
         list->owning_hardware->logical_device,
@@ -1751,7 +1777,7 @@ void fnd_gfx_free_command_list(fnd_gfx_command_list* list) {
     free(list);
 }
 
-void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, const fnd_gfx_submit_info* info) {
+void fnd_gfx_commands_submit(uint32_t count, fnd_gfx_commands** lists, const fnd_gfx_submit_info* info) {
     if (count == 0) return;
 
     VkQueue queue = lists[0]->owning_hardware->work_group_queue[lists[0]->command_domain][info->domain_work_group];
@@ -1808,19 +1834,19 @@ void fnd_gfx_command_list_submit(uint32_t count, fnd_gfx_command_list** lists, c
 }
 
 // ===========================
-// Staging Memory
+// Staging
 
-struct fnd_gfx_staging_memory {
+struct fnd_gfx_staging {
     fnd_gfx_hardware*       owning_hardware;
     memory_allocation   allocation;
     VkBuffer            buffer;
 };
 
-fnd_gfx_staging_memory* fnd_gfx_create_staging_memory(fnd_gfx_hardware* hardware, const fnd_gfx_staging_memory_create_info* info) {
-    fnd_gfx_staging_memory* staging_memory = calloc(1, sizeof(fnd_gfx_staging_memory));
-    if (!staging_memory) goto _fail;
+fnd_gfx_staging* fnd_gfx_create_staging(fnd_gfx_hardware* hardware, const fnd_gfx_staging_create_info* info) {
+    fnd_gfx_staging* staging = calloc(1, sizeof(fnd_gfx_staging));
+    if (!staging) goto _fail;
 
-    *staging_memory = (fnd_gfx_staging_memory){
+    *staging = (fnd_gfx_staging){
         .owning_hardware = hardware
     };
 
@@ -1829,34 +1855,34 @@ fnd_gfx_staging_memory* fnd_gfx_create_staging_memory(fnd_gfx_hardware* hardware
         .size        = info->bytes,
         .usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE
-    }, 0, &staging_memory->buffer) != VK_SUCCESS) goto _fail;
+    }, 0, &staging->buffer) != VK_SUCCESS) goto _fail;
 
     VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(hardware->logical_device, staging_memory->buffer, &memory_requirements);
+    vkGetBufferMemoryRequirements(hardware->logical_device, staging->buffer, &memory_requirements);
 
     if (!hardware_get_memory(
-        hardware, memory_requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_memory->allocation
+        hardware, memory_requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging->allocation
     )) goto _fail;
 
     if (vkBindBufferMemory(
-        hardware->logical_device, staging_memory->buffer,
-        staging_memory->allocation.owning_pool->memory,
-        fnd_par_partition_query_offset(staging_memory->allocation.partition)
+        hardware->logical_device, staging->buffer,
+        staging->allocation.owning_pool->memory,
+        fnd_par_partition_query_offset(staging->allocation.partition)
     ) != VK_SUCCESS) goto _fail;
 
-    return staging_memory;
+    return staging;
 
-_fail: fnd_gfx_free_staging_memory(staging_memory); return NULL;
+_fail: fnd_gfx_free_staging(staging); return NULL;
 }
 
-void fnd_gfx_free_staging_memory(fnd_gfx_staging_memory* staging_memory) {
-    if (!staging_memory) return;
-    vkDestroyBuffer(staging_memory->owning_hardware->logical_device, staging_memory->buffer, 0);
-    hardware_free_memory(staging_memory->owning_hardware, staging_memory->allocation);
-    free(staging_memory);
+void fnd_gfx_free_staging(fnd_gfx_staging* staging) {
+    if (!staging) return;
+    vkDestroyBuffer(staging->owning_hardware->logical_device, staging->buffer, 0);
+    hardware_free_memory(staging->owning_hardware, staging->allocation);
+    free(staging);
 }
 
-void* fnd_gfx_staging_memory_map(fnd_gfx_staging_memory* memory, uint64_t region_offset, uint64_t region_size) {
+void* fnd_gfx_staging_map(fnd_gfx_staging* memory, uint64_t region_offset, uint64_t region_size) {
     void* data; if (vkMapMemory(
         memory->owning_hardware->logical_device, 
         memory->allocation.owning_pool->memory, region_offset, region_size, 0, &data
@@ -1864,7 +1890,7 @@ void* fnd_gfx_staging_memory_map(fnd_gfx_staging_memory* memory, uint64_t region
     return data;
 }
 
-void fnd_gfx_staging_memory_unmap(fnd_gfx_staging_memory* memory) {
+void fnd_gfx_staging_unmap(fnd_gfx_staging* memory) {
     vkUnmapMemory(memory->owning_hardware->logical_device, memory->allocation.owning_pool->memory);
 }
 
@@ -1949,13 +1975,14 @@ uint64_t fnd_gfx_buffer_query_bytes(fnd_gfx_buffer* buffer) {
 
 struct fnd_gfx_texture {
     fnd_gfx_hardware*           owning_hardware;
-    memory_allocation       allocation;
+    memory_allocation           allocation;
     fnd_gfx_texture_dimensions  dimensions;
-    uint32_t                mip_levels;
-    uint32_t                layers;
-    VkImage                 image;
-    VkImageView             view;
-    resource_bind_cache     bind_cache;
+    fnd_gfx_texture_format      format;
+    uint32_t                    mip_levels;
+    uint32_t                    layers;
+    VkImage                     image;
+    VkImageView                 view;
+    resource_bind_cache         bind_cache;
 };
 
 VkImageView get_native_texture_handle(fnd_gfx_texture* texture) {
@@ -2029,7 +2056,8 @@ fnd_gfx_texture* fnd_gfx_create_texture(fnd_gfx_hardware* hardware, const fnd_gf
         .owning_hardware = hardware, 
         .dimensions = info->dimensions,
         .mip_levels = info->mipmap_layers,
-        .layers     = info->array_length
+        .layers     = info->array_length,
+        .format     = info->format
     };
 
     if (vkCreateImage(hardware->logical_device, &(VkImageCreateInfo){
@@ -2085,6 +2113,10 @@ void fnd_gfx_free_texture(fnd_gfx_texture* texture) {
 
 fnd_gfx_texture_dimensions fnd_gfx_texture_query_dimensions(fnd_gfx_texture* texture) {
     return texture->dimensions;
+}
+
+fnd_gfx_texture_format fnd_gfx_texture_query_format(fnd_gfx_texture* texture) {
+    return texture->format;
 }
 
 // ===========================
@@ -2473,31 +2505,31 @@ void fnd_gfx_free_pipeline(fnd_gfx_pipeline* pipeline) {
 // ===========================
 // Transfer Commands
 
-void fnd_gfx_tcmd_copy_staging_memory_to_buffer(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_buffer(
+    fnd_gfx_staging*     staging,
     fnd_gfx_buffer*             target_buffer,
-    uint64_t                staging_memory_region_offset,
+    uint64_t                staging_region_offset,
     uint64_t                buffer_write_region_offset,
     uint64_t                buffer_write_region_size
 ) {
     VkBufferCopy copy_region = {
-        .srcOffset  = staging_memory_region_offset,
+        .srcOffset  = staging_region_offset,
         .size       = buffer_write_region_size,
         .dstOffset  = buffer_write_region_offset
     };
 
     vkCmdCopyBuffer(
-        recording_state_command_list->command_buffer, 
-        staging_memory->buffer, 
+        recording_state_commands->command_buffer, 
+        staging->buffer, 
         target_buffer->buffer, 
         1, &copy_region
     );
 }
 
-void fnd_gfx_tcmd_copy_staging_memory_to_texture(
-    fnd_gfx_staging_memory*     staging_memory,
+void fnd_gfx_tcmd_copy_staging_to_texture(
+    fnd_gfx_staging*     staging,
     fnd_gfx_texture*            target_texture,
-    uint64_t                staging_memory_region_offset,
+    uint64_t                staging_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_offset,
     fnd_gfx_texture_dimensions  texture_write_region_size
 ) {
@@ -2520,7 +2552,7 @@ void fnd_gfx_tcmd_copy_staging_memory_to_texture(
     };
 
     vkCmdPipelineBarrier(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, NULL, 0, NULL,
@@ -2528,7 +2560,7 @@ void fnd_gfx_tcmd_copy_staging_memory_to_texture(
     );
 
     VkBufferImageCopy region = {
-        .bufferOffset       = staging_memory_region_offset,
+        .bufferOffset       = staging_region_offset,
         .bufferRowLength    = 0,
         .bufferImageHeight  = 0,
 
@@ -2551,8 +2583,8 @@ void fnd_gfx_tcmd_copy_staging_memory_to_texture(
     };
 
     vkCmdCopyBufferToImage(
-        recording_state_command_list->command_buffer,
-        staging_memory->buffer,
+        recording_state_commands->command_buffer,
+        staging->buffer,
         target_texture->image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1, &region
@@ -2573,7 +2605,7 @@ void fnd_gfx_tcmd_copy_buffer_to_buffer(
     };
 
     vkCmdCopyBuffer(
-        recording_state_command_list->command_buffer, 
+        recording_state_commands->command_buffer, 
         source_buffer->buffer, 
         target_buffer->buffer, 
         1, &copy_region
@@ -2626,8 +2658,8 @@ void fnd_gfx_gcmd_begin_rendering(fnd_gfx_gcmd_rendering_info* info) {
     VkRenderingAttachmentInfo depth_info;
     if (info->depth_stencil_attachment) depth_info = fnd_gfx_to_vk_rendering_attachment(info->depth_stencil_attachment, 1);
 
-    recording_state_command_list->owning_hardware->vkCmdBeginRenderingKHR(
-        recording_state_command_list->command_buffer, &(VkRenderingInfoKHR){
+    recording_state_commands->owning_hardware->vkCmdBeginRenderingKHR(
+        recording_state_commands->command_buffer, &(VkRenderingInfoKHR){
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .layerCount             = 1,
             .colorAttachmentCount   = info->color_attachments_count,
@@ -2645,20 +2677,20 @@ void fnd_gfx_gcmd_begin_rendering(fnd_gfx_gcmd_rendering_info* info) {
 }
 
 void fnd_gfx_gcmd_finish_rendering() {
-    recording_state_command_list->owning_hardware->vkCmdEndRenderingKHR(
-        recording_state_command_list->command_buffer
+    recording_state_commands->owning_hardware->vkCmdEndRenderingKHR(
+        recording_state_commands->command_buffer
     );
 }
 
 void fnd_gfx_gcmd_bind_graphics_pipeline(fnd_gfx_pipeline* pipeline) {
     vkCmdBindPipeline(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipeline->pipeline
     );
     
     vkCmdBindDescriptorSets(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipeline->layout,
         0, 1, &pipeline->owning_hardware->bindless_descriptor,
@@ -2674,7 +2706,7 @@ void fnd_gfx_gcmd_write_constants(
     void*            data
 ) {
     vkCmdPushConstants(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         pipeline->layout,
         fnd_gfx_to_vk_shader_stage(stage),
         pipeline->constants_offset[stage] + offset, bytes, data
@@ -2688,7 +2720,7 @@ void fnd_gfx_gcmd_draw(
     uint32_t instances_count
 ) {
     vkCmdDraw(
-        recording_state_command_list->command_buffer,
+        recording_state_commands->command_buffer,
         (uint32_t)vertices_count,
         (uint32_t)instances_count,
         (uint32_t)vertices_base,
@@ -2700,7 +2732,7 @@ void fnd_gfx_gcmd_set_scissors(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 ) {
-    vkCmdSetScissor(recording_state_command_list->command_buffer, 0, 1, &(VkRect2D){
+    vkCmdSetScissor(recording_state_commands->command_buffer, 0, 1, &(VkRect2D){
         .offset = {root_x, root_y},
         .extent = {width, height}
     });
@@ -2710,7 +2742,7 @@ void fnd_gfx_gcmd_set_viewport(
     int32_t root_x,  int32_t  root_y,
     uint32_t width,  uint32_t height
 ) {
-    vkCmdSetViewport(recording_state_command_list->command_buffer, 0, 1, &(VkViewport){
+    vkCmdSetViewport(recording_state_commands->command_buffer, 0, 1, &(VkViewport){
         .x        = (float)root_x,
         .y        = (float)root_y,
         .width    = (float)width,
