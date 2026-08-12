@@ -1083,8 +1083,12 @@ fnd_gfx_hardware* fnd_gfx_create_hardware(fnd_gfx_library* library, const fnd_gf
 
     VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
-        .runtimeDescriptorArray                     = VK_TRUE,
-        .shaderStorageBufferArrayNonUniformIndexing = VK_TRUE
+        .runtimeDescriptorArray                         = VK_TRUE,
+        .shaderStorageBufferArrayNonUniformIndexing     = VK_TRUE,
+        .descriptorBindingUniformBufferUpdateAfterBind  = VK_TRUE,
+        .descriptorBindingStorageBufferUpdateAfterBind  = VK_TRUE,
+        .descriptorBindingStorageImageUpdateAfterBind   = VK_TRUE,
+        .descriptorBindingSampledImageUpdateAfterBind   = VK_TRUE
     };
     
     VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_features = {
@@ -1426,16 +1430,25 @@ VkDescriptorType fnd_gfx_resource_type_to_vk_descriptor_type(fnd_gfx_resource_ty
 
 struct bindless_allocator {
     fnd_thr_mutex*  mutex;            // allocator mutex
-    uint32_t    free_capacity;    // count of slots
-    uint32_t    free_count;       // stack elements count
-    uint32_t*   free_stack;       // stack of freed indices
+    uint32_t        free_capacity;    // count of slots
+    uint32_t        free_count;       // stack elements count
+    uint32_t*       free_stack;       // stack of freed indices
 };
 
 // No thread safe, as fnd_gfx_create_hardware is not thread safe, therefore no need
 int hardware_init_shader_access(fnd_gfx_hardware* hardware, const fnd_gfx_hardware_create_info* info) {
+    VkDescriptorBindingFlags binding_flags[fnd_gfx_resource_type_count];
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+        .bindingCount   = fnd_gfx_resource_type_count,
+        .pBindingFlags  = binding_flags
+    };
+
     VkDescriptorSetLayoutBinding* bindings = malloc(fnd_gfx_resource_type_count * sizeof(VkDescriptorSetLayoutBinding));
     for (uint32_t type = 0; type < fnd_gfx_resource_type_count; type++) {
-        bindings[type] = (VkDescriptorSetLayoutBinding){
+        binding_flags[type] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+        bindings[type]      = (VkDescriptorSetLayoutBinding){
             .binding            = type,
             .descriptorCount    = info->shader_resources_limit[type],
             .descriptorType     = fnd_gfx_resource_type_to_vk_descriptor_type(type),
@@ -1445,6 +1458,7 @@ int hardware_init_shader_access(fnd_gfx_hardware* hardware, const fnd_gfx_hardwa
     
     if (vkCreateDescriptorSetLayout(hardware->logical_device, &(VkDescriptorSetLayoutCreateInfo){
         .sType          = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext          = &binding_flags_info,
         .flags          = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
         .bindingCount   = fnd_gfx_resource_type_count,
         .pBindings      = bindings
@@ -1507,7 +1521,7 @@ void hardware_free_shader_access(fnd_gfx_hardware* hardware) {
 }
 
 typedef struct resource_bind_cache {
-    uint32_t bind_mask;                         // bit[resource type index] -> whether was bound
+    uint32_t bind_mask;                             // bit[resource type index] -> whether was bound
     uint32_t indices[fnd_gfx_resource_type_count];  // bind index
 } resource_bind_cache;
 
