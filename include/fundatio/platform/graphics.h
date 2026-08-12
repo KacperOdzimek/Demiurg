@@ -322,7 +322,7 @@ typedef enum fnd_gfx_store_op {
 } fnd_gfx_store_op;
 
 typedef struct fnd_gfx_pipeline_attachment_state {
-    uint32_t                color_attachments_count;
+    uint32_t                    color_attachments_count;
     fnd_gfx_texture_format*     color_attachments_formats;
     fnd_gfx_texture_format*     depth_stencil_format;   // nullable
 } fnd_gfx_pipeline_attachment_state;
@@ -875,7 +875,7 @@ int get_physical_device_at_index(fnd_gfx_library* library, uint32_t index, VkPhy
     if (index >= device_count) return 0;
     
     VkPhysicalDevice* devices = malloc(device_count * sizeof(VkPhysicalDevice)); if (!devices) return 0;
-    if (vkEnumeratePhysicalDevices(library->instance, &device_count, devices) != VK_SUCCESS)   return 0;
+    if (vkEnumeratePhysicalDevices(library->instance, &device_count, devices) != VK_SUCCESS) { free(devices); return 0; }
 
     *target = devices[index]; free(devices); return 1;
 }
@@ -890,7 +890,7 @@ char* fnd_gfx_library_query_hardware_name(fnd_gfx_library* library, uint32_t ind
     VkPhysicalDevice device; if (!get_physical_device_at_index(library, index, &device)) return NULL;
 
     VkPhysicalDeviceProperties properties; vkGetPhysicalDeviceProperties(device, &properties);
-    char* device_name = malloc(sizeof(char) * VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
+    char* device_name = malloc(sizeof(char) * VK_MAX_PHYSICAL_DEVICE_NAME_SIZE); if (!device_name) return NULL;
     strncpy(device_name, properties.deviceName, VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
     device_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1] = '\0';
 
@@ -1533,6 +1533,7 @@ uint32_t fnd_gfx_shader_resource_bind(fnd_gfx_hardware* hardware, fnd_gfx_resour
         case fnd_gfx_resource_type_sampler: {
             bc = get_sampler_resource_bind_cache(resource);
         } break;
+        default: assert(0 && "Invalid fnd_gfx_resource_type!");
     }
 
     // Was bound
@@ -2051,7 +2052,7 @@ static inline VkImageUsageFlags fnd_gfx_texture_usage_to_vk_image_usage(fnd_gfx_
 }
 
 fnd_gfx_texture* fnd_gfx_create_texture(fnd_gfx_hardware* hardware, const fnd_gfx_texture_create_info* info) {
-    fnd_gfx_texture* texture = malloc(sizeof(fnd_gfx_texture));
+    fnd_gfx_texture* texture = malloc(sizeof(fnd_gfx_texture)); if (!texture) goto _fail;
     *texture = (fnd_gfx_texture){
         .owning_hardware = hardware, 
         .dimensions = info->dimensions,
@@ -2429,6 +2430,7 @@ fnd_gfx_pipeline* fnd_gfx_create_pipeline(fnd_gfx_hardware* hardware, const fnd_
     // Color Blend
 
     color_blend_attachments = malloc(info->attachment_state.color_attachments_count * sizeof(VkPipelineColorBlendAttachmentState));
+    if (!color_blend_attachments) goto _fail;
     for (uint32_t i = 0; i < info->attachment_state.color_attachments_count; i++) {
         color_blend_attachments[i] = (VkPipelineColorBlendAttachmentState){
             .blendEnable         = info->blend_state.blend_enable ? VK_TRUE : VK_FALSE,
@@ -2769,7 +2771,7 @@ typedef struct swapchain_support_details {
 } swapchain_support_details;
 
 swapchain_support_details get_swapchain_support_details(VkPhysicalDevice device, VkSurfaceKHR surface) {
-    swapchain_support_details details;
+    swapchain_support_details details = {0};
 
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
 
@@ -2831,6 +2833,7 @@ int windowing_platform_create_test_surface(fnd_gfx_library* library, VkSurfaceKH
 
     *surface            = srf;
     *other_data_storage = test_window;
+    return 1;
 }
 
 void windowing_platform_free_test_surface(fnd_gfx_library* library, VkSurfaceKHR surface, void* other_data_return) {
@@ -3222,8 +3225,8 @@ void fnd_gfx_window_query_input(fnd_gfx_window* window, int* left_pressed, int* 
 // Window Queries
 
 void fnd_gfx_window_query_size(fnd_gfx_window* window, uint32_t* width, uint32_t* height) {
-    int iwidth, iheight; glfwGetFramebufferSize(window->window, &iwidth, &iheight);
-    if (width)  *width  = iwidth; if (height) *height = iheight;
+    if (width)  *width  = window->swapchain.width;
+    if (height) *height = window->swapchain.height;
 }
 
 // Swapchain
