@@ -445,11 +445,21 @@ void fnd_gfx_window_query_input(fnd_gfx_window*, int* left_pressed, int* right_p
 void fnd_gfx_window_query_size    (fnd_gfx_window*, uint32_t* width, uint32_t* height);
 
 // non-zero at success
-int fnd_gfx_window_acquire_index (
-    fnd_gfx_window* window, fnd_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index
+int fnd_gfx_window_acquire (
+    fnd_gfx_window*     window, 
+    fnd_gfx_timeline*   can_render_timeline, 
+    uint64_t            can_render_signal, 
+    uint32_t*           out_index
 );
-void fnd_gfx_window_submit_present(
-    fnd_gfx_window* window, uint32_t target_index, uint32_t wait_timeline_count, fnd_gfx_timeline** wait_timelines, uint64_t* wait_signals
+
+void fnd_gfx_window_present(
+    fnd_gfx_window*     window, 
+    uint32_t            target_index, 
+    uint32_t            wait_timeline_count,    
+    fnd_gfx_timeline**  wait_timelines, 
+    uint64_t*           wait_signals, 
+    fnd_gfx_timeline*   wait_finished_timeline, 
+    uint64_t            wait_finished_signal
 );
 
 fnd_gfx_texture*        fnd_gfx_window_get_attachment_color(fnd_gfx_window*, uint32_t target_index);
@@ -2938,31 +2948,31 @@ static window_swapchain_settings pick_window_swapchain_settings(
 // Window
 
 typedef struct swapchain_pack {
-    uint32_t            width;
-    uint32_t            height;
-    VkSwapchainKHR      swapchain;
-    uint32_t            attachments_count;
+    uint32_t                width;
+    uint32_t                height;
+    VkSwapchainKHR          swapchain;
+    uint32_t                attachments_count;
     fnd_gfx_texture*        attachments_array;
-    VkCommandBuffer*    transition;         // Transition i'th attachments format for presentation
+    VkCommandBuffer*        transition;         // Transition i'th attachments format for presentation
     fnd_gfx_texture_format  color_format;
+    uint32_t                semaphores_count;
+    uint32_t                semaphores_iter;
+    VkSemaphore*            acquire_semaphores;
+    VkSemaphore*            present_semaphores;
 } swapchain_pack;
 
 typedef struct retired_swapchain {
-    uint64_t            last_present;       // Value window->present_timeline, that must be hit, so swapchain can be erased
+    uint64_t            target_timeline;    // Padded target value that must be hit to ensure presentation is truly finished
     swapchain_pack      retired_pack;       // Retired swapchain, enqueued for deletion
 } retired_swapchain;
 
 struct fnd_gfx_window {
-    fnd_gfx_hardware*       owning_hardware;    // The hardware
+    fnd_gfx_hardware*   owning_hardware;    // The hardware
     GLFWwindow*         window;             // GLFW window handle
     VkSurfaceKHR        surface;            // Window surface object
     uint64_t            present_timepoint;  // Last present call present timeline signal
     VkSemaphore         present_timeline;   // Allows safe erase of retired swapchains
     VkCommandPool       transitions_pool;   // Allocs swapchain transition buffers (graphics domain)
-    uint32_t            semaphores_count;   // Count of semaphores in acquire_semaphores and present_semaphores
-    uint32_t            semaphores_iter;    // Iterator over acquire and present semaphores
-    VkSemaphore*        acquire_semaphores; // Links timeline and binary semaphore model on acquire call
-    VkSemaphore*        present_semaphores; // Links timeline and binary semaphore model on present call
     uint32_t            attachments;        // Desired color attachments
     swapchain_pack      swapchain;          // Current non-retired swapchain
     uint32_t            retired_capacity;   // Circular buffer capacity
@@ -2972,17 +2982,12 @@ struct fnd_gfx_window {
     float               scroll_input;       // Window scroll input from callback
 };
 
-// Returns non-zero at success, can recreate, retires current swapchai
+// Returns non-zero at success, can recreate, retires current swapchain
 int  create_swapchain(fnd_gfx_window* window);
 void retire_swapchain(fnd_gfx_window* window);
-void safe_free_retired_swapchains(fnd_gfx_window* window);
+void safe_free_retired_swapchains(fnd_gfx_window* window, int force);
 
 // Window-GLFW input callbacks
-
-void window_resized_callback(GLFWwindow* platform_window, int width, int height) {
-    fnd_gfx_window* window = glfwGetWindowUserPointer(platform_window);
-    if (window->swapchain.width != (uint32_t)width || window->swapchain.height != (uint32_t)height) create_swapchain(window);
-}
 
 void window_scroll_callback(GLFWwindow* platform_window, double xoffset, double yoffset) {
     fnd_gfx_window* window = glfwGetWindowUserPointer(platform_window);
@@ -3002,7 +3007,6 @@ fnd_gfx_window* fnd_gfx_create_window(fnd_gfx_hardware* hardware, const fnd_gfx_
     if (!window->window) goto _fail;
 
     // Set Window Callbacks
-    glfwSetWindowSizeCallback(window->window, window_resized_callback);
     glfwSetScrollCallback    (window->window, window_scroll_callback);
     glfwSetWindowUserPointer (window->window, window);  // set glfw payload to owning dgx window
 
@@ -3051,53 +3055,16 @@ void fnd_gfx_free_window(fnd_gfx_window* window) {
     // Enqueue current swapchain for erase
     retire_swapchain(window);
 
-    // Wait last present is finished, then erase all swapchains
-    window->owning_hardware->vkWaitSemaphoresKHR(window->owning_hardware->logical_device, &(VkSemaphoreWaitInfoKHR){
-        .sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR,
-        .semaphoreCount = 1,
-        .pSemaphores    = &window->present_timeline,
-        .pValues        = &window->present_timepoint,
-    }, window->present_timepoint);
-    safe_free_retired_swapchains(window);
+    // Wait for the entire device to be idle, guaranteeing presentation engines are done
+    fnd_gfx_hardware_wait_idle(window->owning_hardware);
+    safe_free_retired_swapchains(window, 1);
     free(window->retired);
-
-    // Destroy semaphores
-    for (uint32_t i = 0; i < window->semaphores_count; i++) {
-        vkDestroySemaphore(window->owning_hardware->logical_device, window->acquire_semaphores[i], NULL);
-        vkDestroySemaphore(window->owning_hardware->logical_device, window->present_semaphores[i], NULL);
-    }
 
     vkDestroySurfaceKHR(window->owning_hardware->owning_library->instance, window->surface, NULL);
     vkDestroySemaphore(window->owning_hardware->logical_device, window->present_timeline, NULL);
     vkDestroyCommandPool(window->owning_hardware->logical_device, window->transitions_pool, NULL);
     glfwDestroyWindow(window->window);
     free(window);
-}
-
-// An pair of semaphores must exist for every possible frame index (attachement)
-// Their count can change in every swapchain, therefore we ensure their count
-// For simplicity we do full wait here - tolerable since, this operation is rather unlikely
-// Todo safety on this function
-void window_ensure_enough_semaphores_for_swapchain(fnd_gfx_window* window) {
-    if (window->semaphores_count >= window->swapchain.attachments_count) return;
-    fnd_gfx_hardware_wait_idle(window->owning_hardware);
-    
-    uint32_t     new_count   = window->swapchain.attachments_count;
-    VkSemaphore* new_acquire = realloc(window->acquire_semaphores, new_count * sizeof(VkSemaphore));
-    VkSemaphore* new_present = realloc(window->present_semaphores, new_count * sizeof(VkSemaphore));
-
-    for (uint32_t i = window->semaphores_count; i < new_count; i++) {
-        vkCreateSemaphore(window->owning_hardware->logical_device, &(VkSemaphoreCreateInfo){
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
-        }, NULL, &new_acquire[i]);
-        vkCreateSemaphore(window->owning_hardware->logical_device, &(VkSemaphoreCreateInfo){
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
-        }, NULL, &new_present[i]);
-    }
-
-    window->semaphores_count   = new_count;
-    window->acquire_semaphores = new_acquire;
-    window->present_semaphores = new_present;
 }
 
 // Window Attachments
@@ -3112,7 +3079,7 @@ fnd_gfx_texture_format fnd_gfx_window_get_attachment_format(fnd_gfx_window* wind
 
 // Window Present
 
-int fnd_gfx_window_acquire_index (fnd_gfx_window* window, fnd_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index) {
+int fnd_gfx_window_acquire(fnd_gfx_window* window, fnd_gfx_timeline* can_render_timeline, uint64_t can_render_signal, uint32_t* out_index) {
     // Implicitly update input
     window->scroll_input = 0.0f;
     glfwPollEvents();
@@ -3121,24 +3088,24 @@ int fnd_gfx_window_acquire_index (fnd_gfx_window* window, fnd_gfx_timeline* can_
         window->owning_hardware->logical_device, 
         window->swapchain.swapchain, 
         2 * (uint64_t)1e9, // seconds
-        window->acquire_semaphores[window->semaphores_iter],
+        window->swapchain.acquire_semaphores[window->swapchain.semaphores_iter],
         VK_NULL_HANDLE,
         out_index
     );
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         create_swapchain(window);
-        return fnd_gfx_window_acquire_index(window, can_render_timeline, can_render_signal, out_index);
+        return fnd_gfx_window_acquire(window, can_render_timeline, can_render_signal, out_index);
     } 
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        return 0; // failed to acquire swap chain image
+        return 0; // Failed to acquire swap chain image
     }
 
     // Once acquire semaphore is signaled, release timeline signal
     if (vkQueueSubmit(window->owning_hardware->presentation_queue, 1, &(VkSubmitInfo){
         .sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount     = 1,
-        .pWaitSemaphores        = &window->acquire_semaphores[window->semaphores_iter],
+        .pWaitSemaphores        = &window->swapchain.acquire_semaphores[window->swapchain.semaphores_iter],
         .signalSemaphoreCount   = can_render_timeline ? 1 : 0,
         .pSignalSemaphores      = &can_render_timeline->timeline_semaphore,
         .pWaitDstStageMask      = (VkPipelineStageFlags[]){VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
@@ -3151,8 +3118,14 @@ int fnd_gfx_window_acquire_index (fnd_gfx_window* window, fnd_gfx_timeline* can_
     return 1;
 }
 
-void fnd_gfx_window_submit_present(
-    fnd_gfx_window* window, uint32_t target_index, uint32_t wait_timeline_count, fnd_gfx_timeline** wait_timelines, uint64_t* wait_signals
+void fnd_gfx_window_present(
+    fnd_gfx_window*     window, 
+    uint32_t            target_index, 
+    uint32_t            wait_timeline_count,    
+    fnd_gfx_timeline**  wait_timelines, 
+    uint64_t*           wait_signals, 
+    fnd_gfx_timeline*   wait_finished_timeline, 
+    uint64_t            wait_finished_signal
 ) {
     window->present_timepoint++;
 
@@ -3167,6 +3140,9 @@ void fnd_gfx_window_submit_present(
         wait_values[i]     = wait_signals[i];
     }
 
+    // Check wait finished
+    int included_wait_finished = wait_finished_timeline ? 1 : 0;
+
     // Once timeline(s) signaled, signal present semaphore
     VkSubmitInfo submit_info = {
         .sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -3174,19 +3150,20 @@ void fnd_gfx_window_submit_present(
         .pCommandBuffers        = &window->swapchain.transition[target_index],
         .waitSemaphoreCount     = wait_timeline_count,
         .pWaitSemaphores        = wait_semaphores,
-        .signalSemaphoreCount   = 2,
+        .signalSemaphoreCount   = 2 + included_wait_finished,
         .pSignalSemaphores      = (VkSemaphore[]){
-            window->present_semaphores[window->semaphores_iter],
-            window->present_timeline
+            window->swapchain.present_semaphores[target_index],
+            window->present_timeline,
+            included_wait_finished ? wait_finished_timeline->timeline_semaphore : VK_NULL_HANDLE
         },
         .pWaitDstStageMask      = wait_stages,
         .pNext                  = &(VkTimelineSemaphoreSubmitInfoKHR){
             .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
             .waitSemaphoreValueCount    = wait_timeline_count,
             .pWaitSemaphoreValues       = wait_values,
-            .signalSemaphoreValueCount  = 2,
+            .signalSemaphoreValueCount  = 2 + included_wait_finished,
             .pSignalSemaphoreValues     = (uint64_t[]){
-                0, window->present_timepoint
+                0, window->present_timepoint, wait_finished_signal
             }
         },
     };
@@ -3203,14 +3180,14 @@ void fnd_gfx_window_submit_present(
             .pImageIndices      = &target_index,
             .pResults           = 0,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &window->present_semaphores[window->semaphores_iter]
+            .pWaitSemaphores    = &window->swapchain.present_semaphores[target_index]
         }
     );
 
-    window->semaphores_iter = (window->semaphores_iter + 1) % window->semaphores_count;
+    window->swapchain.semaphores_iter = (window->swapchain.semaphores_iter + 1) % window->swapchain.semaphores_count;
 
-    // Try to remove old swapchains
-    safe_free_retired_swapchains(window);
+    // Try to remove old swapchains safely
+    safe_free_retired_swapchains(window, 0);
 }
 
 // Window Input
@@ -3266,6 +3243,9 @@ static fnd_gfx_texture_format vk_to_fnd_gfx_texture_format(VkFormat format) {
 }
 
 int create_swapchain(fnd_gfx_window* window) {
+    VkImage* images = NULL;
+    VkImageView* views = NULL;
+
     int framebuffer_width, framebuffer_height;
     glfwGetFramebufferSize(window->window, &framebuffer_width, &framebuffer_height);
 
@@ -3318,13 +3298,8 @@ int create_swapchain(fnd_gfx_window* window) {
         .pQueueFamilyIndices    = queue_families_indices
     }, NULL, &new_pack.swapchain);
 
-    // Retire current swapchain since
-    // as in vulkan specs, swapchains gets retired after being used as .oldSwapchain
-    // regardless of the operation success
+    // Retire current swapchain
     retire_swapchain(window);
-
-    // Avoid double free on path
-    // create_swapchain fail (retired swapchain) -> trying to acquire/present -> create_swapchain (outdated) -> second retirement
     window->swapchain.swapchain = VK_NULL_HANDLE;
 
     if (swapchain_create_result != VK_SUCCESS) goto _fail;
@@ -3333,7 +3308,7 @@ int create_swapchain(fnd_gfx_window* window) {
     vkGetSwapchainImagesKHR(window->owning_hardware->logical_device, new_pack.swapchain, &new_pack.attachments_count, NULL);
 
     // Swapchain images
-    VkImage* images = malloc(new_pack.attachments_count * sizeof(VkImage)); if (!images) goto _fail;
+    images = malloc(new_pack.attachments_count * sizeof(VkImage)); if (!images) goto _fail;
     vkGetSwapchainImagesKHR(window->owning_hardware->logical_device, new_pack.swapchain, &new_pack.attachments_count, images);
    
     // Swapchain views
@@ -3352,7 +3327,7 @@ int create_swapchain(fnd_gfx_window* window) {
         .subresourceRange.layerCount        = 1
     };
 
-    VkImageView* views = malloc(new_pack.attachments_count * sizeof(VkImageView)); if (!views) goto _fail;
+    views = malloc(new_pack.attachments_count * sizeof(VkImageView)); if (!views) goto _fail;
     for (uint32_t view = 0; view < new_pack.attachments_count; view++) {
         image_view_create_info.image = images[view];
         if (vkCreateImageView(
@@ -3425,11 +3400,23 @@ int create_swapchain(fnd_gfx_window* window) {
         if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) goto _fail;
     }
 
+    // Generate generational semaphores directly for this swapchain
+    new_pack.semaphores_count = new_pack.attachments_count;
+    new_pack.semaphores_iter  = 0;
+    new_pack.acquire_semaphores = malloc(new_pack.semaphores_count * sizeof(VkSemaphore));
+    new_pack.present_semaphores = malloc(new_pack.semaphores_count * sizeof(VkSemaphore));
+    
+    for (uint32_t i = 0; i < new_pack.semaphores_count; i++) {
+        vkCreateSemaphore(window->owning_hardware->logical_device, &(VkSemaphoreCreateInfo){
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+        }, NULL, &new_pack.acquire_semaphores[i]);
+        vkCreateSemaphore(window->owning_hardware->logical_device, &(VkSemaphoreCreateInfo){
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+        }, NULL, &new_pack.present_semaphores[i]);
+    }
+
     // Save swapchain
     window->swapchain = new_pack;
-
-    // Ensure semaphores
-    window_ensure_enough_semaphores_for_swapchain(window);
 
     free(images); free(views);
     return 1;
@@ -3438,14 +3425,28 @@ _fail:
     if (new_pack.transition) {
         vkFreeCommandBuffers(window->owning_hardware->logical_device, window->transitions_pool, new_pack.attachments_count, new_pack.transition);
     } free(new_pack.transition);
+    
     if (new_pack.attachments_array) {
-    for (uint32_t view = 0; view < new_pack.attachments_count; view++) {
-        vkDestroyImageView(window->owning_hardware->logical_device, window->swapchain.attachments_array[view].view, NULL);
-    }
+        for (uint32_t view = 0; view < new_pack.attachments_count; view++) {
+            if (new_pack.attachments_array[view].view) {
+                vkDestroyImageView(window->owning_hardware->logical_device, new_pack.attachments_array[view].view, NULL);
+            }
+        }
     } free(new_pack.attachments_array);
-    free(images); free(views); 
-    vkDestroySwapchainKHR(window->owning_hardware->logical_device, new_pack.swapchain, NULL);
-    free(new_pack.attachments_array);
+    
+    if (new_pack.acquire_semaphores) {
+        for (uint32_t i = 0; i < new_pack.semaphores_count; i++) {
+            if (new_pack.acquire_semaphores[i]) vkDestroySemaphore(window->owning_hardware->logical_device, new_pack.acquire_semaphores[i], NULL);
+            if (new_pack.present_semaphores[i]) vkDestroySemaphore(window->owning_hardware->logical_device, new_pack.present_semaphores[i], NULL);
+        }
+    }
+    free(new_pack.acquire_semaphores);
+    free(new_pack.present_semaphores);
+
+    if (images) free(images); 
+    if (views) free(views); 
+    if (new_pack.swapchain) vkDestroySwapchainKHR(window->owning_hardware->logical_device, new_pack.swapchain, NULL);
+    
     return 0;
 }
 
@@ -3459,7 +3460,8 @@ _begin:
 
         // Busy-wait free spot
         if (!new_retired) {
-            safe_free_retired_swapchains(window);
+            fnd_gfx_hardware_wait_idle(window->owning_hardware);
+            safe_free_retired_swapchains(window, 1);
             goto _begin;
         }
 
@@ -3477,8 +3479,8 @@ _begin:
 
     uint32_t free_spot = (window->retired_first + window->retired_count) % window->retired_capacity;
     window->retired[free_spot] = (retired_swapchain){
-        .last_present = window->present_timepoint,
-        .retired_pack = window->swapchain
+        .target_timeline = window->present_timepoint + window->swapchain.attachments_count + 1,
+        .retired_pack    = window->swapchain
     };
     window->retired_count++;
 }
@@ -3488,17 +3490,23 @@ void free_retired_swapchain(fnd_gfx_window* window, swapchain_pack pack) {
         vkDestroyImageView(window->owning_hardware->logical_device, pack.attachments_array[attachment].view, NULL);
         vkFreeCommandBuffers(window->owning_hardware->logical_device, window->transitions_pool, 1, &pack.transition[attachment]);
     } free(pack.attachments_array); free(pack.transition);
+    
+    for (uint32_t i = 0; i < pack.semaphores_count; i++) {
+        vkDestroySemaphore(window->owning_hardware->logical_device, pack.acquire_semaphores[i], NULL);
+        vkDestroySemaphore(window->owning_hardware->logical_device, pack.present_semaphores[i], NULL);
+    } free(pack.acquire_semaphores); free(pack.present_semaphores);
+
     vkDestroySwapchainKHR(window->owning_hardware->logical_device, pack.swapchain, NULL);
 }
 
-void safe_free_retired_swapchains(fnd_gfx_window* window) {
+void safe_free_retired_swapchains(fnd_gfx_window* window, int force) {
     uint32_t itr = window->retired_first;
     uint64_t val; if (window->owning_hardware->vkGetSemaphoreCounterValueKHR(
         window->owning_hardware->logical_device, window->present_timeline, &val
     ) != VK_SUCCESS) val = 0;
 
     while (window->retired_count) {
-        if (window->retired[itr].last_present > val) break; // This and following swapchain still are to be presented
+        if (!force && window->retired[itr].target_timeline > val) break; // This and following swapchain still are to be presented
         free_retired_swapchain(window, window->retired[itr].retired_pack);
         itr = (itr + 1) % window->retired_capacity;
         window->retired_first = itr;
