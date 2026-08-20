@@ -2989,6 +2989,11 @@ void safe_free_retired_swapchains(fnd_gfx_window* window, int force);
 
 // Window-GLFW input callbacks
 
+void window_resized_callback(GLFWwindow* platform_window, int width, int height) {
+    fnd_gfx_window* window = glfwGetWindowUserPointer(platform_window);
+    if (window->swapchain.width != (uint32_t)width || window->swapchain.height != (uint32_t)height) create_swapchain(window);
+}
+
 void window_scroll_callback(GLFWwindow* platform_window, double xoffset, double yoffset) {
     fnd_gfx_window* window = glfwGetWindowUserPointer(platform_window);
     window->scroll_input = yoffset;
@@ -3008,6 +3013,7 @@ fnd_gfx_window* fnd_gfx_create_window(fnd_gfx_hardware* hardware, const fnd_gfx_
 
     // Set Window Callbacks
     glfwSetScrollCallback    (window->window, window_scroll_callback);
+    glfwSetWindowSizeCallback(window->window, window_resized_callback);
     glfwSetWindowUserPointer (window->window, window);  // set glfw payload to owning dgx window
 
     // Surface
