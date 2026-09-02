@@ -1018,18 +1018,21 @@ fnd_gfx_hardware* fnd_gfx_create_hardware(fnd_gfx_library* library, const fnd_gf
     uint32_t domain_fallback_domain [fnd_gfx_command_domain_count] = {0};
     for (uint32_t assigned_domain = 0; assigned_domain < fnd_gfx_command_domain_count; assigned_domain++) {
         // by default read from the target domain
-        uint32_t* read_domains = (uint32_t[]){assigned_domain};
-        uint32_t  read_count = 1;
+        uint32_t read_domains[fnd_gfx_command_domain_count] = {assigned_domain};
+        uint32_t read_count = 1;
 
         // for selected domains allow fallback queue families
         // in case hardware does not have dedicated queues
         switch (assigned_domain) {
         case fnd_gfx_command_domain_transfer: {
-            read_domains = (uint32_t[]){fnd_gfx_command_domain_transfer, fnd_gfx_command_domain_compute, fnd_gfx_command_domain_graphics};
+            read_domains[0] = fnd_gfx_command_domain_transfer;
+            read_domains[1] = fnd_gfx_command_domain_compute;
+            read_domains[2] = fnd_gfx_command_domain_graphics;
             read_count = 3;
         } break;
         case fnd_gfx_command_domain_compute: {
-            read_domains = (uint32_t[]){fnd_gfx_command_domain_compute, fnd_gfx_command_domain_graphics};
+            read_domains[0] = fnd_gfx_command_domain_compute;
+            read_domains[1] = fnd_gfx_command_domain_graphics;
             read_count = 2;
         } break;
         }
